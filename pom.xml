@@ -27,7 +27,7 @@
     </dependencies>
 
     <build>
-        <finalName>cms_app</finalName>
+        <finalName>cms-app</finalName>
         <plugins>
 
             <plugin>
