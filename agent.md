@@ -9,6 +9,7 @@ Edit ONLY in:
 You may also read project instruction files from:
 - agent.md
 - project.md
+- SESSION_CONTEXT.md
 - skills/
 
 Primary backend packages:
@@ -17,6 +18,9 @@ Primary backend packages:
 - hu.laci.cms.service
 - hu.laci.cms.servlet
 - hu.laci.cms.backend.config
+
+Current implemented auth HTTP entrypoints may differ from planned API routes in `project.md`.
+When continuing existing work, prefer actual current code and `SESSION_CONTEXT.md`, then align to planned routes only when explicitly requested.
 
 Ignore:
 - frontend/
@@ -109,3 +113,7 @@ Use that file as the project-specific review checklist in addition to the rules 
 ## When Uncertain
 
 Ask before making assumptions.
+
+## Session Continuity
+
+If present, read `SESSION_CONTEXT.md` at the start of a new session to recover the latest implementation state, local setup notes, and verified runtime behavior.

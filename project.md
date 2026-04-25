@@ -60,6 +60,12 @@ Examples:
 - PUT    /api/pages/{id}
 - DELETE /api/pages/{id}
 
+Current implementation note:
+
+- the planned API base path remains `/api`
+- the currently implemented login endpoint is temporarily `POST /login`
+- Tomcat deploy path in local development is therefore `http://localhost:8080/cms-app/login`
+
 ---
 
 ## Authentication
@@ -88,10 +94,15 @@ cms/
 |   |-- main/
 |   |   |-- java/
 |   |   |   `-- hu/laci/cms/
+|   |   |       |-- model/
+|   |   |       |-- dao/
+|   |   |       |-- service/
 |   |   |       |-- servlet/
+|   |   |       `-- backend/config/
 |   |   |       `-- Main.java
 |   |   `-- webapp/
 |-- skills/
+|-- SESSION_CONTEXT.md
 |-- target/
 |-- pom.xml
 |-- project.md
@@ -116,6 +127,21 @@ cms/
 - Keep code simple and explicit
 - Respect layer boundaries
 - Avoid unnecessary abstractions
+
+## Current Backend Status
+
+- `User`, `UserDao`, `UserDaoImpl`, `AuthService`, `AuthServiceException`, `DatabaseConfig` already exist
+- login servlet layer is now implemented with:
+  - `hu.laci.cms.servlet.AuthServlet`
+  - `hu.laci.cms.servlet.LoginRequest`
+- JSON request parsing currently uses Jackson `ObjectMapper`
+- session-based authentication is active through `HttpSession`
+
+## Working Notes
+
+- `SESSION_CONTEXT.md` stores the latest implementation summary and local runtime state for follow-up sessions
+- keep `project.md` focused on stable project context and intended architecture
+- keep machine-specific or temporary setup details out of this file unless they become permanent project conventions
 
 ---
 
