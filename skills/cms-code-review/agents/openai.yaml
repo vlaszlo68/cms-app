@@ -1,0 +1,7 @@
+interface:
+  display_name: "CMS Code Review"
+  short_description: "Review backend changes for bugs and regressions."
+  default_prompt: "Use $cms-code-review to review the provided CMS backend changes for bugs, regressions, layer violations, SQL/JDBC issues, and missing tests."
+
+policy:
+  allow_implicit_invocation: true

@@ -17,7 +17,7 @@ Goal: clean, minimal, framework-light architecture with full control over implem
 - HikariCP
 - Maven
 - WAR packaging
-- Deployment: Tomcat (Docker)
+- Deployment: Tomcat 9 (Docker)
 
 ### Frontend
 - React
@@ -75,16 +75,37 @@ Examples:
 - PostgreSQL
 - Manual SQL (JDBC)
 - Connection pool: HikariCP
+- Prefer ANSI SQL where possible
+- Use vendor-specific SQL only when justified
+- Current connection entry point: `hu.laci.cms.backend.config.DatabaseConfig`
 
 ---
 
-## Project Structure
+## Current Structure
 
 cms/
-|-- backend/
-|-- frontend/
-|-- docker/
+|-- src/
+|   |-- main/
+|   |   |-- java/
+|   |   |   `-- hu/laci/cms/
+|   |   |       |-- servlet/
+|   |   |       `-- Main.java
+|   |   `-- webapp/
+|-- skills/
+|-- target/
+|-- pom.xml
+|-- project.md
 `-- agent.md
+
+---
+
+## Target Backend Structure
+
+- `hu.laci.cms.model`
+- `hu.laci.cms.dao`
+- `hu.laci.cms.service`
+- `hu.laci.cms.servlet`
+- `hu.laci.cms.backend.config`
 
 ---
 

@@ -2,8 +2,21 @@
 
 ## Scope (CRITICAL)
 
-Work ONLY in:
-- backend/src/main/java/com/cms/
+Edit ONLY in:
+- src/main/java/hu/laci/cms/
+- src/main/webapp/
+
+You may also read project instruction files from:
+- agent.md
+- project.md
+- skills/
+
+Primary backend packages:
+- hu.laci.cms.model
+- hu.laci.cms.dao
+- hu.laci.cms.service
+- hu.laci.cms.servlet
+- hu.laci.cms.backend.config
 
 Ignore:
 - frontend/
@@ -47,10 +60,12 @@ When building a feature:
 
 ## Database Rules
 
-- PostgreSQL syntax
+- Prefer ANSI SQL where possible
+- Use PostgreSQL-specific syntax only when there is a clear need
 - Simple, readable SQL
 - No ORM
 - Use HikariCP connections
+- Use `hu.laci.cms.backend.config.DatabaseConfig#getConnection()`
 
 ---
 
@@ -79,6 +94,15 @@ Do NOT:
 - Prefer working code over explanation
 - Keep explanations short
 - Avoid repeating context
+
+---
+
+## Code Review
+
+If the user asks for `cms-review`, also read and apply:
+- skills/cms-code-review/SKILL.md
+
+Use that file as the project-specific review checklist in addition to the rules in this file.
 
 ---
 
