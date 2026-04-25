@@ -17,7 +17,7 @@
 
     <context-param>
         <param-name>db.password</param-name>
-        <param-value>cms_password</param-value>
+        <param-value>pw</param-value>
     </context-param>
 
     <listener>
