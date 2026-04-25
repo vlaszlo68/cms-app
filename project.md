@@ -81,10 +81,10 @@ Examples:
 ## Project Structure
 
 cms/
-├── backend/
-├── frontend/
-├── docker/
-└── agent.md
+|-- backend/
+|-- frontend/
+|-- docker/
+`-- agent.md
 
 ---
 
@@ -102,5 +102,5 @@ cms/
 
 - Work in small steps
 - Implement feature parts separately:
-  model → DAO → service → servlet
+  model -> DAO -> service -> servlet
 - Avoid large one-step implementations
