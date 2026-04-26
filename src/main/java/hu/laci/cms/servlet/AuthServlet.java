@@ -1,6 +1,6 @@
 package hu.laci.cms.servlet;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.gson.JsonSyntaxException;
 import hu.laci.cms.dao.UserDaoImpl;
 import hu.laci.cms.model.User;
 import hu.laci.cms.service.AuthService;
@@ -8,18 +8,16 @@ import hu.laci.cms.service.AuthServiceException;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
-import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.Map;
 import java.util.Optional;
 
 @WebServlet("/login")
-public class AuthServlet extends HttpServlet {
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
+public class AuthServlet extends JsonServletSupport {
 
     private AuthService authService;
 
@@ -55,9 +53,9 @@ public class AuthServlet extends HttpServlet {
     }
 
     private LoginRequest parseLoginRequest(HttpServletRequest request) {
-        try {
-            return objectMapper.readValue(request.getInputStream(), LoginRequest.class);
-        } catch (IOException e) {
+        try (InputStreamReader reader = new InputStreamReader(request.getInputStream())) {
+            return readJsonBody(reader, LoginRequest.class);
+        } catch (IOException | JsonSyntaxException e) {
             throw new BadRequestException("Invalid JSON request body.", e);
         }
     }
@@ -81,14 +79,6 @@ public class AuthServlet extends HttpServlet {
 
     private void writeErrorResponse(HttpServletResponse response, int status, String message) throws IOException {
         writeJsonResponse(response, status, Map.of("error", message));
-    }
-
-    private void writeJsonResponse(HttpServletResponse response, int status, Map<String, String> payload)
-            throws IOException {
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-        response.setStatus(status);
-        objectMapper.writeValue(response.getWriter(), payload);
     }
 
     private static final class BadRequestException extends RuntimeException {
