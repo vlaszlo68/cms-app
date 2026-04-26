@@ -1,6 +1,7 @@
 # CMS Project Context
 
 ## Overview
+
 Custom-built Content Management System (CMS) with a Java backend and React frontend.
 
 Goal: clean, minimal, framework-light architecture with full control over implementation.
@@ -10,19 +11,29 @@ Goal: clean, minimal, framework-light architecture with full control over implem
 ## Tech Stack
 
 ### Backend
+
 - Java 21 (Temurin)
 - Servlet API (no Spring Boot)
 - JDBC (no ORM / Hibernate)
 - PostgreSQL
 - HikariCP
+- Gson
 - Maven
 - WAR packaging
-- Deployment: Tomcat 9 (Docker)
+- Deployment target: Tomcat 9
 
 ### Frontend
+
 - React
 - Same repository (separate folder)
 - Communicates via REST API
+
+### DevOps / Local Infrastructure
+
+- Docker Compose
+- PostgreSQL 15 container
+- Tomcat container
+- Jenkins container
 
 ---
 
@@ -50,21 +61,26 @@ Strict 3-layer backend:
 ## API
 
 - REST + JSON
-- Base path: /api
+- Base path: `/api`
 
 Examples:
-- POST   /api/auth/login
-- POST   /api/auth/logout
-- GET    /api/pages
-- POST   /api/pages
-- PUT    /api/pages/{id}
-- DELETE /api/pages/{id}
+
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/pages`
+- `POST /api/pages`
+- `PUT /api/pages/{id}`
+- `DELETE /api/pages/{id}`
 
 Current implementation note:
 
 - the planned API base path remains `/api`
-- the currently implemented login endpoint is temporarily `POST /login`
-- Tomcat deploy path in local development is therefore `http://localhost:8080/cms-app/login`
+- the currently implemented auth endpoints are temporarily:
+  - `POST /login`
+  - `POST /logout`
+- local Tomcat deploy path in current development is therefore:
+  - `http://localhost:8080/cms-app/login`
+  - `http://localhost:8080/cms-app/logout`
 
 ---
 
@@ -99,11 +115,13 @@ cms/
 |   |   |       |-- service/
 |   |   |       |-- servlet/
 |   |   |       `-- backend/config/
-|   |   |       `-- Main.java
 |   |   `-- webapp/
+|-- docker/
+|   |-- postgres/
+|   `-- tomcat/
 |-- skills/
 |-- SESSION_CONTEXT.md
-|-- target/
+|-- docker-compose.yml
 |-- pom.xml
 |-- project.md
 `-- agent.md
@@ -128,14 +146,37 @@ cms/
 - Respect layer boundaries
 - Avoid unnecessary abstractions
 
+---
+
 ## Current Backend Status
 
 - `User`, `UserDao`, `UserDaoImpl`, `AuthService`, `AuthServiceException`, `DatabaseConfig` already exist
-- login servlet layer is now implemented with:
+- auth servlet layer is now implemented with:
   - `hu.laci.cms.servlet.AuthServlet`
+  - `hu.laci.cms.servlet.LogoutServlet`
   - `hu.laci.cms.servlet.LoginRequest`
-- JSON request parsing currently uses Jackson `ObjectMapper`
+  - `hu.laci.cms.servlet.JsonServletSupport`
+- JSON request/response handling currently uses Gson
 - session-based authentication is active through `HttpSession`
+
+---
+
+## Current DevOps Status
+
+- `docker-compose.yml` exists in the project root
+- `docker/tomcat/Dockerfile` exists for WAR-based Tomcat image build
+- current compose design includes:
+  - `postgres`
+  - `tomcat`
+  - `jenkins`
+
+Note:
+
+- the compose file already passes DB environment variables to Tomcat
+- the current Java backend configuration still relies on `web.xml` context params
+- environment-based DB wiring is therefore a pending alignment task
+
+---
 
 ## Working Notes
 
@@ -149,5 +190,5 @@ cms/
 
 - Work in small steps
 - Implement feature parts separately:
-  model -> DAO -> service -> servlet
+  - model -> DAO -> service -> servlet
 - Avoid large one-step implementations
