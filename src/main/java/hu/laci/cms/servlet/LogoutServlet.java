@@ -22,7 +22,7 @@ public class LogoutServlet extends HttpServlet {
             session.invalidate();
         }
 
-        writeJsonRmoesponse(response, HttpServletResponse.SC_OK, Map.of("status", "ok"));
+        writeJsonResponse(response, HttpServletResponse.SC_OK, Map.of("status", "ok"));
     }
 
     private void writeJsonResponse(HttpServletResponse response, int status, Map<String, String> payload)
