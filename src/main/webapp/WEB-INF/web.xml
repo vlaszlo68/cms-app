@@ -7,17 +7,17 @@
 
     <context-param>
         <param-name>db.jdbcUrl</param-name>
-        <param-value>jdbc:postgresql://localhost:5432/cms</param-value>
+        <param-value>jdbc:postgresql://postgres:5432/cmsdb</param-value>
     </context-param>
 
     <context-param>
         <param-name>db.username</param-name>
-        <param-value>cms_user</param-value>
+        <param-value>cmsuser</param-value>
     </context-param>
 
     <context-param>
         <param-name>db.password</param-name>
-        <param-value>pw</param-value>
+        <param-value>cmspassword</param-value>
     </context-param>
 
     <listener>
