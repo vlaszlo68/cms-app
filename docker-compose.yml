@@ -53,6 +53,9 @@ services:
     networks:
       - cms-network
 
+    group_add:
+      - "987"
+
 networks:
   cms-network:
 
