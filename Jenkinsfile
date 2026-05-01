@@ -44,5 +44,21 @@ pipeline {
                 '''
             }
         }
+
+        stage('Health Check') {
+            steps {
+                sh '''
+                set -e
+
+                echo "=== Health check started ==="
+
+                sleep 5
+
+                curl -f http://cms-tomcat:8080/hello
+
+                echo "=== Health check OK ==="
+                '''
+            }
+        }
     }
 }
