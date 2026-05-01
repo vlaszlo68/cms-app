@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '3'))
+        timestamps()
+        timeout(time: 5, unit: 'MINUTES')
+    }
+
     stages {
 
         stage('Checkout') {
@@ -52,13 +58,24 @@ pipeline {
 
                 echo "=== Health check started ==="
 
-                sleep 5
+                for i in {1..5}; do
+                    echo "Attempt $i..."
+                    if curl -f http://cms-tomcat:8080/hello; then
+                        echo "Health check OK"
+                        exit 0
+                    fi
+                    sleep 3
+                done
 
-                curl -f http://cms-tomcat:8080/hello
-
-                echo "=== Health check OK ==="
+                echo "Health check FAILED"
+                exit 1
                 '''
             }
+        }
+    }
+    post {
+        always {
+            cleanWs()
         }
     }
 }
