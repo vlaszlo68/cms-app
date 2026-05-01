@@ -81,6 +81,7 @@ Current implementation note:
 - local Tomcat deploy path in current development is therefore:
   - `http://localhost:8080/cms-app/login`
   - `http://localhost:8080/cms-app/logout`
+- the current DB connection code reads `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` first, then falls back to `web.xml` context params and finally hardcoded defaults
 
 ---
 
@@ -173,8 +174,8 @@ cms/
 Note:
 
 - the compose file already passes DB environment variables to Tomcat
-- the current Java backend configuration still relies on `web.xml` context params
-- environment-based DB wiring is therefore a pending alignment task
+- the current Java backend configuration already supports those environment variables
+- `web.xml` still contains the Docker-oriented fallback JDBC host (`postgres`), so local non-Docker Tomcat runs need `DB_HOST=localhost` override
 
 ---
 
