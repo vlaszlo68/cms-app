@@ -3,6 +3,8 @@ version: "3.9"
 services:
   postgres:
     image: postgres:15
+    ports:
+      - "5433:5432"
     container_name: cms-postgres
     environment:
       POSTGRES_DB: cms_db
