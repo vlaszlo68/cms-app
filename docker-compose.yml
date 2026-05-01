@@ -40,7 +40,9 @@ services:
       - cms-network
 
   jenkins:
-    image: jenkins/jenkins:lts-jdk21
+    build:
+      context: .
+      dockerfile: docker/jenkins/Dockerfile
     container_name: cms-jenkins
     ports:
       - "8082:8080"
