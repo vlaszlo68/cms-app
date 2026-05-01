@@ -5,15 +5,15 @@ services:
     image: postgres:15
     container_name: cms-postgres
     environment:
-      POSTGRES_DB: cmsdb
-      POSTGRES_USER: cmsuser
-      POSTGRES_PASSWORD: cmspassword
+      POSTGRES_DB: cms_db
+      POSTGRES_USER: cms_user
+      POSTGRES_PASSWORD: cms_pw
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cmsuser -d cmsdb"]
+      test: ["CMD-SHELL", "pg_isready -U cms_user -d cms_db"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -30,9 +30,11 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/cmsdb
-      DB_USER: cmsuser
-      DB_PASSWORD: cmspassword
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: cms_db
+      DB_USER: cms_user
+      DB_PASSWORD: cms_pw
     ports:
       - "8081:8080"
     restart: unless-stopped
