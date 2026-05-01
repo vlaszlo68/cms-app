@@ -25,7 +25,7 @@ Goal: clean, minimal, framework-light architecture with full control over implem
 ### Frontend
 
 - React
-- Same repository (separate folder)
+- Separate repository
 - Communicates via REST API
 
 ### DevOps / Local Infrastructure
@@ -74,13 +74,18 @@ Examples:
 
 Current implementation note:
 
-- the planned API base path remains `/api`
-- the currently implemented auth endpoints are temporarily:
-  - `POST /login`
-  - `POST /logout`
-- local Tomcat deploy path in current development is therefore:
-  - `http://localhost:8080/cms-app/login`
-  - `http://localhost:8080/cms-app/logout`
+- current auth endpoints are implemented under `/api/auth/*`
+  - `POST /api/auth/login`
+  - `POST /api/auth/logout`
+  - `GET /api/auth/me`
+- local standalone Tomcat deploy path in current development is:
+  - `http://localhost:8080/cms-app/api/auth/login`
+  - `http://localhost:8080/cms-app/api/auth/logout`
+  - `http://localhost:8080/cms-app/api/auth/me`
+- Docker Tomcat deploy path in current development is:
+  - `http://localhost:8081/api/auth/login`
+  - `http://localhost:8081/api/auth/logout`
+  - `http://localhost:8081/api/auth/me`
 - the current DB connection code reads `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` first, then falls back to `web.xml` context params and finally hardcoded defaults
 
 ---
@@ -121,6 +126,8 @@ cms/
 |   |-- postgres/
 |   `-- tomcat/
 |-- skills/
+|-- FRONTEND_BOOTSTRAP_PLAN.md
+|-- FRONTEND_HANDOFF.md
 |-- SESSION_CONTEXT.md
 |-- docker-compose.yml
 |-- pom.xml
@@ -155,10 +162,13 @@ cms/
 - auth servlet layer is now implemented with:
   - `hu.laci.cms.servlet.AuthServlet`
   - `hu.laci.cms.servlet.LogoutServlet`
+  - `hu.laci.cms.servlet.MeServlet`
   - `hu.laci.cms.servlet.LoginRequest`
   - `hu.laci.cms.servlet.JsonServletSupport`
+  - `hu.laci.cms.servlet.AuthFilter`
 - JSON request/response handling currently uses Gson
 - session-based authentication is active through `HttpSession`
+- a frontend handoff and bootstrap planning documents are maintained in this repo and were copied into the separate frontend repo for frontend-side work
 
 ---
 
@@ -182,6 +192,8 @@ Note:
 ## Working Notes
 
 - `SESSION_CONTEXT.md` stores the latest implementation summary and local runtime state for follow-up sessions
+- `FRONTEND_HANDOFF.md` stores the backend contract for the separate React frontend repo
+- `FRONTEND_BOOTSTRAP_PLAN.md` stores the recommended frontend repo bootstrap plan
 - keep `project.md` focused on stable project context and intended architecture
 - keep machine-specific or temporary setup details out of this file unless they become permanent project conventions
 

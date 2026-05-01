@@ -6,7 +6,6 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.util.Map;
 
 public abstract class JsonServletSupport extends HttpServlet {
 
@@ -16,7 +15,7 @@ public abstract class JsonServletSupport extends HttpServlet {
         return gson.fromJson(reader, targetType);
     }
 
-    protected void writeJsonResponse(HttpServletResponse response, int status, Map<String, String> payload)
+    protected void writeJsonResponse(HttpServletResponse response, int status, Object payload)
             throws IOException {
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");

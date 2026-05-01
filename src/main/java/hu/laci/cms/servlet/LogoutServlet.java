@@ -7,16 +7,14 @@ import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.Map;
 
-@WebServlet("/logout")
+@WebServlet("/api/auth/logout")
 public class LogoutServlet extends JsonServletSupport {
 
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        HttpSession session = request.getSession(false);
-        if (session != null) {
-            session.invalidate();
-        }
+        HttpSession session = request.getSession();
+        session.invalidate();
 
-        writeJsonResponse(response, HttpServletResponse.SC_OK, Map.of("status", "ok"));
+        writeJsonResponse(response, HttpServletResponse.SC_OK, Map.of("message", "Logged out"));
     }
 }

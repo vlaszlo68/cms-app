@@ -10,13 +10,11 @@ import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.Map;
 import java.util.Optional;
 
-@WebServlet("/login")
+@WebServlet("/api/auth/login")
 public class AuthServlet extends JsonServletSupport {
 
     private AuthService authService;
@@ -37,12 +35,17 @@ public class AuthServlet extends JsonServletSupport {
 
             Optional<User> userOptional = authService.login(loginName, password);
             if (userOptional.isEmpty()) {
-                writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED, "Invalid credentials.");
+                writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED, "Invalid credentials");
                 return;
             }
 
-            createSession(request, userOptional.get());
-            writeJsonResponse(response, HttpServletResponse.SC_OK, Map.of("status", "ok"));
+            User user = userOptional.get();
+            createSession(request, user);
+            writeJsonResponse(response, HttpServletResponse.SC_OK, new LoginResponse(
+                    user.getId(),
+                    user.getLoginName(),
+                    user.getEmailAddress()
+            ));
         } catch (BadRequestException e) {
             writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (AuthServiceException e) {
@@ -53,8 +56,8 @@ public class AuthServlet extends JsonServletSupport {
     }
 
     private LoginRequest parseLoginRequest(HttpServletRequest request) {
-        try (InputStreamReader reader = new InputStreamReader(request.getInputStream())) {
-            return readJsonBody(reader, LoginRequest.class);
+        try (var reader = request.getReader()) {
+            return gson.fromJson(reader, LoginRequest.class);
         } catch (IOException | JsonSyntaxException e) {
             throw new BadRequestException("Invalid JSON request body.", e);
         }
@@ -73,12 +76,24 @@ public class AuthServlet extends JsonServletSupport {
     }
 
     private void createSession(HttpServletRequest request, User user) {
-        HttpSession session = request.getSession(true);
-        session.setAttribute("userId", user.getId());
+        request.getSession(true).setAttribute("user", user);
     }
 
     private void writeErrorResponse(HttpServletResponse response, int status, String message) throws IOException {
         writeJsonResponse(response, status, Map.of("error", message));
+    }
+
+    private static final class LoginResponse {
+
+        private final Long id;
+        private final String loginName;
+        private final String email;
+
+        private LoginResponse(Long id, String loginName, String email) {
+            this.id = id;
+            this.loginName = loginName;
+            this.email = email;
+        }
     }
 
     private static final class BadRequestException extends RuntimeException {
