@@ -28,8 +28,8 @@ public class AuthFilter implements Filter {
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
-        String requestUri = httpRequest.getRequestURI();
-        if (LOGIN_PATH.equals(requestUri) || LOGOUT_PATH.equals(requestUri)) {
+        String servletPath = httpRequest.getServletPath();
+        if (LOGIN_PATH.equals(servletPath) || LOGOUT_PATH.equals(servletPath)) {
             chain.doFilter(request, response);
             return;
         }
