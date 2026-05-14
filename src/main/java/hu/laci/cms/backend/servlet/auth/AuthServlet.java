@@ -2,6 +2,8 @@ package hu.laci.cms.backend.servlet.auth;
 
 import com.google.gson.JsonSyntaxException;
 import hu.laci.cms.backend.dao.UserDaoImpl;
+import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
+import hu.laci.cms.backend.dto.auth.AuthUserResponse;
 import hu.laci.cms.backend.dto.auth.LoginRequest;
 import hu.laci.cms.backend.model.User;
 import hu.laci.cms.backend.service.AuthService;
@@ -12,6 +14,7 @@ import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.Optional;
 
@@ -42,12 +45,8 @@ public class AuthServlet extends JsonServletSupport {
             }
 
             User user = userOptional.get();
-            createSession(request, user);
-            writeJsonResponse(response, HttpServletResponse.SC_OK, new LoginResponse(
-                    user.getId(),
-                    user.getLoginName(),
-                    user.getEmailAddress()
-            ));
+            AuthenticatedUser authenticatedUser = createSession(request, user);
+            writeJsonResponse(response, HttpServletResponse.SC_OK, new AuthUserResponse(authenticatedUser));
         } catch (BadRequestException e) {
             writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
         } catch (AuthServiceException e) {
@@ -79,21 +78,17 @@ public class AuthServlet extends JsonServletSupport {
         return value == null || value.trim().isEmpty();
     }
 
-    private void createSession(HttpServletRequest request, User user) {
-        request.getSession(true).setAttribute("user", user);
-    }
+    private AuthenticatedUser createSession(HttpServletRequest request, User user) {
+        HttpSession session = request.getSession(true);
+        request.changeSessionId();
 
-    private static final class LoginResponse {
-
-        private final Long id;
-        private final String loginName;
-        private final String email;
-
-        private LoginResponse(Long id, String loginName, String email) {
-            this.id = id;
-            this.loginName = loginName;
-            this.email = email;
-        }
+        AuthenticatedUser authenticatedUser = new AuthenticatedUser(
+                user.getId(),
+                user.getLoginName(),
+                user.getEmailAddress()
+        );
+        session.setAttribute("user", authenticatedUser);
+        return authenticatedUser;
     }
 
     private static final class BadRequestException extends RuntimeException {

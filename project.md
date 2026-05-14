@@ -173,6 +173,7 @@ cms/
   - `hu.laci.cms.backend.servlet.auth.LogoutServlet`
   - `hu.laci.cms.backend.servlet.auth.MeServlet`
   - `hu.laci.cms.backend.dto.auth.LoginRequest`
+  - `hu.laci.cms.backend.dto.auth.AuthenticatedUser`
   - `hu.laci.cms.backend.dto.common.ApiResponse`
   - `hu.laci.cms.backend.dto.common.ApiErrorResponse`
   - `hu.laci.cms.backend.servlet.support.JsonServletSupport`
@@ -182,6 +183,8 @@ cms/
 - successful JSON API responses are wrapped as `success/data`
 - JSON API errors are wrapped as `success/error.code/error.message`
 - session-based authentication is active through `HttpSession`
+- successful login rotates the session id before storing auth state
+- the session stores `AuthenticatedUser`, not the full persistence `User`
 - `AuthFilter` uses `request.getServletPath()`, so public auth endpoints work both under root context and `/cms-app`
 - a frontend handoff and bootstrap planning documents are maintained in this repo and were copied into the separate frontend repo for frontend-side work
 

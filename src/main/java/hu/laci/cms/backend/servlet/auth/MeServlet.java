@@ -1,6 +1,7 @@
 package hu.laci.cms.backend.servlet.auth;
 
-import hu.laci.cms.backend.model.User;
+import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
+import hu.laci.cms.backend.dto.auth.AuthUserResponse;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.annotation.WebServlet;
@@ -21,16 +22,12 @@ public class MeServlet extends JsonServletSupport {
         }
 
         Object sessionUser = session.getAttribute("user");
-        if (!(sessionUser instanceof User user)) {
+        if (!(sessionUser instanceof AuthenticatedUser authenticatedUser)) {
             writeUnauthorized(response);
             return;
         }
 
-        writeJsonResponse(response, HttpServletResponse.SC_OK, new MeResponse(
-                user.getId(),
-                user.getLoginName(),
-                user.getEmailAddress()
-        ));
+        writeJsonResponse(response, HttpServletResponse.SC_OK, new AuthUserResponse(authenticatedUser));
     }
 
     private void writeUnauthorized(HttpServletResponse response) throws IOException {
@@ -38,16 +35,4 @@ public class MeServlet extends JsonServletSupport {
                 "AUTH_REQUIRED", "Authentication required");
     }
 
-    private static final class MeResponse {
-
-        private final Long id;
-        private final String loginName;
-        private final String email;
-
-        private MeResponse(Long id, String loginName, String email) {
-            this.id = id;
-            this.loginName = loginName;
-            this.email = email;
-        }
-    }
 }

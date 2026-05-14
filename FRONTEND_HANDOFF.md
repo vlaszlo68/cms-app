@@ -25,7 +25,7 @@ Source of truth for this handoff:
   - success: `{ "success": true, "data": ... }`
   - error: `{ "success": false, "error": { "code": "...", "message": "..." } }`
 
-The backend stores the full `hu.laci.cms.backend.model.User` object in the HTTP session on successful login.
+The backend stores a password-hash-free `hu.laci.cms.backend.dto.auth.AuthenticatedUser` object in the HTTP session on successful login.
 
 ## API Base URL
 
@@ -152,6 +152,7 @@ or
 Behavior:
 
 - on success the backend creates a session and stores the authenticated user under session attribute `user`
+- the backend rotates the session id on successful login before storing the authenticated user
 
 ### `POST /api/auth/logout`
 
@@ -224,7 +225,7 @@ Public exceptions in code:
 - `/api/auth/login`
 - `/api/auth/logout`
 
-All other `/api/*` endpoints currently require a valid session with a non-null `user` attribute.
+All other `/api/*` endpoints currently require a valid session where the `user` attribute is an `AuthenticatedUser` object.
 
 If there is no authenticated session, the filter returns:
 

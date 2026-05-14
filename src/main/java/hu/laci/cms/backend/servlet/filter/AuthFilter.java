@@ -1,6 +1,7 @@
 package hu.laci.cms.backend.servlet.filter;
 
 import com.google.gson.Gson;
+import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.dto.common.ApiErrorResponse;
 import hu.laci.cms.backend.dto.common.ApiResponse;
 
@@ -36,7 +37,7 @@ public class AuthFilter implements Filter {
         }
 
         HttpSession session = httpRequest.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || !(session.getAttribute("user") instanceof AuthenticatedUser)) {
             writeUnauthorized(httpResponse);
             return;
         }
