@@ -79,9 +79,9 @@ Current implementation note:
   - `POST /api/auth/logout`
   - `GET /api/auth/me`
 - local standalone Tomcat deploy path in current development is:
-  - `http://localhost:8080/cms-app/api/auth/login`
-  - `http://localhost:8080/cms-app/api/auth/logout`
-  - `http://localhost:8080/cms-app/api/auth/me`
+  - `http://localhost:8081/cms-app/api/auth/login`
+  - `http://localhost:8081/cms-app/api/auth/logout`
+  - `http://localhost:8081/cms-app/api/auth/me`
 - Docker Tomcat deploy path in current development is:
   - `http://localhost:8081/api/auth/login`
   - `http://localhost:8081/api/auth/logout`
@@ -116,11 +116,14 @@ cms/
 |   |-- main/
 |   |   |-- java/
 |   |   |   `-- hu/laci/cms/
-|   |   |       |-- model/
-|   |   |       |-- dao/
-|   |   |       |-- service/
-|   |   |       |-- servlet/
-|   |   |       `-- backend/config/
+|   |   |       |-- Main.java
+|   |   |       `-- backend/
+|   |   |           |-- config/database/
+|   |   |           |-- dao/
+|   |   |           |-- dto/auth/
+|   |   |           |-- model/
+|   |   |           |-- service/
+|   |   |           `-- servlet/
 |   |   `-- webapp/
 |-- docker/
 |   |-- postgres/
@@ -138,10 +141,11 @@ cms/
 
 ## Target Backend Structure
 
-- `hu.laci.cms.model`
-- `hu.laci.cms.dao`
-- `hu.laci.cms.service`
-- `hu.laci.cms.servlet`
+- `hu.laci.cms.backend.model`
+- `hu.laci.cms.backend.dao`
+- `hu.laci.cms.backend.service`
+- `hu.laci.cms.backend.servlet`
+- `hu.laci.cms.backend.dto`
 - `hu.laci.cms.backend.config`
 
 ---
@@ -160,14 +164,16 @@ cms/
 
 - `User`, `UserDao`, `UserDaoImpl`, `AuthService`, `AuthServiceException`, `DatabaseConfig` already exist
 - auth servlet layer is now implemented with:
-  - `hu.laci.cms.servlet.auth.AuthServlet`
-  - `hu.laci.cms.servlet.auth.LogoutServlet`
-  - `hu.laci.cms.servlet.auth.MeServlet`
-  - `hu.laci.cms.servlet.auth.LoginRequest`
-  - `hu.laci.cms.servlet.support.JsonServletSupport`
-  - `hu.laci.cms.servlet.filter.AuthFilter`
+  - `hu.laci.cms.backend.servlet.auth.AuthServlet`
+  - `hu.laci.cms.backend.servlet.auth.LogoutServlet`
+  - `hu.laci.cms.backend.servlet.auth.MeServlet`
+  - `hu.laci.cms.backend.dto.auth.LoginRequest`
+  - `hu.laci.cms.backend.servlet.support.JsonServletSupport`
+  - `hu.laci.cms.backend.servlet.filter.AuthFilter`
+  - `hu.laci.cms.backend.servlet.health.HelloServlet`
 - JSON request/response handling currently uses Gson
 - session-based authentication is active through `HttpSession`
+- `AuthFilter` uses `request.getServletPath()`, so public auth endpoints work both under root context and `/cms-app`
 - a frontend handoff and bootstrap planning documents are maintained in this repo and were copied into the separate frontend repo for frontend-side work
 
 ---

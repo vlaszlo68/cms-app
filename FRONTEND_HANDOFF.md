@@ -11,7 +11,7 @@ Status note:
 
 Source of truth for this handoff:
 
-- current backend source code under `src/main/java/hu/laci/cms/servlet/`
+- current backend source code under `src/main/java/hu/laci/cms/backend/`
 - current Docker/Tomcat setup in `docker-compose.yml` and `docker/tomcat/Dockerfile`
 
 ## Backend Summary
@@ -22,7 +22,7 @@ Source of truth for this handoff:
 - JSON library: Gson
 - Session key for authenticated user: `user`
 
-The backend stores the full `hu.laci.cms.model.User` object in the HTTP session on successful login.
+The backend stores the full `hu.laci.cms.backend.model.User` object in the HTTP session on successful login.
 
 ## API Base URL
 
@@ -32,8 +32,8 @@ The effective base URL depends on deployment mode.
 
 If the WAR is deployed as `cms-app.war` into a standalone Tomcat:
 
-- base app URL: `http://localhost:8080/cms-app`
-- auth login URL: `http://localhost:8080/cms-app/api/auth/login`
+- base app URL: `http://localhost:8081/cms-app`
+- auth login URL: `http://localhost:8081/cms-app/api/auth/login`
 
 ### Docker Tomcat deploy
 
@@ -51,7 +51,7 @@ VITE_API_BASE_URL=http://localhost:8081
 or for local standalone Tomcat:
 
 ```env
-VITE_API_BASE_URL=http://localhost:8080/cms-app
+VITE_API_BASE_URL=http://localhost:8081/cms-app
 ```
 
 ## Auth Endpoints
@@ -227,13 +227,13 @@ Practical recommendation for frontend local development:
 Example direction:
 
 - React dev server on `localhost:5173`
-- proxy `/api` to `http://localhost:8081` or `http://localhost:8080/cms-app`
+- proxy `/api` to `http://localhost:8081` or `http://localhost:8081/cms-app`
 
-### 2. AuthFilter public-path matching is context-path sensitive
+### 2. AuthFilter public-path matching is context-path safe
 
 Current filter code compares:
 
-- `request.getRequestURI()`
+- `request.getServletPath()`
 
 against exact strings:
 
@@ -242,14 +242,7 @@ against exact strings:
 
 Implication:
 
-- this works as expected when the app is deployed at root context, for example Docker `ROOT.war`
-- this may fail when the app is deployed under `/cms-app`, because the request URI then becomes:
-  - `/cms-app/api/auth/login`
-  - `/cms-app/api/auth/logout`
-
-Frontend implication:
-
-- for the cleanest frontend integration, prefer the Docker/root-context backend during frontend development until this filter logic is normalized
+- public auth endpoints work both at root context and when the app is deployed under `/cms-app`
 
 ## Recommended Frontend Auth Flow
 
@@ -268,7 +261,7 @@ VITE_API_BASE_URL=http://localhost:8081
 If using standalone Tomcat instead:
 
 ```env
-VITE_API_BASE_URL=http://localhost:8080/cms-app
+VITE_API_BASE_URL=http://localhost:8081/cms-app
 ```
 
 ## Test User Used During Backend Verification

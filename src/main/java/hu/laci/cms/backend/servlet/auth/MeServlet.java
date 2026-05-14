@@ -8,7 +8,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
-import java.util.Map;
 
 @WebServlet("/api/auth/me")
 public class MeServlet extends JsonServletSupport {
@@ -35,7 +34,8 @@ public class MeServlet extends JsonServletSupport {
     }
 
     private void writeUnauthorized(HttpServletResponse response) throws IOException {
-        writeJsonResponse(response, HttpServletResponse.SC_UNAUTHORIZED, Map.of("error", "Not authenticated"));
+        writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                "AUTH_REQUIRED", "Authentication required");
     }
 
     private static final class MeResponse {

@@ -100,7 +100,7 @@ VITE_API_BASE_URL=http://localhost:8081
 For standalone Tomcat instead of Docker:
 
 ```env
-VITE_API_BASE_URL=http://localhost:8080/cms-app
+VITE_API_BASE_URL=http://localhost:8081/cms-app
 ```
 
 ## API Layer Design
@@ -196,13 +196,14 @@ Suggested files:
 
 ## Preferred mode
 
-Use the backend through Docker/root context during frontend development when possible:
+Use either supported backend context during frontend development:
 
 - backend app: `http://localhost:8081`
+- standalone Tomcat app: `http://localhost:8081/cms-app`
 
 Reason:
 
-- current backend `AuthFilter` public path matching is safer in root-context deployment than in `/cms-app`
+- the backend `AuthFilter` now uses servlet paths, so auth public-path matching works in both root-context and `/cms-app` deployments
 
 ## Dev proxy recommendation
 
@@ -305,10 +306,6 @@ Without proxy or backend CORS work, browser requests from a separate dev origin 
 ### 2. Backend auth uses session cookies
 
 Every request that depends on authentication must send credentials.
-
-### 3. Current backend filter path logic is deployment-sensitive
-
-Root-context backend is safer for frontend development until that logic is normalized.
 
 ## Recommended Next Step
 

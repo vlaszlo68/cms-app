@@ -3,7 +3,8 @@
 ## Scope (CRITICAL)
 
 Edit ONLY in:
-- src/main/java/hu/laci/cms/
+- src/main/java/hu/laci/cms/backend/
+- src/main/java/hu/laci/cms/Main.java
 - src/main/webapp/
 
 You may also read project instruction files from:
@@ -13,10 +14,11 @@ You may also read project instruction files from:
 - skills/
 
 Primary backend packages:
-- hu.laci.cms.model
-- hu.laci.cms.dao
-- hu.laci.cms.service
-- hu.laci.cms.servlet
+- hu.laci.cms.backend.model
+- hu.laci.cms.backend.dao
+- hu.laci.cms.backend.service
+- hu.laci.cms.backend.servlet
+- hu.laci.cms.backend.dto
 - hu.laci.cms.backend.config
 
 Current implemented auth HTTP entrypoints may differ from planned API routes in `project.md`.

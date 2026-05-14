@@ -1,6 +1,8 @@
 package hu.laci.cms.backend.servlet.filter;
 
 import com.google.gson.Gson;
+import hu.laci.cms.backend.dto.common.ApiErrorResponse;
+import hu.laci.cms.backend.dto.common.ApiResponse;
 
 import javax.servlet.Filter;
 import javax.servlet.FilterChain;
@@ -12,7 +14,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
-import java.util.Map;
 
 @WebFilter("/api/*")
 public class AuthFilter implements Filter {
@@ -47,6 +48,8 @@ public class AuthFilter implements Filter {
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.getWriter().write(gson.toJson(Map.of("error", "Unauthorized")));
+        response.getWriter().write(gson.toJson(ApiResponse.error(
+                new ApiErrorResponse("AUTH_REQUIRED", "Authentication required")
+        )));
     }
 }

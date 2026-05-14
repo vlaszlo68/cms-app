@@ -13,7 +13,6 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Map;
 import java.util.Optional;
 
 @WebServlet("/api/auth/login")
@@ -37,7 +36,8 @@ public class AuthServlet extends JsonServletSupport {
 
             Optional<User> userOptional = authService.login(loginName, password);
             if (userOptional.isEmpty()) {
-                writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED, "Invalid credentials");
+                writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                        "INVALID_CREDENTIALS", "Invalid credentials");
                 return;
             }
 
@@ -49,11 +49,13 @@ public class AuthServlet extends JsonServletSupport {
                     user.getEmailAddress()
             ));
         } catch (BadRequestException e) {
-            writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
+            writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
         } catch (AuthServiceException e) {
-            writeErrorResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error.");
+            writeErrorResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                    "INTERNAL_ERROR", "Internal server error.");
         } catch (RuntimeException e) {
-            writeErrorResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Internal server error.");
+            writeErrorResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                    "INTERNAL_ERROR", "Internal server error.");
         }
     }
 
@@ -79,10 +81,6 @@ public class AuthServlet extends JsonServletSupport {
 
     private void createSession(HttpServletRequest request, User user) {
         request.getSession(true).setAttribute("user", user);
-    }
-
-    private void writeErrorResponse(HttpServletResponse response, int status, String message) throws IOException {
-        writeJsonResponse(response, status, Map.of("error", message));
     }
 
     private static final class LoginResponse {
