@@ -105,7 +105,7 @@ Current implementation note:
 - Connection pool: HikariCP
 - Prefer ANSI SQL where possible
 - Use vendor-specific SQL only when justified
-- Current connection entry point: `hu.laci.cms.backend.config.DatabaseConfig`
+- Current connection entry point: `hu.laci.cms.backend.config.database.DatabaseConfig`
 
 ---
 
@@ -160,12 +160,12 @@ cms/
 
 - `User`, `UserDao`, `UserDaoImpl`, `AuthService`, `AuthServiceException`, `DatabaseConfig` already exist
 - auth servlet layer is now implemented with:
-  - `hu.laci.cms.servlet.AuthServlet`
-  - `hu.laci.cms.servlet.LogoutServlet`
-  - `hu.laci.cms.servlet.MeServlet`
-  - `hu.laci.cms.servlet.LoginRequest`
-  - `hu.laci.cms.servlet.JsonServletSupport`
-  - `hu.laci.cms.servlet.AuthFilter`
+  - `hu.laci.cms.servlet.auth.AuthServlet`
+  - `hu.laci.cms.servlet.auth.LogoutServlet`
+  - `hu.laci.cms.servlet.auth.MeServlet`
+  - `hu.laci.cms.servlet.auth.LoginRequest`
+  - `hu.laci.cms.servlet.support.JsonServletSupport`
+  - `hu.laci.cms.servlet.filter.AuthFilter`
 - JSON request/response handling currently uses Gson
 - session-based authentication is active through `HttpSession`
 - a frontend handoff and bootstrap planning documents are maintained in this repo and were copied into the separate frontend repo for frontend-side work

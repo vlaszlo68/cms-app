@@ -1,6 +1,7 @@
-package hu.laci.cms.servlet;
+package hu.laci.cms.backend.servlet.auth;
 
-import hu.laci.cms.model.User;
+import hu.laci.cms.backend.model.User;
+import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;

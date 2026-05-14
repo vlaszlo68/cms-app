@@ -59,7 +59,7 @@ Verify `PreparedStatement` is used for external input.
 
 Verify `try-with-resources` is used for JDBC resources.
 
-Verify connections come from `hu.laci.cms.backend.config.DatabaseConfig`.
+Verify connections come from `hu.laci.cms.backend.config.database.DatabaseConfig`.
 
 Verify `SQLException` is wrapped into the project runtime DAO exception where applicable.
 

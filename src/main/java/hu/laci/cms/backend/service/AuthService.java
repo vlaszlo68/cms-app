@@ -1,8 +1,8 @@
-package hu.laci.cms.service;
+package hu.laci.cms.backend.service;
 
-import hu.laci.cms.dao.DataAccessException;
-import hu.laci.cms.dao.UserDao;
-import hu.laci.cms.model.User;
+import hu.laci.cms.backend.dao.DataAccessException;
+import hu.laci.cms.backend.dao.UserDao;
+import hu.laci.cms.backend.model.User;
 import org.mindrot.jbcrypt.BCrypt;
 
 import java.util.Objects;

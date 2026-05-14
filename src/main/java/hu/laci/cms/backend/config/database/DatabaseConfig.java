@@ -1,4 +1,4 @@
-package hu.laci.cms.backend.config;
+package hu.laci.cms.backend.config.database;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;

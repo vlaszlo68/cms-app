@@ -1,4 +1,4 @@
-package hu.laci.cms.backend.config;
+package hu.laci.cms.backend.config.database;
 
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;

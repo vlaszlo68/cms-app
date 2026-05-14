@@ -69,7 +69,7 @@ When building a feature:
 - Simple, readable SQL
 - No ORM
 - Use HikariCP connections
-- Use `hu.laci.cms.backend.config.DatabaseConfig#getConnection()`
+- Use `hu.laci.cms.backend.config.database.DatabaseConfig#getConnection()`
 
 ---
 

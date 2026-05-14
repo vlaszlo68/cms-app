@@ -1,7 +1,7 @@
-package hu.laci.cms.dao;
+package hu.laci.cms.backend.dao;
 
-import hu.laci.cms.model.User;
-import hu.laci.cms.model.UserFilter;
+import hu.laci.cms.backend.model.User;
+import hu.laci.cms.backend.model.UserFilter;
 
 import java.util.List;
 import java.util.Optional;

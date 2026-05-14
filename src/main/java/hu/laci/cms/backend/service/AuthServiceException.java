@@ -1,4 +1,4 @@
-package hu.laci.cms.service;
+package hu.laci.cms.backend.service;
 
 public class AuthServiceException extends RuntimeException {
 

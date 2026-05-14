@@ -1,4 +1,4 @@
-package hu.laci.cms.servlet;
+package hu.laci.cms.backend.servlet.health;
 
 import java.io.IOException;
 import java.io.PrintWriter;

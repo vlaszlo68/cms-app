@@ -1,4 +1,4 @@
-package hu.laci.cms.servlet;
+package hu.laci.cms.backend.dto.auth;
 
 public class LoginRequest {
 

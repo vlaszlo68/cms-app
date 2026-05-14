@@ -21,7 +21,7 @@
     </context-param>
 
     <listener>
-        <listener-class>hu.laci.cms.backend.config.DatabaseConfigListener</listener-class>
+        <listener-class>hu.laci.cms.backend.config.database.DatabaseConfigListener</listener-class>
     </listener>
 
 </web-app>

@@ -1,4 +1,4 @@
-package hu.laci.cms.model;
+package hu.laci.cms.backend.model;
 
 public class UserFilter {
 

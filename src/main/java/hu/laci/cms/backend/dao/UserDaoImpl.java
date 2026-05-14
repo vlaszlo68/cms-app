@@ -1,8 +1,8 @@
-package hu.laci.cms.dao;
+package hu.laci.cms.backend.dao;
 
-import hu.laci.cms.backend.config.DatabaseConfig;
-import hu.laci.cms.model.User;
-import hu.laci.cms.model.UserFilter;
+import hu.laci.cms.backend.config.database.DatabaseConfig;
+import hu.laci.cms.backend.model.User;
+import hu.laci.cms.backend.model.UserFilter;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
