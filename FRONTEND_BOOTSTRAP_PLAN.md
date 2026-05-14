@@ -113,6 +113,8 @@ Responsibilities:
 - set `credentials: 'include'`
 - set `Content-Type: application/json` for JSON requests
 - parse JSON responses
+- unwrap successful API envelopes from `response.data`
+- expose backend error envelopes from `response.error`
 - normalize `401` handling
 
 Suggested shape:
@@ -141,6 +143,15 @@ export type AuthUser = {
   loginName: string;
   email: string;
 };
+
+export type ApiError = {
+  code: string;
+  message: string;
+};
+
+export type ApiResponse<T> =
+  | { success: true; data: T }
+  | { success: false; error: ApiError };
 ```
 
 ## Auth State Design
@@ -159,10 +170,10 @@ Recommended behavior:
 
 - app start:
   - call `me()`
-  - `200` -> set authenticated user
-  - `401` -> set logged-out state
+  - `200` + `success: true` -> set authenticated user from `data`
+  - `401` + `AUTH_REQUIRED` -> set logged-out state
 - login success:
-  - store returned user in memory state
+  - store returned `data` user in memory state
 - logout success:
   - clear auth state
 - protected API `401`:

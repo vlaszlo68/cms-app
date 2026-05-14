@@ -62,6 +62,9 @@ Strict 3-layer backend:
 
 - REST + JSON
 - Base path: `/api`
+- Common API response envelope:
+  - success: `{ "success": true, "data": ... }`
+  - error: `{ "success": false, "error": { "code": "...", "message": "..." } }`
 
 Examples:
 
@@ -78,6 +81,7 @@ Current implementation note:
   - `POST /api/auth/login`
   - `POST /api/auth/logout`
   - `GET /api/auth/me`
+- auth endpoints now use the common API response envelope
 - local standalone Tomcat deploy path in current development is:
   - `http://localhost:8081/cms-app/api/auth/login`
   - `http://localhost:8081/cms-app/api/auth/logout`
@@ -121,6 +125,7 @@ cms/
 |   |   |           |-- config/database/
 |   |   |           |-- dao/
 |   |   |           |-- dto/auth/
+|   |   |           |-- dto/common/
 |   |   |           |-- model/
 |   |   |           |-- service/
 |   |   |           `-- servlet/
@@ -168,10 +173,14 @@ cms/
   - `hu.laci.cms.backend.servlet.auth.LogoutServlet`
   - `hu.laci.cms.backend.servlet.auth.MeServlet`
   - `hu.laci.cms.backend.dto.auth.LoginRequest`
+  - `hu.laci.cms.backend.dto.common.ApiResponse`
+  - `hu.laci.cms.backend.dto.common.ApiErrorResponse`
   - `hu.laci.cms.backend.servlet.support.JsonServletSupport`
   - `hu.laci.cms.backend.servlet.filter.AuthFilter`
   - `hu.laci.cms.backend.servlet.health.HelloServlet`
 - JSON request/response handling currently uses Gson
+- successful JSON API responses are wrapped as `success/data`
+- JSON API errors are wrapped as `success/error.code/error.message`
 - session-based authentication is active through `HttpSession`
 - `AuthFilter` uses `request.getServletPath()`, so public auth endpoints work both under root context and `/cms-app`
 - a frontend handoff and bootstrap planning documents are maintained in this repo and were copied into the separate frontend repo for frontend-side work

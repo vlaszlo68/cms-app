@@ -21,6 +21,9 @@ Source of truth for this handoff:
 - Auth model: session-based authentication
 - JSON library: Gson
 - Session key for authenticated user: `user`
+- API responses use a common envelope:
+  - success: `{ "success": true, "data": ... }`
+  - error: `{ "success": false, "error": { "code": "...", "message": "..." } }`
 
 The backend stores the full `hu.laci.cms.backend.model.User` object in the HTTP session on successful login.
 
@@ -56,6 +59,29 @@ VITE_API_BASE_URL=http://localhost:8081/cms-app
 
 ## Auth Endpoints
 
+All auth endpoints return the common API response envelope.
+
+Successful response shape:
+
+```json
+{
+  "success": true,
+  "data": {}
+}
+```
+
+Error response shape:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human readable message"
+  }
+}
+```
+
 ### `POST /api/auth/login`
 
 Request body:
@@ -74,9 +100,12 @@ Successful response:
 
 ```json
 {
-  "id": 1,
-  "loginName": "tester",
-  "email": "tester@example.com"
+  "success": true,
+  "data": {
+    "id": 1,
+    "loginName": "tester",
+    "email": "tester@example.com"
+  }
 }
 ```
 
@@ -86,7 +115,11 @@ Invalid credentials:
 
 ```json
 {
-  "error": "Invalid credentials"
+  "success": false,
+  "error": {
+    "code": "INVALID_CREDENTIALS",
+    "message": "Invalid credentials"
+  }
 }
 ```
 
@@ -96,7 +129,11 @@ Invalid or incomplete JSON:
 
 ```json
 {
-  "error": "loginName and password are required."
+  "success": false,
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "loginName and password are required."
+  }
 }
 ```
 
@@ -104,7 +141,11 @@ or
 
 ```json
 {
-  "error": "Invalid JSON request body."
+  "success": false,
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "Invalid JSON request body."
+  }
 }
 ```
 
@@ -124,13 +165,16 @@ Successful response:
 
 ```json
 {
-  "message": "Logged out"
+  "success": true,
+  "data": {
+    "message": "Logged out"
+  }
 }
 ```
 
 Behavior:
 
-- invalidates the current session using `request.getSession().invalidate()`
+- invalidates the current session if one exists
 
 ### `GET /api/auth/me`
 
@@ -140,9 +184,12 @@ Successful response:
 
 ```json
 {
-  "id": 1,
-  "loginName": "tester",
-  "email": "tester@example.com"
+  "success": true,
+  "data": {
+    "id": 1,
+    "loginName": "tester",
+    "email": "tester@example.com"
+  }
 }
 ```
 
@@ -152,16 +199,19 @@ Unauthenticated response expected by frontend:
 
 ```json
 {
-  "error": "Unauthorized"
+  "success": false,
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "Authentication required"
+  }
 }
 ```
 
 Important:
 
-- the `MeServlet` itself contains a `"Not authenticated"` branch
-- however, because `/api/auth/me` is behind `AuthFilter`, the frontend should currently expect the filter-level response:
+- `/api/auth/me` is behind `AuthFilter`, so unauthenticated requests usually receive the filter-level response:
   - `401`
-  - `{"error":"Unauthorized"}`
+- `{"success":false,"error":{"code":"AUTH_REQUIRED","message":"Authentication required"}}`
 
 ## Protected API Behavior
 
@@ -183,7 +233,11 @@ If there is no authenticated session, the filter returns:
 
 ```json
 {
-  "error": "Unauthorized"
+  "success": false,
+  "error": {
+    "code": "AUTH_REQUIRED",
+    "message": "Authentication required"
+  }
 }
 ```
 
