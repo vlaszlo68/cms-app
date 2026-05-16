@@ -45,7 +45,7 @@ public class ExceptionHandlingFilter implements Filter {
         }
 
         LOGGER.error("Unhandled request exception.", exception);
-        httpResponse.reset();
+        httpResponse.resetBuffer();
         httpResponse.setContentType("application/json");
         httpResponse.setCharacterEncoding("UTF-8");
         httpResponse.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
