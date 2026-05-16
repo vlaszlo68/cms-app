@@ -6,6 +6,10 @@ Custom-built Content Management System (CMS) with a Java backend and React front
 
 Goal: clean, minimal, framework-light architecture with full control over implementation.
 
+The backend is intentionally servlet/JDBC based. The project avoids Spring, ORM frameworks, and large infrastructure abstractions so the request lifecycle, transaction boundaries, SQL generation, and HTTP contract remain explicit and easy to inspect.
+
+The frontend lives in a separate React repository. This backend repository still contains frontend handoff documents because the backend API contract is the source of truth for frontend integration.
+
 ---
 
 ## Tech Stack
@@ -26,8 +30,12 @@ Goal: clean, minimal, framework-light architecture with full control over implem
 ### Frontend
 
 - React
+- TypeScript
+- Vite
 - Separate repository
 - Communicates via REST API
+- Uses browser session cookies for authentication
+- Must handle CSRF tokens returned by the backend
 
 ### DevOps / Local Infrastructure
 
@@ -35,6 +43,7 @@ Goal: clean, minimal, framework-light architecture with full control over implem
 - PostgreSQL 15 container
 - Tomcat container
 - Jenkins container
+- Named Docker network: `cms-network`
 
 ---
 
@@ -46,16 +55,19 @@ Strict 3-layer backend:
    - SQL only
    - PreparedStatement
    - No business logic
+   - Persistence mapping and low-level data access errors only
 
 2. Service
    - Business logic
    - Validation
    - Transaction-aware business workflows
+   - No HTTP request/response objects
 
 3. Servlet
    - HTTP handling
    - Session management
    - JSON input/output
+   - Converts request DTOs to service calls and service results to API responses
 
 Cross-cutting HTTP behavior is handled by servlet filters:
 
@@ -67,6 +79,25 @@ Cross-cutting HTTP behavior is handled by servlet filters:
 - authentication
 - CSRF validation
 - request-scoped DB transaction handling
+
+Layer boundary rules:
+
+- servlet code may call services and write `ApiResponse` JSON
+- service code may call DAOs and apply business rules
+- DAO code must not know about sessions, servlets, HTTP status codes, or JSON
+- shared HTTP concerns belong in filters or servlet support classes
+- shared persistence concerns belong in `dao.common`
+
+Current request lifecycle for `/api/*` requests:
+
+1. `ExceptionHandlingFilter` catches unhandled exceptions and writes common JSON errors.
+2. `RequestLoggingFilter` logs method, URI, status, duration, remote address, and authenticated user when available.
+3. `CorsFilter` handles allowed origins and short-circuits preflight `OPTIONS`.
+4. `SecurityHeadersFilter` adds no-store and browser security headers.
+5. `CharacterEncodingFilter` sets UTF-8 request/response encoding.
+6. `AuthFilter` validates session authentication except public auth endpoints.
+7. `CsrfFilter` validates `X-CSRF-Token` for state-changing API requests.
+8. `TransactionFilter` opens, commits, rolls back, and closes request-scoped DB transactions.
 
 ---
 
@@ -87,6 +118,27 @@ Examples:
 - `PUT /api/pages/{id}`
 - `DELETE /api/pages/{id}`
 
+The common response envelope is mandatory for API endpoints:
+
+```json
+{
+  "success": true,
+  "data": {}
+}
+```
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human readable message"
+  }
+}
+```
+
+Do not return raw DTOs or raw exception messages from API servlets.
+
 Current implementation note:
 
 - current auth endpoints are implemented under `/api/auth/*`
@@ -106,6 +158,28 @@ Current implementation note:
 - the current DB connection code reads `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` first, then falls back to `web.xml` context params and finally hardcoded defaults
 - DB-backed DAO tests run during `mvn test` / `mvn package`, so CI environments must provide these DB environment variables or otherwise make PostgreSQL reachable
 
+Implemented auth response shape:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "loginName": "tester",
+    "email": "tester@example.com",
+    "csrfToken": "..."
+  }
+}
+```
+
+Implemented auth error examples:
+
+- `AUTH_REQUIRED`
+- `INVALID_CREDENTIALS`
+- `INVALID_REQUEST`
+- `CSRF_INVALID`
+- `INTERNAL_ERROR`
+
 ---
 
 ## Authentication
@@ -115,6 +189,35 @@ Current implementation note:
 - No JWT
 - CSRF protection is active for state-changing `/api/*` requests
 - Frontend must send `X-CSRF-Token` on `POST`, `PUT`, `PATCH`, and `DELETE` after login/session restore
+
+Session details:
+
+- session attribute for authenticated user: `user`
+- stored object: `hu.laci.cms.backend.dto.auth.AuthenticatedUser`
+- full persistence `User` is not stored in session
+- successful login calls `request.changeSessionId()`
+- session attribute for CSRF token: `csrfToken`
+- CSRF token header: `X-CSRF-Token`
+
+Public auth endpoints:
+
+- `POST /api/auth/login`
+- `POST /api/auth/logout` is public from the auth filter perspective, but CSRF-protected if a session exists and the request reaches the CSRF filter
+
+CSRF rules:
+
+- checked methods: `POST`, `PUT`, `PATCH`, `DELETE`
+- skipped methods: `GET`, `HEAD`, `OPTIONS`
+- skipped endpoint: `POST /api/auth/login`
+- invalid or missing token returns `403 CSRF_INVALID`
+
+Frontend requirements:
+
+- call `GET /api/auth/me` on startup to restore session state
+- store `data.csrfToken` from `login` and `me`
+- include `credentials: "include"` for session-aware requests
+- include `X-CSRF-Token` on every state-changing API request after login/session restore
+- clear both user state and CSRF token on logout
 
 ---
 
@@ -128,6 +231,23 @@ Current implementation note:
 - Use vendor-specific SQL only when justified
 - Current connection entry point: `hu.laci.cms.backend.config.database.DatabaseConfig`
 
+Connection configuration priority:
+
+1. environment variables:
+   - `DB_HOST`
+   - `DB_PORT`
+   - `DB_NAME`
+   - `DB_USER`
+   - `DB_PASSWORD`
+2. `web.xml` context parameters
+3. built-in defaults in `DatabaseConfig`
+
+Important Docker note:
+
+- inside Docker containers, `localhost` means the current container
+- Dockerized backend/Jenkins builds must use `DB_HOST=postgres` on the compose network
+- local non-Docker Tomcat normally needs `DB_HOST=localhost`
+
 DAO layer notes:
 
 - generic CRUD support lives in `hu.laci.cms.backend.dao.common.BaseDao`
@@ -140,26 +260,91 @@ DAO layer notes:
 - DB mapping annotations live under `hu.laci.cms.backend.dao.common.annotations`
 - filter annotations live under `hu.laci.cms.backend.model.common.annotations`
 
+DAO responsibilities and behavior:
+
+- `CrudDao<T, F, S>` defines common CRUD operations.
+- `BaseDao<T, F, S>` implements reusable CRUD, filtering, sorting, mapping, and SQL parameter handling.
+- Entity classes extend `BaseEntity`; `id` is always `Long`.
+- `save(entity)` delegates to `create` when `id == null`, otherwise to `update`.
+- `create` uses `INSERT ... RETURNING id`.
+- `update` requires non-null id and fails if no row exists.
+- `deleteById` returns whether a row was deleted.
+- `findAll(filter, sort)` defaults to `ORDER BY id ASC`.
+- Sort input is a list of `SortOrder<S>`, so multi-column order is supported.
+- Filter metadata is annotation-driven through `FilterProperty`.
+- Entity metadata is annotation-driven through `DbTable` and `DbColumn`.
+- Reflection metadata is cached per entity/filter class.
+- Result mapping uses generated column aliases, not raw column names.
+
+Supported common type conversions:
+
+- `Long` / `long`
+- `Date`, `java.sql.Date`, `Timestamp`
+- `Boolean` / `boolean` as DB `VARCHAR(1)` values `T` and `F`
+- `BaseEntity` references as foreign-key id values
+
+Specialized future conversions, such as JSON columns or richer audit support, should be added deliberately when a concrete model needs them.
+
+Audit model direction:
+
+- audit fields should be introduced through a dedicated model base class, for example an `AuditableEntity` that extends `BaseEntity`
+- when this is added, `DbColumn` may need insert/update flags, for example for `created_at` and `updated_at`
+
+Transaction behavior:
+
+- `TransactionFilter` starts one DB transaction per request.
+- successful request processing commits the transaction.
+- exceptions trigger rollback.
+- `TransactionContext.openConnection()` returns the request-bound connection when one exists.
+- DAO code should use `TransactionContext.openConnection()` rather than directly opening raw connections.
+
+Logging:
+
+- SQL operations are logged from `BaseDao`.
+- mutation operations log entity type and id where applicable.
+- sensitive parameter names such as password/hash/token/secret are masked in SQL parameter logs.
+
 ---
 
 ## Current Structure
 
-cms/
+```text
+cms-app/
 |-- src/
 |   |-- main/
 |   |   |-- java/
 |   |   |   `-- hu/laci/cms/
 |   |   |       |-- Main.java
 |   |   |       `-- backend/
-|   |   |           |-- config/database/
+|   |   |           |-- config/
+|   |   |           |   |-- app/
+|   |   |           |   `-- database/
 |   |   |           |-- dao/
-|   |   |           |-- dto/auth/
-|   |   |           |-- dto/common/
+|   |   |           |   |-- common/
+|   |   |           |   |   `-- annotations/
+|   |   |           |   `-- user/
+|   |   |           |-- dto/
+|   |   |           |   |-- auth/
+|   |   |           |   `-- common/
 |   |   |           |-- model/
+|   |   |           |   |-- common/
+|   |   |           |   |   `-- annotations/
+|   |   |           |   `-- user/
 |   |   |           |-- service/
 |   |   |           `-- servlet/
+|   |   |               |-- auth/
+|   |   |               |-- filter/
+|   |   |               |-- health/
+|   |   |               `-- support/
+|   |   |-- resources/
 |   |   `-- webapp/
+|   |       `-- WEB-INF/
+|   |           `-- web.xml
+|   `-- test/
+|       |-- java/
+|       `-- resources/
 |-- docker/
+|   |-- jenkins/
 |   |-- postgres/
 |   `-- tomcat/
 |-- skills/
@@ -167,9 +352,11 @@ cms/
 |-- FRONTEND_HANDOFF.md
 |-- SESSION_CONTEXT.md
 |-- docker-compose.yml
+|-- Jenkinsfile
 |-- pom.xml
 |-- project.md
 `-- agent.md
+```
 
 ---
 
@@ -182,6 +369,21 @@ cms/
 - `hu.laci.cms.backend.dto`
 - `hu.laci.cms.backend.config`
 
+Package conventions:
+
+- `model.*`: persistence/domain-like model classes, filters, sort definitions
+- `model.common.annotations`: annotations that describe filter/model behavior
+- `dao.*`: DAO interfaces and implementations
+- `dao.common`: shared DAO infrastructure
+- `dao.common.annotations`: DB mapping annotations
+- `dto.*`: API-facing data transfer objects
+- `service.*`: business logic and validation
+- `servlet.auth`: authentication endpoints
+- `servlet.filter`: cross-cutting HTTP filters
+- `servlet.support`: reusable servlet helpers
+- `config.database`: DB pool and transaction context
+- `config.app`: app initialization listeners
+
 ---
 
 ## Development Principles
@@ -191,6 +393,13 @@ cms/
 - Keep code simple and explicit
 - Respect layer boundaries
 - Avoid unnecessary abstractions
+- Prefer existing project patterns over new local styles
+- Add abstractions only when they reduce real duplication or clarify shared behavior
+- Keep generated SQL readable and loggable
+- Use prepared statements for SQL parameters
+- Keep API errors in the common response envelope
+- Avoid leaking implementation details or stack traces to frontend responses
+- Treat DB-backed DAO tests as integration tests, even if they run under Maven Surefire
 
 ---
 
@@ -239,6 +448,77 @@ Current filter order in `web.xml`:
 7. `csrfFilter`
 8. `transactionFilter`
 
+Current auth endpoints:
+
+### `POST /api/auth/login`
+
+Request:
+
+```json
+{
+  "loginName": "tester",
+  "password": "pw"
+}
+```
+
+Success:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "loginName": "tester",
+    "email": "tester@example.com",
+    "csrfToken": "..."
+  }
+}
+```
+
+### `GET /api/auth/me`
+
+Returns the same authenticated user shape as login, including `csrfToken`, when the session is valid.
+
+### `POST /api/auth/logout`
+
+Requires `X-CSRF-Token` after login/session restore.
+
+Success:
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Logged out"
+  }
+}
+```
+
+Current filter responsibilities:
+
+| Filter | Scope | Responsibility |
+| --- | --- | --- |
+| `ExceptionHandlingFilter` | `/*` | Converts unhandled exceptions to common JSON error responses when possible. |
+| `RequestLoggingFilter` | `/*` | Logs request method, target, status, duration, remote address, and user. |
+| `CorsFilter` | `/*` | Handles allowed origins and `OPTIONS` preflight. |
+| `SecurityHeadersFilter` | `/*` | Adds no-store cache and browser hardening headers. |
+| `CharacterEncodingFilter` | `/*` | Sets UTF-8 request and response encoding. |
+| `AuthFilter` | `/api/*` | Requires authenticated session except public auth paths. |
+| `CsrfFilter` | `/api/*` | Requires CSRF token for state-changing API requests. |
+| `TransactionFilter` | `/*` | Wraps request processing in DB transaction scope. |
+
+Security headers currently set:
+
+- `Cache-Control: no-store`
+- `Pragma: no-cache`
+- `Expires: 0`
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Referrer-Policy: no-referrer`
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+
+`Strict-Transport-Security` is intentionally not enabled yet because HTTPS is not currently configured.
+
 ---
 
 ## Current DevOps Status
@@ -258,6 +538,36 @@ Note:
 - `web.xml` still contains the Docker-oriented fallback JDBC host (`postgres`), so local non-Docker Tomcat runs need `DB_HOST=localhost` override
 - compose network is explicitly named `cms-network`
 
+Docker Compose services:
+
+| Service | Container | Purpose |
+| --- | --- | --- |
+| `postgres` | `cms-postgres` | PostgreSQL 15 database with `cms_db`. |
+| `tomcat` | `cms-tomcat` | Runs the packaged WAR on Tomcat. |
+| `jenkins` | `cms-jenkins` | CI build/deploy runner. |
+
+Important ports:
+
+- PostgreSQL host port: `5433` mapped to container `5432`
+- Tomcat host port: `8081` mapped to container `8080`
+- Jenkins host port: `8082` mapped to container `8080`
+
+Typical Docker commands:
+
+```powershell
+docker compose up -d --build
+docker compose ps
+docker compose down
+```
+
+Do not use `docker compose down -v` unless the PostgreSQL and Jenkins volumes should be deleted.
+
+Jenkins note:
+
+- the Maven build runs DAO tests during `mvn package`
+- those tests require PostgreSQL
+- Jenkins therefore needs DB environment variables and network access to `postgres:5432`
+
 ---
 
 ## Working Notes
@@ -268,6 +578,28 @@ Note:
 - keep `project.md` focused on stable project context and intended architecture
 - keep machine-specific or temporary setup details out of this file unless they become permanent project conventions
 
+Runtime URLs:
+
+- local standalone Tomcat app context: `http://localhost:8081/cms-app`
+- Docker Tomcat root context: `http://localhost:8081`
+- health endpoint when deployed under `/cms-app`: `http://localhost:8081/cms-app/hello`
+- health endpoint in Docker root context: `http://localhost:8081/hello`
+
+Frontend integration notes:
+
+- Vite dev proxy can map `/api` to `http://localhost:8081/cms-app/api`
+- backend CORS currently allows `http://localhost:5173` and `http://127.0.0.1:5173`
+- even with CORS, same-origin/reverse-proxy deployment remains simpler for session auth
+- frontend API client should centralize `credentials: "include"` and CSRF header handling
+
+Testing notes:
+
+- `mvn test` runs DB-backed DAO tests
+- `mvn package` also runs tests unless skipped
+- current verified test count: 24
+- PostgreSQL schema comes from `docker/postgres/init.sql`
+- tests clean up their own `dao_test_` user data and temporary boolean test table
+
 ---
 
 ## Workflow
@@ -276,3 +608,7 @@ Note:
 - Implement feature parts separately:
   - model -> DAO -> service -> servlet
 - Avoid large one-step implementations
+- For API changes, update `FRONTEND_HANDOFF.md`.
+- For frontend bootstrap guidance changes, update `FRONTEND_BOOTSTRAP_PLAN.md`.
+- For session-to-session continuity, update `SESSION_CONTEXT.md`.
+- For durable architecture/project conventions, update this file.
