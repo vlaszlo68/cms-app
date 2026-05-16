@@ -49,6 +49,20 @@
     </filter-mapping>
 
     <filter>
+        <filter-name>corsFilter</filter-name>
+        <filter-class>hu.laci.cms.backend.servlet.filter.CorsFilter</filter-class>
+        <init-param>
+            <param-name>allowedOrigins</param-name>
+            <param-value>http://localhost:5173,http://127.0.0.1:5173</param-value>
+        </init-param>
+    </filter>
+
+    <filter-mapping>
+        <filter-name>corsFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+
+    <filter>
         <filter-name>transactionFilter</filter-name>
         <filter-class>hu.laci.cms.backend.servlet.filter.TransactionFilter</filter-class>
     </filter>
