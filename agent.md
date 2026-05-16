@@ -44,11 +44,13 @@ Always follow 3-layer structure:
 2. Service
    - Business logic
    - Validation
-   - Transactions
+   - Transaction-aware workflows
 
 3. Servlet
    - HTTP + JSON
    - Session handling
+
+Cross-cutting HTTP concerns are implemented with servlet filters, including request logging, exception handling, CORS, security headers, UTF-8 encoding, auth, CSRF, and request-scoped transactions.
 
 ---
 
@@ -71,7 +73,7 @@ When building a feature:
 - Simple, readable SQL
 - No ORM
 - Use HikariCP connections
-- Use `hu.laci.cms.backend.config.database.DatabaseConfig#getConnection()`
+- DAO code should use `hu.laci.cms.backend.config.database.TransactionContext#openConnection()` so request-scoped transactions are respected
 
 ---
 

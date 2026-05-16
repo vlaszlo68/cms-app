@@ -27,6 +27,7 @@ The frontend should be developed as an independent repository with its own Git h
 - React Router
 - plain `fetch` for HTTP
 - session-based auth using browser cookies
+- CSRF token handling for state-changing API calls
 
 Optional but reasonable later additions:
 
@@ -112,6 +113,7 @@ Responsibilities:
 - prepend `VITE_API_BASE_URL`
 - set `credentials: 'include'`
 - set `Content-Type: application/json` for JSON requests
+- add `X-CSRF-Token` automatically for `POST`, `PUT`, `PATCH`, and `DELETE` when a token is available
 - parse JSON responses
 - unwrap successful API envelopes from `response.data`
 - expose backend error envelopes from `response.error`
@@ -142,6 +144,7 @@ export type AuthUser = {
   id: number;
   loginName: string;
   email: string;
+  csrfToken: string;
 };
 
 export type ApiError = {
@@ -161,6 +164,7 @@ Suggested minimal auth state:
 ```ts
 type AuthState = {
   user: AuthUser | null;
+  csrfToken: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
 };
@@ -170,15 +174,17 @@ Recommended behavior:
 
 - app start:
   - call `me()`
-  - `200` + `success: true` -> set authenticated user from `data`
+  - `200` + `success: true` -> set authenticated user and CSRF token from `data`
   - `401` + `AUTH_REQUIRED` -> set logged-out state
 - login success:
-  - store returned `data` user in memory state
+  - store returned `data` user and `data.csrfToken` in memory state
 - logout success:
-  - clear auth state
+  - clear auth state and CSRF token
 - protected API `401`:
   - clear auth state
   - redirect to login
+- protected API `403` + `CSRF_INVALID`:
+  - refresh session through `me()` or force logout, depending on UX choice
 
 Keep auth state in React context first. No need for Redux or heavier state libraries at this stage.
 
@@ -218,7 +224,7 @@ Reason:
 
 ## Dev proxy recommendation
 
-Because the backend currently has no dedicated CORS support, use a Vite proxy.
+The backend now has CORS support for `http://localhost:5173` and `http://127.0.0.1:5173`, but a Vite proxy remains the simplest local development mode.
 
 Example direction for `vite.config.ts`:
 
@@ -272,7 +278,7 @@ Do not overbuild component libraries before the auth flow is proven.
 4. Create `.env.example`.
 5. Implement `httpClient.ts`.
 6. Implement `authApi.ts`.
-7. Implement auth context and startup session restore.
+7. Implement auth context and startup session restore, including CSRF token storage.
 8. Implement login page.
 9. Implement protected route wrapper.
 10. Implement logout action.
@@ -280,7 +286,7 @@ Do not overbuild component libraries before the auth flow is proven.
     - unauthenticated `me`
     - login success
     - refresh after login
-    - logout success
+    - logout success with `X-CSRF-Token`
     - protected route redirect
 
 ## Recommended First Deliverable
@@ -289,6 +295,7 @@ The first frontend PR/repo milestone should include:
 
 - project scaffold
 - auth API integration
+- CSRF token propagation from login/me to state-changing API calls
 - login page
 - protected dashboard placeholder
 - logout button
@@ -310,13 +317,17 @@ The new frontend repo should document:
 
 ## Risks To Keep Visible
 
-### 1. Backend CORS is not implemented
+### 1. Backend CORS is configured for local dev origins
 
-Without proxy or backend CORS work, browser requests from a separate dev origin may fail.
+Direct browser calls from `localhost:5173` and `127.0.0.1:5173` are supported. Other origins require backend `web.xml` CORS config changes.
 
 ### 2. Backend auth uses session cookies
 
 Every request that depends on authentication must send credentials.
+
+### 3. Backend uses CSRF protection
+
+Every state-changing request after login/session restore must include the latest `X-CSRF-Token` value.
 
 ## Recommended Next Step
 

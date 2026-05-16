@@ -21,11 +21,14 @@ Source of truth for this handoff:
 - Auth model: session-based authentication
 - JSON library: Gson
 - Session key for authenticated user: `user`
+- CSRF session key: `csrfToken`
+- CSRF request header: `X-CSRF-Token`
 - API responses use a common envelope:
   - success: `{ "success": true, "data": ... }`
   - error: `{ "success": false, "error": { "code": "...", "message": "..." } }`
 
 The backend stores a password-hash-free `hu.laci.cms.backend.dto.auth.AuthenticatedUser` object in the HTTP session on successful login.
+The backend also stores a CSRF token in the same session. The token is returned by successful login and `/api/auth/me` responses.
 
 ## API Base URL
 
@@ -104,7 +107,8 @@ Successful response:
   "data": {
     "id": 1,
     "loginName": "tester",
-    "email": "tester@example.com"
+    "email": "tester@example.com",
+    "csrfToken": "base64url-token"
   }
 }
 ```
@@ -153,12 +157,19 @@ Behavior:
 
 - on success the backend creates a session and stores the authenticated user under session attribute `user`
 - the backend rotates the session id on successful login before storing the authenticated user
+- the backend creates a session CSRF token and returns it in `data.csrfToken`
 
 ### `POST /api/auth/logout`
 
 Request body:
 
 - none required
+
+Required header after login/session restore:
+
+```http
+X-CSRF-Token: <csrfToken>
+```
 
 Successful response:
 
@@ -176,6 +187,7 @@ Successful response:
 Behavior:
 
 - invalidates the current session if one exists
+- because logout is a state-changing request, it is protected by the CSRF filter
 
 ### `GET /api/auth/me`
 
@@ -189,7 +201,8 @@ Successful response:
   "data": {
     "id": 1,
     "loginName": "tester",
-    "email": "tester@example.com"
+    "email": "tester@example.com",
+    "csrfToken": "base64url-token"
   }
 }
 ```
@@ -246,6 +259,49 @@ Frontend implication:
 
 - any protected API call returning `401` should be treated as logged-out state
 
+## CSRF Protection
+
+State-changing `/api/*` requests are protected by `CsrfFilter`.
+
+Protected HTTP methods:
+
+- `POST`
+- `PUT`
+- `PATCH`
+- `DELETE`
+
+Not checked:
+
+- `GET`
+- `HEAD`
+- `OPTIONS`
+- `POST /api/auth/login`
+
+Frontend requirements:
+
+- store `data.csrfToken` from successful `login` and `me` responses
+- send it on every state-changing API request:
+
+```http
+X-CSRF-Token: <csrfToken>
+```
+
+Invalid or missing token response:
+
+- status: `403`
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CSRF_INVALID",
+    "message": "Invalid CSRF token"
+  }
+}
+```
+
+On logout, clear the frontend auth state and the stored CSRF token.
+
 ## Cookies and Frontend Fetching
 
 Because authentication is session-based, the frontend must send cookies on every authenticated request.
@@ -265,24 +321,37 @@ The same applies to:
 - logout
 - every protected `/api/*` request
 
+For state-changing requests after login/session restore, also include the CSRF header:
+
+```ts
+fetch(`${API_BASE_URL}/api/auth/logout`, {
+  method: 'POST',
+  credentials: 'include',
+  headers: {
+    'X-CSRF-Token': csrfToken,
+  },
+})
+```
+
 ## Current Known Constraints
 
-### 1. No CORS layer is implemented yet
+### 1. CORS layer is implemented
 
-There is currently no dedicated CORS handling in the backend codebase.
+The backend has a dedicated CORS filter.
 
-Implication:
+Current allowed origins in `web.xml`:
 
-- if the React dev server runs on a different origin, direct browser calls may fail without backend CORS work
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
+
+Credentialed CORS is enabled, so `credentials: 'include'` remains required for session auth.
 
 Practical recommendation for frontend local development:
 
-- prefer a dev proxy from the React app to the backend instead of cross-origin browser calls
+- the existing Vite dev proxy is still a good option
+- direct browser calls from the listed origins are also supported
 
-Example direction:
-
-- React dev server on `localhost:5173`
-- proxy `/api` to `http://localhost:8081` or `http://localhost:8081/cms-app`
+The backend also allows the `X-CSRF-Token` request header for CORS preflight.
 
 ### 2. AuthFilter public-path matching is context-path safe
 
@@ -302,10 +371,12 @@ Implication:
 ## Recommended Frontend Auth Flow
 
 1. On app startup call `GET /api/auth/me` with `credentials: 'include'`.
-2. If response is `200`, hydrate frontend auth state from the returned JSON.
+2. If response is `200`, hydrate frontend auth state from the returned JSON and store `data.csrfToken`.
 3. If response is `401`, treat the user as logged out.
 4. On login submit `POST /api/auth/login` with JSON body and `credentials: 'include'`.
-5. On logout call `POST /api/auth/logout` with `credentials: 'include'`, then clear frontend auth state.
+5. Store `data.csrfToken` from login success.
+6. On logout call `POST /api/auth/logout` with `credentials: 'include'` and `X-CSRF-Token`, then clear frontend auth state.
+7. Add `X-CSRF-Token` to all future state-changing API calls.
 
 ## Suggested Frontend Env Variables
 
