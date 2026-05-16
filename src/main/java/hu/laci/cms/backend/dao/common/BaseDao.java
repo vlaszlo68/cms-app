@@ -8,6 +8,7 @@ import hu.laci.cms.backend.model.common.SortOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -323,7 +324,9 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
     private T createEntity() throws SQLException {
         try {
-            return entityClass.getDeclaredConstructor().newInstance();
+            Constructor<T> constructor = entityClass.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return constructor.newInstance();
         } catch (ReflectiveOperationException e) {
             throw new SQLException("Unable to create entity instance: " + entityClass.getName(), e);
         }
@@ -342,6 +345,9 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         if (Date.class.isAssignableFrom(field.getType())) {
             return getDateValue(resultSet, columnName, field.getType());
         }
+        if (field.getType() == Boolean.class || field.getType() == boolean.class) {
+            return getBooleanValue(resultSet, columnName, field.getType());
+        }
         if (field.getType() == Long.class || field.getType() == long.class) {
             return getLongValue(resultSet, columnName);
         }
@@ -351,6 +357,20 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         } catch (SQLFeatureNotSupportedException | AbstractMethodError e) {
             return resultSet.getObject(columnName);
         }
+    }
+
+    private static Boolean getBooleanValue(ResultSet resultSet, String columnName, Class<?> fieldType)
+            throws SQLException {
+        String value = resultSet.getString(columnName);
+        if (value == null) {
+            return fieldType == boolean.class ? Boolean.FALSE : null;
+        }
+
+        return switch (value.trim().toUpperCase()) {
+            case "T" -> Boolean.TRUE;
+            case "F" -> Boolean.FALSE;
+            default -> throw new SQLException("Invalid boolean value in column " + columnName + ": " + value);
+        };
     }
 
     private static Long getLongValue(ResultSet resultSet, String columnName) throws SQLException {
@@ -464,6 +484,9 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         if (value instanceof BaseEntity entity) {
             return entity.getId();
         }
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue ? "T" : "F";
+        }
         if (value instanceof Timestamp || value instanceof java.sql.Date) {
             return value;
         }
@@ -476,10 +499,18 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
     private static Object getParameterValue(Object parameter) {
         if (parameter instanceof SqlParameter sqlParameter) {
-            return sqlParameter.value();
+            return getSqlValue(sqlParameter.value());
         }
 
-        return parameter;
+        return getSqlValue(parameter);
+    }
+
+    private static Object getSqlValue(Object value) {
+        if (value instanceof Boolean booleanValue) {
+            return booleanValue ? "T" : "F";
+        }
+
+        return value;
     }
 
     private static void logSql(String operation, String sql, List<?> parameters) {

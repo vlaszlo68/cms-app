@@ -6,6 +6,8 @@
         </encoder>
     </appender>
 
+    <logger name="hu.laci.cms.backend.dao.common.BaseDao" level="OFF"/>
+
     <root level="WARN">
         <appender-ref ref="CONSOLE"/>
     </root>
