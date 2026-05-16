@@ -90,8 +90,8 @@ Layer boundary rules:
 
 Current request lifecycle for `/api/*` requests:
 
-1. `ExceptionHandlingFilter` catches unhandled exceptions and writes common JSON errors.
-2. `RequestLoggingFilter` logs method, URI, status, duration, remote address, and authenticated user when available.
+1. `RequestLoggingFilter` measures the full request and logs the final status after inner filters finish.
+2. `ExceptionHandlingFilter` catches unhandled exceptions and writes common JSON errors.
 3. `CorsFilter` handles allowed origins and short-circuits preflight `OPTIONS`.
 4. `SecurityHeadersFilter` adds no-store and browser security headers.
 5. `CharacterEncodingFilter` sets UTF-8 request/response encoding.
@@ -295,6 +295,8 @@ Transaction behavior:
 - `TransactionFilter` starts one DB transaction per request.
 - successful request processing commits the transaction.
 - exceptions trigger rollback.
+- `TransactionContext.setRollbackOnly()` can be called explicitly when code catches an error but still returns a handled response.
+- if rollback-only is set, request end performs rollback even if the servlet/filter chain returns normally.
 - `TransactionContext.openConnection()` returns the request-bound connection when one exists.
 - DAO code should use `TransactionContext.openConnection()` rather than directly opening raw connections.
 
@@ -439,8 +441,8 @@ Package conventions:
 
 Current filter order in `web.xml`:
 
-1. `exceptionHandlingFilter`
-2. `requestLoggingFilter`
+1. `requestLoggingFilter`
+2. `exceptionHandlingFilter`
 3. `corsFilter`
 4. `securityHeadersFilter`
 5. `characterEncodingFilter`
@@ -498,8 +500,8 @@ Current filter responsibilities:
 
 | Filter | Scope | Responsibility |
 | --- | --- | --- |
+| `RequestLoggingFilter` | `/*` | Logs final request method, target, status, duration, remote address, and user. |
 | `ExceptionHandlingFilter` | `/*` | Converts unhandled exceptions to common JSON error responses when possible. |
-| `RequestLoggingFilter` | `/*` | Logs request method, target, status, duration, remote address, and user. |
 | `CorsFilter` | `/*` | Handles allowed origins and `OPTIONS` preflight. |
 | `SecurityHeadersFilter` | `/*` | Adds no-store cache and browser hardening headers. |
 | `CharacterEncodingFilter` | `/*` | Sets UTF-8 request and response encoding. |
@@ -596,7 +598,7 @@ Testing notes:
 
 - `mvn test` runs DB-backed DAO tests
 - `mvn package` also runs tests unless skipped
-- current verified test count: 24
+- current verified test count: 25
 - PostgreSQL schema comes from `docker/postgres/init.sql`
 - tests clean up their own `dao_test_` user data and temporary boolean test table
 

@@ -344,6 +344,15 @@ Current allowed origins in `web.xml`:
 - `http://localhost:5173`
 - `http://127.0.0.1:5173`
 
+Current allowed CORS methods:
+
+- `GET`
+- `POST`
+- `PUT`
+- `PATCH`
+- `DELETE`
+- `OPTIONS`
+
 Credentialed CORS is enabled, so `credentials: 'include'` remains required for session auth.
 
 Practical recommendation for frontend local development:
