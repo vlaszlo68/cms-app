@@ -48,7 +48,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         this.insertSql = buildInsertSql(entityClass);
         this.updateSql = buildUpdateSql(entityClass);
         this.deleteByIdSql = "DELETE FROM " + getEntityMetadata(entityClass).tableName() + " WHERE "
-                + getRequiredColumnName(entityClass, "id") + " = ?";
+                + getRequiredQualifiedColumnName(entityClass, "id") + " = ?";
     }
 
     @Override
@@ -159,7 +159,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     protected static String buildBaseSelectSql(Class<? extends BaseEntity> entityClass) {
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
 
-        return "SELECT " + String.join(", ", entityMetadata.columnNames())
+        return "SELECT " + String.join(", ", entityMetadata.selectExpressions())
                 + System.lineSeparator()
                 + "FROM " + entityMetadata.tableName()
                 + System.lineSeparator();
@@ -192,7 +192,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 + System.lineSeparator()
                 + "SET " + assignments
                 + System.lineSeparator()
-                + "WHERE " + getRequiredColumnName(entityClass, "id") + " = ?";
+                + "WHERE " + getRequiredQualifiedColumnName(entityClass, "id") + " = ?";
     }
 
     protected static String buildFindBySql(String baseSelectSql, Class<? extends BaseEntity> entityClass,
@@ -201,7 +201,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     }
 
     protected static String buildWhereEqualsCondition(Class<? extends BaseEntity> entityClass, String propertyName) {
-        return "WHERE " + getRequiredColumnName(entityClass, propertyName) + " = ?";
+        return "WHERE " + getRequiredQualifiedColumnName(entityClass, propertyName) + " = ?";
     }
 
     protected void appendFilters(StringBuilder sqlBuilder, List<Object> parameters,
@@ -218,7 +218,8 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
             }
 
             String columnName = getRequiredColumnName(entityClass, filterField.entityProperty());
-            conditions.add(buildFilterCondition(columnName, filterField));
+            String qualifiedColumnName = getRequiredQualifiedColumnName(entityClass, filterField.entityProperty());
+            conditions.add(buildFilterCondition(qualifiedColumnName, filterField));
             parameters.add(new SqlParameter(columnName,
                     buildFilterParameter(value, filterField.operation(), filterField.likePosition())));
         }
@@ -239,7 +240,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         sqlBuilder.append(System.lineSeparator())
                 .append("ORDER BY ")
                 .append(selectedSort.stream()
-                        .map(sortOrder -> getRequiredColumnName(entityClass, sortOrder.getSort().getPropertyName())
+                        .map(sortOrder -> getRequiredQualifiedColumnName(entityClass, sortOrder.getSort().getPropertyName())
                                 + " " + sortOrder.getDirection())
                         .collect(Collectors.joining(", ")));
     }
@@ -316,7 +317,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         T entity = createEntity();
         for (ColumnFieldMetadata columnField : getEntityMetadata(entityClass).columnFields()) {
             setFieldValue(columnField.field(), entity,
-                    getColumnValue(resultSet, columnField.columnName(), columnField.field()));
+                    getColumnValue(resultSet, columnField.resultAlias(), columnField.field()));
         }
 
         return entity;
@@ -571,8 +572,27 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         return value == null || value instanceof String stringValue && stringValue.trim().isEmpty();
     }
 
+    private static String buildResultAlias(String tableName, String columnName) {
+        return sanitizeAliasPart(tableName) + "_" + sanitizeAliasPart(columnName);
+    }
+
+    private static String sanitizeAliasPart(String value) {
+        return value.replaceAll("[^a-zA-Z0-9_]", "_");
+    }
+
     private static String getRequiredColumnName(Class<? extends BaseEntity> entityClass, String propertyName) {
         String columnName = getEntityMetadata(entityClass).columnsByProperty().get(propertyName);
+        if (columnName == null) {
+            throw new IllegalArgumentException("Missing DbColumn annotation on "
+                    + entityClass.getName() + "." + propertyName);
+        }
+
+        return columnName;
+    }
+
+    private static String getRequiredQualifiedColumnName(Class<? extends BaseEntity> entityClass,
+                                                        String propertyName) {
+        String columnName = getEntityMetadata(entityClass).qualifiedColumnsByProperty().get(propertyName);
         if (columnName == null) {
             throw new IllegalArgumentException("Missing DbColumn annotation on "
                     + entityClass.getName() + "." + propertyName);
@@ -595,32 +615,34 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         List<ColumnFieldMetadata> insertableColumnFields = new ArrayList<>();
         List<ColumnFieldMetadata> updatableColumnFields = new ArrayList<>();
         Map<String, String> columnsByProperty = new LinkedHashMap<>();
+        Map<String, String> qualifiedColumnsByProperty = new LinkedHashMap<>();
         for (Field field : getAllFields(entityClass)) {
             DbColumn dbColumn = field.getAnnotation(DbColumn.class);
             if (dbColumn == null) {
                 continue;
             }
 
-            ColumnFieldMetadata columnField = new ColumnFieldMetadata(field, dbColumn.value());
+            ColumnFieldMetadata columnField = new ColumnFieldMetadata(field, dbTable.value(), dbColumn.value());
             columnFields.add(columnField);
             if (!"id".equals(field.getName())) {
                 insertableColumnFields.add(columnField);
                 updatableColumnFields.add(columnField);
             }
             columnsByProperty.put(field.getName(), dbColumn.value());
+            qualifiedColumnsByProperty.put(field.getName(), columnField.qualifiedColumnName());
         }
 
         if (columnFields.isEmpty()) {
             throw new IllegalArgumentException("Missing DbColumn annotations on " + entityClass.getName());
         }
 
-        List<String> columnNames = columnFields.stream()
-                .map(ColumnFieldMetadata::columnName)
+        List<String> selectExpressions = columnFields.stream()
+                .map(ColumnFieldMetadata::selectExpression)
                 .toList();
 
-        return new EntityMetadata(dbTable.value(), List.copyOf(columnFields), columnNames,
+        return new EntityMetadata(dbTable.value(), List.copyOf(columnFields), selectExpressions,
                 List.copyOf(insertableColumnFields), List.copyOf(updatableColumnFields),
-                Map.copyOf(columnsByProperty));
+                Map.copyOf(columnsByProperty), Map.copyOf(qualifiedColumnsByProperty));
     }
 
     private static FilterMetadata getFilterMetadata(Class<?> filterClass) {
@@ -663,21 +685,24 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
         private final String tableName;
         private final List<ColumnFieldMetadata> columnFields;
-        private final List<String> columnNames;
+        private final List<String> selectExpressions;
         private final List<ColumnFieldMetadata> insertableColumnFields;
         private final List<ColumnFieldMetadata> updatableColumnFields;
         private final Map<String, String> columnsByProperty;
+        private final Map<String, String> qualifiedColumnsByProperty;
 
-        private EntityMetadata(String tableName, List<ColumnFieldMetadata> columnFields, List<String> columnNames,
+        private EntityMetadata(String tableName, List<ColumnFieldMetadata> columnFields, List<String> selectExpressions,
                                List<ColumnFieldMetadata> insertableColumnFields,
                                List<ColumnFieldMetadata> updatableColumnFields,
-                               Map<String, String> columnsByProperty) {
+                               Map<String, String> columnsByProperty,
+                               Map<String, String> qualifiedColumnsByProperty) {
             this.tableName = tableName;
             this.columnFields = columnFields;
-            this.columnNames = columnNames;
+            this.selectExpressions = selectExpressions;
             this.insertableColumnFields = insertableColumnFields;
             this.updatableColumnFields = updatableColumnFields;
             this.columnsByProperty = columnsByProperty;
+            this.qualifiedColumnsByProperty = qualifiedColumnsByProperty;
         }
 
         private String tableName() {
@@ -688,8 +713,8 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
             return columnFields;
         }
 
-        private List<String> columnNames() {
-            return columnNames;
+        private List<String> selectExpressions() {
+            return selectExpressions;
         }
 
         private List<ColumnFieldMetadata> insertableColumnFields() {
@@ -702,6 +727,10 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
         private Map<String, String> columnsByProperty() {
             return columnsByProperty;
+        }
+
+        private Map<String, String> qualifiedColumnsByProperty() {
+            return qualifiedColumnsByProperty;
         }
     }
 
@@ -728,10 +757,16 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
         private final Field field;
         private final String columnName;
+        private final String qualifiedColumnName;
+        private final String resultAlias;
+        private final String selectExpression;
 
-        private ColumnFieldMetadata(Field field, String columnName) {
+        private ColumnFieldMetadata(Field field, String tableName, String columnName) {
             this.field = field;
             this.columnName = columnName;
+            this.qualifiedColumnName = tableName + "." + columnName;
+            this.resultAlias = buildResultAlias(tableName, columnName);
+            this.selectExpression = qualifiedColumnName + " AS " + resultAlias;
         }
 
         private Field field() {
@@ -740,6 +775,18 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
         private String columnName() {
             return columnName;
+        }
+
+        private String qualifiedColumnName() {
+            return qualifiedColumnName;
+        }
+
+        private String resultAlias() {
+            return resultAlias;
+        }
+
+        private String selectExpression() {
+            return selectExpression;
         }
     }
 
