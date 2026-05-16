@@ -53,6 +53,12 @@ services:
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+        DB_HOST: postgres
+        DB_PORT: 5432
+        DB_NAME: cms_db
+        DB_USER: cms_user
+        DB_PASSWORD: cms_pw  
     restart: always
     networks:
       - cms-network
@@ -62,6 +68,7 @@ services:
 
 networks:
   cms-network:
+    name: cms-network
 
 volumes:
   postgres_data:

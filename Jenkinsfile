@@ -19,9 +19,16 @@ pipeline {
         stage('Build WAR') {
             steps {
                 script {
-                    docker.image('maven:3.9.9-eclipse-temurin-21').inside {
-                        sh 'mvn clean package'
-                    }
+                    docker.image('maven:3.9.9-eclipse-temurin-21').inside(
+						'--network cms-network ' +
+						'-e DB_HOST=postgres ' +
+						'-e DB_PORT=5432 ' +
+						'-e DB_NAME=cms_db ' +
+						'-e DB_USER=cms_user ' +
+						'-e DB_PASSWORD=cms_pw'
+					) {
+						sh 'mvn clean package'
+					}
                 }
             }
         }
