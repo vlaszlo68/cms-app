@@ -1,4 +1,4 @@
-package hu.laci.cms.backend.dao;
+package hu.laci.cms.backend.dao.common;
 
 public class DataAccessException extends RuntimeException {
 

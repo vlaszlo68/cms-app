@@ -1,11 +1,11 @@
 package hu.laci.cms.backend.servlet.auth;
 
 import com.google.gson.JsonSyntaxException;
-import hu.laci.cms.backend.dao.UserDaoImpl;
+import hu.laci.cms.backend.dao.user.UserDaoImpl;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.dto.auth.AuthUserResponse;
 import hu.laci.cms.backend.dto.auth.LoginRequest;
-import hu.laci.cms.backend.model.User;
+import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.service.AuthService;
 import hu.laci.cms.backend.service.AuthServiceException;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
