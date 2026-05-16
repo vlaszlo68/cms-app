@@ -1,18 +1,15 @@
 package hu.laci.cms.backend.model.user;
 
-public enum UserSort {
-    ID("id"),
-    USER_NAME("username"),
-    LOGIN_NAME("login_name"),
-    EMAIL_ADDRESS("email_address");
+import hu.laci.cms.backend.model.common.BaseSort;
 
-    private final String columnName;
+public final class UserSort extends BaseSort {
 
-    UserSort(String columnName) {
-        this.columnName = columnName;
-    }
+    public static final UserSort ID = new UserSort(BaseSort.ID.getPropertyName());
+    public static final UserSort USER_NAME = new UserSort("userName");
+    public static final UserSort LOGIN_NAME = new UserSort("loginName");
+    public static final UserSort EMAIL_ADDRESS = new UserSort("emailAddress");
 
-    public String getColumnName() {
-        return columnName;
+    private UserSort(String propertyName) {
+        super(propertyName);
     }
 }

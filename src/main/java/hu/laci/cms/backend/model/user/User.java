@@ -1,30 +1,33 @@
 package hu.laci.cms.backend.model.user;
 
-public class User {
+import hu.laci.cms.backend.dao.common.DbColumn;
+import hu.laci.cms.backend.dao.common.DbTable;
+import hu.laci.cms.backend.model.common.BaseEntity;
 
-    private Long id;
+@DbTable("users")
+public class User extends BaseEntity {
+
+    @DbColumn("username")
     private String userName;
+
+    @DbColumn("login_name")
     private String loginName;
+
+    @DbColumn("email_address")
     private String emailAddress;
+
+    @DbColumn("password_hash")
     private String passwordHash;
 
     public User() {
     }
 
     public User(Long id, String userName, String loginName, String emailAddress, String passwordHash) {
-        this.id = id;
+        setId(id);
         this.userName = userName;
         this.loginName = loginName;
         this.emailAddress = emailAddress;
         this.passwordHash = passwordHash;
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
     }
 
     public String getUserName() {

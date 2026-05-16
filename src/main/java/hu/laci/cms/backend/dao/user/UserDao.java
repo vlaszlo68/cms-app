@@ -7,7 +7,7 @@ import hu.laci.cms.backend.model.user.UserSort;
 
 import java.util.Optional;
 
-public interface UserDao extends CrudDao<User, UserFilter, UserSort, Long> {
+public interface UserDao extends CrudDao<User, UserFilter, UserSort> {
 
     Optional<User> findByLoginName(String loginName);
 

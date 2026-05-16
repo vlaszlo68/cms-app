@@ -1,7 +1,8 @@
 package hu.laci.cms.backend.servlet.auth;
 
 import com.google.gson.JsonSyntaxException;
-import hu.laci.cms.backend.dao.user.UserDaoImpl;
+import hu.laci.cms.backend.dao.common.DaoRegistry;
+import hu.laci.cms.backend.dao.user.UserDao;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.dto.auth.AuthUserResponse;
 import hu.laci.cms.backend.dto.auth.LoginRequest;
@@ -25,7 +26,8 @@ public class AuthServlet extends JsonServletSupport {
 
     @Override
     public void init() throws ServletException {
-        this.authService = new AuthService(new UserDaoImpl());
+        UserDao userDao = DaoRegistry.getDao(User.class);
+        this.authService = new AuthService(userDao);
     }
 
     @Override

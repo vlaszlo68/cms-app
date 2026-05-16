@@ -24,4 +24,8 @@
         <listener-class>hu.laci.cms.backend.config.database.DatabaseConfigListener</listener-class>
     </listener>
 
+    <listener>
+        <listener-class>hu.laci.cms.backend.config.app.DaoRegistryListener</listener-class>
+    </listener>
+
 </web-app>
