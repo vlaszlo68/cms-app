@@ -209,12 +209,24 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         if (Date.class.isAssignableFrom(field.getType())) {
             return getDateValue(resultSet, columnName, field.getType());
         }
+        if (field.getType() == Long.class || field.getType() == long.class) {
+            return getLongValue(resultSet, columnName);
+        }
 
         try {
             return resultSet.getObject(columnName, getResultSetValueType(field.getType()));
         } catch (SQLFeatureNotSupportedException | AbstractMethodError e) {
             return resultSet.getObject(columnName);
         }
+    }
+
+    private static Long getLongValue(ResultSet resultSet, String columnName) throws SQLException {
+        long value = resultSet.getLong(columnName);
+        if (resultSet.wasNull()) {
+            return null;
+        }
+
+        return value;
     }
 
     private static Date getDateValue(ResultSet resultSet, String columnName, Class<?> fieldType) throws SQLException {
