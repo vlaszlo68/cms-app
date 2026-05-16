@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 public class CorsFilter implements Filter {
 
     private static final String ALLOWED_ORIGINS_PARAM = "allowedOrigins";
-    private static final String DEFAULT_ALLOWED_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
+    private static final String DEFAULT_ALLOWED_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
     private static final String DEFAULT_ALLOWED_HEADERS = "Content-Type, Authorization, X-CSRF-Token";
     private static final String MAX_AGE_SECONDS = "3600";
 
