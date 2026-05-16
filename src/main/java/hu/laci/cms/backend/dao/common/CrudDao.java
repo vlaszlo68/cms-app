@@ -17,4 +17,12 @@ public interface CrudDao<T extends BaseEntity, F extends BaseFilter, S extends B
     List<T> findAll(F filter, List<SortOrder<S>> sort);
 
     Optional<T> findById(Long id);
+
+    T save(T entity);
+
+    T create(T entity);
+
+    T update(T entity);
+
+    boolean deleteById(Long id);
 }

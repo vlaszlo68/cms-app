@@ -33,11 +33,18 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     private final Class<T> entityClass;
     private final String baseSelectSql;
     private final String findByIdSql;
+    private final String insertSql;
+    private final String updateSql;
+    private final String deleteByIdSql;
 
     protected BaseDao(Class<T> entityClass) {
         this.entityClass = entityClass;
         this.baseSelectSql = buildBaseSelectSql(entityClass);
         this.findByIdSql = buildFindBySql(baseSelectSql, entityClass, "id");
+        this.insertSql = buildInsertSql(entityClass);
+        this.updateSql = buildUpdateSql(entityClass);
+        this.deleteByIdSql = "DELETE FROM " + getEntityMetadata(entityClass).tableName() + " WHERE "
+                + getRequiredColumnName(entityClass, "id") + " = ?";
     }
 
     protected Connection getConnection() throws SQLException {
@@ -52,6 +59,77 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     @Override
     public Optional<T> findById(Long id) {
         return findById(id, "Failed to find " + entityClass.getSimpleName() + " by id: " + id);
+    }
+
+    @Override
+    public T save(T entity) {
+        if (entity.getId() == null) {
+            return create(entity);
+        }
+
+        return update(entity);
+    }
+
+    @Override
+    public T create(T entity) {
+        EntityMetadata entityMetadata = getEntityMetadata(entityClass);
+        List<Object> parameters = entityMetadata.insertableColumnFields().stream()
+                .map(columnField -> getSqlParameterValue(columnField.field(), entity))
+                .toList();
+
+        try (Connection connection = getConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(insertSql)) {
+            setParameters(preparedStatement, parameters);
+
+            try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                if (!resultSet.next()) {
+                    throw new SQLException("No id returned.");
+                }
+
+                entity.setId(resultSet.getLong("id"));
+                return entity;
+            }
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to create " + entityClass.getSimpleName() + ".", e);
+        }
+    }
+
+    @Override
+    public T update(T entity) {
+        requireEntityId(entity);
+
+        EntityMetadata entityMetadata = getEntityMetadata(entityClass);
+        List<Object> parameters = new ArrayList<>();
+        for (ColumnFieldMetadata columnField : entityMetadata.updatableColumnFields()) {
+            parameters.add(getSqlParameterValue(columnField.field(), entity));
+        }
+        parameters.add(entity.getId());
+
+        try (Connection connection = getConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(updateSql)) {
+            setParameters(preparedStatement, parameters);
+            int updatedRows = preparedStatement.executeUpdate();
+            if (updatedRows == 0) {
+                throw new DataAccessException("No " + entityClass.getSimpleName()
+                        + " found to update by id: " + entity.getId());
+            }
+
+            return entity;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to update " + entityClass.getSimpleName()
+                    + " by id: " + entity.getId(), e);
+        }
+    }
+
+    @Override
+    public boolean deleteById(Long id) {
+        try (Connection connection = getConnection();
+             PreparedStatement preparedStatement = connection.prepareStatement(deleteByIdSql)) {
+            preparedStatement.setObject(1, id);
+            return preparedStatement.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DataAccessException("Failed to delete " + entityClass.getSimpleName() + " by id: " + id, e);
+        }
     }
 
     protected Class<T> getEntityClass() {
@@ -73,6 +151,36 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 + System.lineSeparator()
                 + "FROM " + entityMetadata.tableName()
                 + System.lineSeparator();
+    }
+
+    protected static String buildInsertSql(Class<? extends BaseEntity> entityClass) {
+        EntityMetadata entityMetadata = getEntityMetadata(entityClass);
+        List<String> columnNames = entityMetadata.insertableColumnFields().stream()
+                .map(ColumnFieldMetadata::columnName)
+                .toList();
+        String placeholders = columnNames.stream()
+                .map(columnName -> "?")
+                .collect(Collectors.joining(", "));
+
+        return "INSERT INTO " + entityMetadata.tableName()
+                + " (" + String.join(", ", columnNames) + ")"
+                + System.lineSeparator()
+                + "VALUES (" + placeholders + ")"
+                + System.lineSeparator()
+                + "RETURNING " + getRequiredColumnName(entityClass, "id");
+    }
+
+    protected static String buildUpdateSql(Class<? extends BaseEntity> entityClass) {
+        EntityMetadata entityMetadata = getEntityMetadata(entityClass);
+        String assignments = entityMetadata.updatableColumnFields().stream()
+                .map(columnField -> columnField.columnName() + " = ?")
+                .collect(Collectors.joining(", "));
+
+        return "UPDATE " + entityMetadata.tableName()
+                + System.lineSeparator()
+                + "SET " + assignments
+                + System.lineSeparator()
+                + "WHERE " + getRequiredColumnName(entityClass, "id") + " = ?";
     }
 
     protected static String buildFindBySql(String baseSelectSql, Class<? extends BaseEntity> entityClass,
@@ -202,6 +310,12 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         }
     }
 
+    private static void requireEntityId(BaseEntity entity) {
+        if (entity.getId() == null) {
+            throw new IllegalArgumentException("Entity id must not be null for update.");
+        }
+    }
+
     private static Object getColumnValue(ResultSet resultSet, String columnName, Field field) throws SQLException {
         if (BaseEntity.class.isAssignableFrom(field.getType())) {
             return getEntityReference(resultSet, columnName, field);
@@ -325,6 +439,24 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         }
     }
 
+    private static Object getSqlParameterValue(Field field, Object instance) {
+        Object value = getFieldValue(field, instance);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BaseEntity entity) {
+            return entity.getId();
+        }
+        if (value instanceof Timestamp || value instanceof java.sql.Date) {
+            return value;
+        }
+        if (value instanceof Date dateValue) {
+            return new Timestamp(dateValue.getTime());
+        }
+
+        return value;
+    }
+
     private static void setFieldValue(Field field, Object instance, Object value) throws SQLException {
         try {
             field.set(instance, value);
@@ -359,6 +491,8 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         }
 
         List<ColumnFieldMetadata> columnFields = new ArrayList<>();
+        List<ColumnFieldMetadata> insertableColumnFields = new ArrayList<>();
+        List<ColumnFieldMetadata> updatableColumnFields = new ArrayList<>();
         Map<String, String> columnsByProperty = new LinkedHashMap<>();
         for (Field field : getAllFields(entityClass)) {
             DbColumn dbColumn = field.getAnnotation(DbColumn.class);
@@ -366,7 +500,12 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 continue;
             }
 
-            columnFields.add(new ColumnFieldMetadata(field, dbColumn.value()));
+            ColumnFieldMetadata columnField = new ColumnFieldMetadata(field, dbColumn.value());
+            columnFields.add(columnField);
+            if (!"id".equals(field.getName())) {
+                insertableColumnFields.add(columnField);
+                updatableColumnFields.add(columnField);
+            }
             columnsByProperty.put(field.getName(), dbColumn.value());
         }
 
@@ -379,6 +518,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 .toList();
 
         return new EntityMetadata(dbTable.value(), List.copyOf(columnFields), columnNames,
+                List.copyOf(insertableColumnFields), List.copyOf(updatableColumnFields),
                 Map.copyOf(columnsByProperty));
     }
 
@@ -423,13 +563,19 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         private final String tableName;
         private final List<ColumnFieldMetadata> columnFields;
         private final List<String> columnNames;
+        private final List<ColumnFieldMetadata> insertableColumnFields;
+        private final List<ColumnFieldMetadata> updatableColumnFields;
         private final Map<String, String> columnsByProperty;
 
         private EntityMetadata(String tableName, List<ColumnFieldMetadata> columnFields, List<String> columnNames,
+                               List<ColumnFieldMetadata> insertableColumnFields,
+                               List<ColumnFieldMetadata> updatableColumnFields,
                                Map<String, String> columnsByProperty) {
             this.tableName = tableName;
             this.columnFields = columnFields;
             this.columnNames = columnNames;
+            this.insertableColumnFields = insertableColumnFields;
+            this.updatableColumnFields = updatableColumnFields;
             this.columnsByProperty = columnsByProperty;
         }
 
@@ -443,6 +589,14 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
         private List<String> columnNames() {
             return columnNames;
+        }
+
+        private List<ColumnFieldMetadata> insertableColumnFields() {
+            return insertableColumnFields;
+        }
+
+        private List<ColumnFieldMetadata> updatableColumnFields() {
+            return updatableColumnFields;
         }
 
         private Map<String, String> columnsByProperty() {

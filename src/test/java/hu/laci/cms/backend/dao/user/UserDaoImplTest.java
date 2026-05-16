@@ -1,6 +1,7 @@
 package hu.laci.cms.backend.dao.user;
 
 import hu.laci.cms.backend.config.database.DatabaseConfig;
+import hu.laci.cms.backend.dao.common.DataAccessException;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.model.user.UserFilter;
 import hu.laci.cms.backend.model.user.UserSort;
@@ -20,7 +21,9 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UserDaoImplTest {
@@ -138,6 +141,102 @@ class UserDaoImplTest {
                         TEST_PREFIX + "bravo_login",
                         TEST_PREFIX + "alpha_login"),
                 users.stream().map(User::getLoginName).toList());
+    }
+
+    @Test
+    void createInsertsUserAndSetsGeneratedId() {
+        User user = new User(null, TEST_PREFIX + "created", TEST_PREFIX + "created_login",
+                TEST_PREFIX + "created@example.com", TEST_PREFIX + "created_hash");
+
+        User createdUser = userDao.create(user);
+
+        assertNotNull(createdUser.getId());
+
+        Optional<User> loadedUser = userDao.findById(createdUser.getId());
+        assertTrue(loadedUser.isPresent());
+        assertEquals(TEST_PREFIX + "created", loadedUser.get().getUserName());
+        assertEquals(TEST_PREFIX + "created_login", loadedUser.get().getLoginName());
+        assertEquals(TEST_PREFIX + "created@example.com", loadedUser.get().getEmailAddress());
+        assertEquals(TEST_PREFIX + "created_hash", loadedUser.get().getPasswordHash());
+    }
+
+    @Test
+    void updateModifiesExistingUser() {
+        User user = userDao.create(new User(null, TEST_PREFIX + "before", TEST_PREFIX + "before_login",
+                TEST_PREFIX + "before@example.com", TEST_PREFIX + "before_hash"));
+        user.setUserName(TEST_PREFIX + "after");
+        user.setLoginName(TEST_PREFIX + "after_login");
+        user.setEmailAddress(TEST_PREFIX + "after@example.com");
+        user.setPasswordHash(TEST_PREFIX + "after_hash");
+
+        User updatedUser = userDao.update(user);
+
+        assertEquals(user.getId(), updatedUser.getId());
+
+        Optional<User> loadedUser = userDao.findById(user.getId());
+        assertTrue(loadedUser.isPresent());
+        assertEquals(TEST_PREFIX + "after", loadedUser.get().getUserName());
+        assertEquals(TEST_PREFIX + "after_login", loadedUser.get().getLoginName());
+        assertEquals(TEST_PREFIX + "after@example.com", loadedUser.get().getEmailAddress());
+        assertEquals(TEST_PREFIX + "after_hash", loadedUser.get().getPasswordHash());
+    }
+
+    @Test
+    void updateRejectsEntityWithoutId() {
+        User user = new User(null, TEST_PREFIX + "missing-id", TEST_PREFIX + "missing_id_login",
+                TEST_PREFIX + "missing-id@example.com", TEST_PREFIX + "missing_id_hash");
+
+        assertThrows(IllegalArgumentException.class, () -> userDao.update(user));
+    }
+
+    @Test
+    void updateRejectsEntityWhenIdDoesNotExist() {
+        User user = new User(-1L, TEST_PREFIX + "missing-row", TEST_PREFIX + "missing_row_login",
+                TEST_PREFIX + "missing-row@example.com", TEST_PREFIX + "missing_row_hash");
+
+        assertThrows(DataAccessException.class, () -> userDao.update(user));
+    }
+
+    @Test
+    void saveCreatesUserWhenIdIsNull() {
+        User user = new User(null, TEST_PREFIX + "save-created", TEST_PREFIX + "save_created_login",
+                TEST_PREFIX + "save-created@example.com", TEST_PREFIX + "save_created_hash");
+
+        User savedUser = userDao.save(user);
+
+        assertNotNull(savedUser.getId());
+        assertTrue(userDao.findById(savedUser.getId()).isPresent());
+    }
+
+    @Test
+    void saveUpdatesUserWhenIdIsPresent() {
+        User user = userDao.create(new User(null, TEST_PREFIX + "save-before", TEST_PREFIX + "save_before_login",
+                TEST_PREFIX + "save-before@example.com", TEST_PREFIX + "save_before_hash"));
+        user.setUserName(TEST_PREFIX + "save-after");
+
+        User savedUser = userDao.save(user);
+
+        Optional<User> loadedUser = userDao.findById(savedUser.getId());
+        assertTrue(loadedUser.isPresent());
+        assertEquals(TEST_PREFIX + "save-after", loadedUser.get().getUserName());
+    }
+
+    @Test
+    void deleteByIdDeletesExistingUser() {
+        User user = userDao.create(new User(null, TEST_PREFIX + "delete", TEST_PREFIX + "delete_login",
+                TEST_PREFIX + "delete@example.com", TEST_PREFIX + "delete_hash"));
+
+        boolean deleted = userDao.deleteById(user.getId());
+
+        assertTrue(deleted);
+        assertFalse(userDao.findById(user.getId()).isPresent());
+    }
+
+    @Test
+    void deleteByIdReturnsFalseWhenUserDoesNotExist() {
+        boolean deleted = userDao.deleteById(-1L);
+
+        assertFalse(deleted);
     }
 
     private long insertUser(String userNameSuffix, String loginNameSuffix, String emailSuffix) throws SQLException {
