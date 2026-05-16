@@ -17,8 +17,13 @@ public final class TransactionContext {
         }
 
         Connection connection = DatabaseConfig.getConnection();
-        connection.setAutoCommit(false);
-        CURRENT_CONNECTION.set(connection);
+        try {
+            connection.setAutoCommit(false);
+            CURRENT_CONNECTION.set(connection);
+        } catch (SQLException | RuntimeException e) {
+            connection.close();
+            throw e;
+        }
     }
 
     public static Optional<Connection> getCurrentConnection() {
