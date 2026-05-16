@@ -27,14 +27,12 @@ public class RequestLoggingFilter implements Filter {
 
         try {
             chain.doFilter(request, response);
-            logCompletedRequest(httpRequest, httpResponse, startNanos);
-        } catch (IOException | ServletException | RuntimeException | Error e) {
-            logFailedRequest(httpRequest, httpResponse, startNanos, e);
-            throw e;
+        } finally {
+            logRequest(httpRequest, httpResponse, startNanos);
         }
     }
 
-    private void logCompletedRequest(HttpServletRequest request, HttpServletResponse response, long startNanos) {
+    private void logRequest(HttpServletRequest request, HttpServletResponse response, long startNanos) {
         LOGGER.info("HTTP {} {} status={} durationMs={} remote={} user={}",
                 request.getMethod(),
                 getRequestTarget(request),
@@ -42,18 +40,6 @@ public class RequestLoggingFilter implements Filter {
                 getDurationMillis(startNanos),
                 request.getRemoteAddr(),
                 getUser(request));
-    }
-
-    private void logFailedRequest(HttpServletRequest request, HttpServletResponse response, long startNanos,
-                                  Throwable throwable) {
-        LOGGER.error("HTTP {} {} status={} durationMs={} remote={} user={} failed",
-                request.getMethod(),
-                getRequestTarget(request),
-                response.getStatus(),
-                getDurationMillis(startNanos),
-                request.getRemoteAddr(),
-                getUser(request),
-                throwable);
     }
 
     private String getRequestTarget(HttpServletRequest request) {
