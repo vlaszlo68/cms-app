@@ -5,6 +5,8 @@ import hu.laci.cms.backend.model.common.BaseEntity;
 import hu.laci.cms.backend.model.common.BaseFilter;
 import hu.laci.cms.backend.model.common.BaseSort;
 import hu.laci.cms.backend.model.common.SortOrder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Field;
 import java.sql.PreparedStatement;
@@ -24,6 +26,8 @@ import java.util.stream.Collectors;
 
 public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S extends BaseSort>
         implements CrudDao<T, F, S> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(BaseDao.class);
 
     private static final Map<Class<?>, List<Field>> FIELD_CACHE = new ConcurrentHashMap<>();
     private static final Map<Class<? extends BaseEntity>, EntityMetadata> ENTITY_METADATA_CACHE = new ConcurrentHashMap<>();
@@ -68,12 +72,14 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     @Override
     public T create(T entity) {
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
-        List<Object> parameters = entityMetadata.insertableColumnFields().stream()
-                .map(columnField -> getSqlParameterValue(columnField.field(), entity))
+        List<SqlParameter> parameters = entityMetadata.insertableColumnFields().stream()
+                .map(columnField -> new SqlParameter(columnField.columnName(),
+                        getSqlParameterValue(columnField.field(), entity)))
                 .toList();
 
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
              PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(insertSql)) {
+            logSql("create", insertSql, parameters);
             setParameters(preparedStatement, parameters);
 
             try (ResultSet resultSet = preparedStatement.executeQuery()) {
@@ -82,9 +88,11 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 }
 
                 entity.setId(resultSet.getLong("id"));
+                LOGGER.info("Created {} id={}", entityClass.getSimpleName(), entity.getId());
                 return entity;
             }
         } catch (SQLException e) {
+            LOGGER.error("Failed to create {}", entityClass.getSimpleName(), e);
             throw new DataAccessException("Failed to create " + entityClass.getSimpleName() + ".", e);
         }
     }
@@ -94,14 +102,15 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         requireEntityId(entity);
 
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
-        List<Object> parameters = new ArrayList<>();
+        List<SqlParameter> parameters = new ArrayList<>();
         for (ColumnFieldMetadata columnField : entityMetadata.updatableColumnFields()) {
-            parameters.add(getSqlParameterValue(columnField.field(), entity));
+            parameters.add(new SqlParameter(columnField.columnName(), getSqlParameterValue(columnField.field(), entity)));
         }
-        parameters.add(entity.getId());
+        parameters.add(new SqlParameter("id", entity.getId()));
 
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
              PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(updateSql)) {
+            logSql("update", updateSql, parameters);
             setParameters(preparedStatement, parameters);
             int updatedRows = preparedStatement.executeUpdate();
             if (updatedRows == 0) {
@@ -109,8 +118,10 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                         + " found to update by id: " + entity.getId());
             }
 
+            LOGGER.info("Updated {} id={}, rows={}", entityClass.getSimpleName(), entity.getId(), updatedRows);
             return entity;
         } catch (SQLException e) {
+            LOGGER.error("Failed to update {} id={}", entityClass.getSimpleName(), entity.getId(), e);
             throw new DataAccessException("Failed to update " + entityClass.getSimpleName()
                     + " by id: " + entity.getId(), e);
         }
@@ -118,11 +129,16 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
     @Override
     public boolean deleteById(Long id) {
+        List<SqlParameter> parameters = List.of(new SqlParameter("id", id));
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
              PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(deleteByIdSql)) {
-            preparedStatement.setObject(1, id);
-            return preparedStatement.executeUpdate() > 0;
+            logSql("deleteById", deleteByIdSql, parameters);
+            setParameters(preparedStatement, parameters);
+            boolean deleted = preparedStatement.executeUpdate() > 0;
+            LOGGER.info("Deleted {} id={}, deleted={}", entityClass.getSimpleName(), id, deleted);
+            return deleted;
         } catch (SQLException e) {
+            LOGGER.error("Failed to delete {} id={}", entityClass.getSimpleName(), id, e);
             throw new DataAccessException("Failed to delete " + entityClass.getSimpleName() + " by id: " + id, e);
         }
     }
@@ -200,8 +216,10 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 continue;
             }
 
-            conditions.add(buildFilterCondition(entityClass, filterField));
-            parameters.add(buildFilterParameter(value, filterField.operation(), filterField.likePosition()));
+            String columnName = getRequiredColumnName(entityClass, filterField.entityProperty());
+            conditions.add(buildFilterCondition(columnName, filterField));
+            parameters.add(new SqlParameter(columnName,
+                    buildFilterParameter(value, filterField.operation(), filterField.likePosition())));
         }
 
         if (conditions.isEmpty()) {
@@ -226,11 +244,13 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     }
 
     protected Optional<T> findById(Long id, String errorMessage) {
-        return findOne(findByIdSql, List.of(id), getRowMapper(), errorMessage);
+        return findOne(findByIdSql, List.of(new SqlParameter("id", id)), getRowMapper(), errorMessage);
     }
 
     protected Optional<T> findOneByProperty(String propertyName, Object value, String errorMessage) {
-        return findOne(buildFindBySql(baseSelectSql, entityClass, propertyName), List.of(value), getRowMapper(),
+        String columnName = getRequiredColumnName(entityClass, propertyName);
+        return findOne(buildFindBySql(baseSelectSql, entityClass, propertyName),
+                List.of(new SqlParameter(columnName, value)), getRowMapper(),
                 errorMessage);
     }
 
@@ -246,7 +266,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
     protected void setParameters(PreparedStatement preparedStatement, List<?> parameters) throws SQLException {
         for (int index = 0; index < parameters.size(); index++) {
-            preparedStatement.setObject(index + 1, parameters.get(index));
+            preparedStatement.setObject(index + 1, getParameterValue(parameters.get(index)));
         }
     }
 
@@ -254,6 +274,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
              PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(sql)) {
 
+            logSql("findOne", sql, parameters);
             setParameters(preparedStatement, parameters);
 
             try (ResultSet resultSet = preparedStatement.executeQuery()) {
@@ -264,6 +285,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 return Optional.of(rowMapper.map(resultSet));
             }
         } catch (SQLException e) {
+            LOGGER.error("Failed to execute findOne SQL.", e);
             throw new DataAccessException(errorMessage, e);
         }
     }
@@ -272,6 +294,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
              PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(sql)) {
 
+            logSql("findList", sql, parameters);
             setParameters(preparedStatement, parameters);
 
             try (ResultSet resultSet = preparedStatement.executeQuery()) {
@@ -283,6 +306,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 return results;
             }
         } catch (SQLException e) {
+            LOGGER.error("Failed to execute findList SQL.", e);
             throw new DataAccessException(errorMessage, e);
         }
     }
@@ -403,9 +427,7 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         return fieldType;
     }
 
-    private static String buildFilterCondition(Class<? extends BaseEntity> entityClass,
-                                               FilterFieldMetadata filterField) {
-        String columnName = getRequiredColumnName(entityClass, filterField.entityProperty());
+    private static String buildFilterCondition(String columnName, FilterFieldMetadata filterField) {
         return switch (filterField.operation()) {
             case EQUALS -> columnName + " = ?";
             case LIKE -> columnName + " LIKE ?";
@@ -450,6 +472,59 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         }
 
         return value;
+    }
+
+    private static Object getParameterValue(Object parameter) {
+        if (parameter instanceof SqlParameter sqlParameter) {
+            return sqlParameter.value();
+        }
+
+        return parameter;
+    }
+
+    private static void logSql(String operation, String sql, List<?> parameters) {
+        if (!LOGGER.isDebugEnabled()) {
+            return;
+        }
+
+        LOGGER.debug("SQL {}: {} | params={}", operation, normalizeSql(sql), formatParameters(parameters));
+    }
+
+    private static String normalizeSql(String sql) {
+        return sql.lines()
+                .map(String::trim)
+                .filter(line -> !line.isEmpty())
+                .collect(Collectors.joining(" "));
+    }
+
+    private static List<String> formatParameters(List<?> parameters) {
+        return parameters.stream()
+                .map(BaseDao::formatParameter)
+                .toList();
+    }
+
+    private static String formatParameter(Object parameter) {
+        if (parameter instanceof SqlParameter sqlParameter) {
+            return sqlParameter.name() + "=" + maskValue(sqlParameter.name(), sqlParameter.value());
+        }
+
+        return String.valueOf(parameter);
+    }
+
+    private static Object maskValue(String name, Object value) {
+        if (isSensitiveName(name)) {
+            return "***";
+        }
+
+        return value;
+    }
+
+    private static boolean isSensitiveName(String name) {
+        String normalizedName = name == null ? "" : name.toLowerCase();
+        return normalizedName.contains("password")
+                || normalizedName.contains("hash")
+                || normalizedName.contains("token")
+                || normalizedName.contains("secret");
     }
 
     private static void setFieldValue(Field field, Object instance, Object value) throws SQLException {
@@ -596,6 +671,25 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
         private Map<String, String> columnsByProperty() {
             return columnsByProperty;
+        }
+    }
+
+    private static final class SqlParameter {
+
+        private final String name;
+        private final Object value;
+
+        private SqlParameter(String name, Object value) {
+            this.name = name;
+            this.value = value;
+        }
+
+        private String name() {
+            return name;
+        }
+
+        private Object value() {
+            return value;
         }
     }
 
