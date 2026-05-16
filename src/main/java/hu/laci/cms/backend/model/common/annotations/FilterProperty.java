@@ -1,4 +1,4 @@
-package hu.laci.cms.backend.dao.common;
+package hu.laci.cms.backend.model.common.annotations;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

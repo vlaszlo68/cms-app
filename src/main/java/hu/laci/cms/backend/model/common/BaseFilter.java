@@ -1,6 +1,6 @@
 package hu.laci.cms.backend.model.common;
 
-import hu.laci.cms.backend.dao.common.FilterProperty;
+import hu.laci.cms.backend.model.common.annotations.FilterProperty;
 
 public class BaseFilter {
 

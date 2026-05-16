@@ -1,8 +1,8 @@
 package hu.laci.cms.backend.model.user;
 
-import hu.laci.cms.backend.dao.common.FilterOperation;
-import hu.laci.cms.backend.dao.common.FilterProperty;
 import hu.laci.cms.backend.model.common.BaseFilter;
+import hu.laci.cms.backend.model.common.annotations.FilterOperation;
+import hu.laci.cms.backend.model.common.annotations.FilterProperty;
 
 public class UserFilter extends BaseFilter {
 

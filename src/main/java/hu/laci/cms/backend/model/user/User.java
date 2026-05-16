@@ -1,7 +1,7 @@
 package hu.laci.cms.backend.model.user;
 
-import hu.laci.cms.backend.dao.common.DbColumn;
-import hu.laci.cms.backend.dao.common.DbTable;
+import hu.laci.cms.backend.dao.common.annotations.DbColumn;
+import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.BaseEntity;
 
 @DbTable("users")

@@ -1,6 +1,8 @@
 package hu.laci.cms.backend.dao.common;
 
 import hu.laci.cms.backend.config.database.DatabaseConfig;
+import hu.laci.cms.backend.dao.common.annotations.DbColumn;
+import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.BaseEntity;
 import hu.laci.cms.backend.model.common.BaseFilter;
 import hu.laci.cms.backend.model.common.BaseSort;

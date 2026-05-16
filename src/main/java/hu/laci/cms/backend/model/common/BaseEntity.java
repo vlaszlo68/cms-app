@@ -1,6 +1,6 @@
 package hu.laci.cms.backend.model.common;
 
-import hu.laci.cms.backend.dao.common.DbColumn;
+import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 
 public abstract class BaseEntity {
 
