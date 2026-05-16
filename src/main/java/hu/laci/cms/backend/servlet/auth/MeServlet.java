@@ -2,6 +2,7 @@ package hu.laci.cms.backend.servlet.auth;
 
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.dto.auth.AuthUserResponse;
+import hu.laci.cms.backend.servlet.support.CsrfTokenSupport;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.annotation.WebServlet;
@@ -27,7 +28,8 @@ public class MeServlet extends JsonServletSupport {
             return;
         }
 
-        writeJsonResponse(response, HttpServletResponse.SC_OK, new AuthUserResponse(authenticatedUser));
+        String csrfToken = CsrfTokenSupport.ensureToken(session);
+        writeJsonResponse(response, HttpServletResponse.SC_OK, new AuthUserResponse(authenticatedUser, csrfToken));
     }
 
     private void writeUnauthorized(HttpServletResponse response) throws IOException {

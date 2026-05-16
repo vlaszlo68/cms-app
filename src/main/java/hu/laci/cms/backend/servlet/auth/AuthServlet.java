@@ -9,6 +9,7 @@ import hu.laci.cms.backend.dto.auth.LoginRequest;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.service.AuthService;
 import hu.laci.cms.backend.service.AuthServiceException;
+import hu.laci.cms.backend.servlet.support.CsrfTokenSupport;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.ServletException;
@@ -48,7 +49,8 @@ public class AuthServlet extends JsonServletSupport {
 
             User user = userOptional.get();
             AuthenticatedUser authenticatedUser = createSession(request, user);
-            writeJsonResponse(response, HttpServletResponse.SC_OK, new AuthUserResponse(authenticatedUser));
+            String csrfToken = CsrfTokenSupport.ensureToken(request.getSession(false));
+            writeJsonResponse(response, HttpServletResponse.SC_OK, new AuthUserResponse(authenticatedUser, csrfToken));
         } catch (BadRequestException e) {
             writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
         } catch (AuthServiceException e) {
@@ -90,6 +92,7 @@ public class AuthServlet extends JsonServletSupport {
                 user.getEmailAddress()
         );
         session.setAttribute("user", authenticatedUser);
+        session.setAttribute(CsrfTokenSupport.SESSION_ATTRIBUTE, CsrfTokenSupport.createToken());
         return authenticatedUser;
     }
 
