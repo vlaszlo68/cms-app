@@ -29,6 +29,16 @@
     </listener>
 
     <filter>
+        <filter-name>requestLoggingFilter</filter-name>
+        <filter-class>hu.laci.cms.backend.servlet.filter.RequestLoggingFilter</filter-class>
+    </filter>
+
+    <filter-mapping>
+        <filter-name>requestLoggingFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+
+    <filter>
         <filter-name>transactionFilter</filter-name>
         <filter-class>hu.laci.cms.backend.servlet.filter.TransactionFilter</filter-class>
     </filter>
