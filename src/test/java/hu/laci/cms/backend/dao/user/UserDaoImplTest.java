@@ -1,6 +1,7 @@
 package hu.laci.cms.backend.dao.user;
 
 import hu.laci.cms.backend.config.database.DatabaseConfig;
+import hu.laci.cms.backend.config.database.TransactionContext;
 import hu.laci.cms.backend.dao.common.DataAccessException;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.model.user.UserFilter;
@@ -237,6 +238,39 @@ class UserDaoImplTest {
         boolean deleted = userDao.deleteById(-1L);
 
         assertFalse(deleted);
+    }
+
+    @Test
+    void transactionCommitPersistsDaoChanges() throws SQLException {
+        Long userId = null;
+        try {
+            TransactionContext.begin();
+            User user = userDao.create(new User(null, TEST_PREFIX + "tx-commit", TEST_PREFIX + "tx_commit_login",
+                    TEST_PREFIX + "tx-commit@example.com", TEST_PREFIX + "tx_commit_hash"));
+            userId = user.getId();
+            TransactionContext.commit();
+        } finally {
+            TransactionContext.close();
+        }
+
+        assertTrue(userDao.findById(userId).isPresent());
+    }
+
+    @Test
+    void transactionRollbackDiscardsDaoChanges() throws SQLException {
+        Long userId = null;
+        try {
+            TransactionContext.begin();
+            User user = userDao.create(new User(null, TEST_PREFIX + "tx-rollback",
+                    TEST_PREFIX + "tx_rollback_login", TEST_PREFIX + "tx-rollback@example.com",
+                    TEST_PREFIX + "tx_rollback_hash"));
+            userId = user.getId();
+            TransactionContext.rollback();
+        } finally {
+            TransactionContext.close();
+        }
+
+        assertFalse(userDao.findById(userId).isPresent());
     }
 
     private long insertUser(String userNameSuffix, String loginNameSuffix, String emailSuffix) throws SQLException {

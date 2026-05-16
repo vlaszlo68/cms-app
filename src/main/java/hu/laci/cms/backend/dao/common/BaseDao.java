@@ -1,13 +1,12 @@
 package hu.laci.cms.backend.dao.common;
 
-import hu.laci.cms.backend.config.database.DatabaseConfig;
+import hu.laci.cms.backend.config.database.TransactionContext;
 import hu.laci.cms.backend.model.common.BaseEntity;
 import hu.laci.cms.backend.model.common.BaseFilter;
 import hu.laci.cms.backend.model.common.BaseSort;
 import hu.laci.cms.backend.model.common.SortOrder;
 
 import java.lang.reflect.Field;
-import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -47,10 +46,6 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 + getRequiredColumnName(entityClass, "id") + " = ?";
     }
 
-    protected Connection getConnection() throws SQLException {
-        return DatabaseConfig.getConnection();
-    }
-
     @Override
     public List<T> findAll(F filter, List<SortOrder<S>> sort) {
         return findAll(filter, sort, "Failed to get " + entityClass.getSimpleName() + " list.");
@@ -77,8 +72,8 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 .map(columnField -> getSqlParameterValue(columnField.field(), entity))
                 .toList();
 
-        try (Connection connection = getConnection();
-             PreparedStatement preparedStatement = connection.prepareStatement(insertSql)) {
+        try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
+             PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(insertSql)) {
             setParameters(preparedStatement, parameters);
 
             try (ResultSet resultSet = preparedStatement.executeQuery()) {
@@ -105,8 +100,8 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         }
         parameters.add(entity.getId());
 
-        try (Connection connection = getConnection();
-             PreparedStatement preparedStatement = connection.prepareStatement(updateSql)) {
+        try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
+             PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(updateSql)) {
             setParameters(preparedStatement, parameters);
             int updatedRows = preparedStatement.executeUpdate();
             if (updatedRows == 0) {
@@ -123,8 +118,8 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
     @Override
     public boolean deleteById(Long id) {
-        try (Connection connection = getConnection();
-             PreparedStatement preparedStatement = connection.prepareStatement(deleteByIdSql)) {
+        try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
+             PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(deleteByIdSql)) {
             preparedStatement.setObject(1, id);
             return preparedStatement.executeUpdate() > 0;
         } catch (SQLException e) {
@@ -256,8 +251,8 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     }
 
     protected Optional<T> findOne(String sql, List<?> parameters, RowMapper<T> rowMapper, String errorMessage) {
-        try (Connection connection = getConnection();
-             PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+        try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
+             PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(sql)) {
 
             setParameters(preparedStatement, parameters);
 
@@ -274,8 +269,8 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     }
 
     protected List<T> findList(String sql, List<?> parameters, RowMapper<T> rowMapper, String errorMessage) {
-        try (Connection connection = getConnection();
-             PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+        try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
+             PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(sql)) {
 
             setParameters(preparedStatement, parameters);
 
