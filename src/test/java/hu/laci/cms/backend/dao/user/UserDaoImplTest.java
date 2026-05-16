@@ -273,6 +273,24 @@ class UserDaoImplTest {
         assertFalse(userDao.findById(userId).isPresent());
     }
 
+    @Test
+    void transactionRollbackOnlyDiscardsDaoChangesOnCommit() throws SQLException {
+        Long userId = null;
+        try {
+            TransactionContext.begin();
+            User user = userDao.create(new User(null, TEST_PREFIX + "tx-rollback-only",
+                    TEST_PREFIX + "tx_rollback_only_login", TEST_PREFIX + "tx-rollback-only@example.com",
+                    TEST_PREFIX + "tx_rollback_only_hash"));
+            userId = user.getId();
+            TransactionContext.setRollbackOnly();
+            TransactionContext.commit();
+        } finally {
+            TransactionContext.close();
+        }
+
+        assertFalse(userDao.findById(userId).isPresent());
+    }
+
     private long insertUser(String userNameSuffix, String loginNameSuffix, String emailSuffix) throws SQLException {
         String sql = """
                 INSERT INTO users (username, login_name, email_address, password_hash)

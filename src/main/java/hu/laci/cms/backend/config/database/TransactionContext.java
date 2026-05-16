@@ -7,6 +7,7 @@ import java.util.Optional;
 public final class TransactionContext {
 
     private static final ThreadLocal<Connection> CURRENT_CONNECTION = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> ROLLBACK_ONLY = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
     private TransactionContext() {
     }
@@ -19,6 +20,7 @@ public final class TransactionContext {
         Connection connection = DatabaseConfig.getConnection();
         try {
             connection.setAutoCommit(false);
+            ROLLBACK_ONLY.set(Boolean.FALSE);
             CURRENT_CONNECTION.set(connection);
         } catch (SQLException | RuntimeException e) {
             connection.close();
@@ -42,6 +44,11 @@ public final class TransactionContext {
     public static void commit() throws SQLException {
         Connection connection = CURRENT_CONNECTION.get();
         if (connection != null) {
+            if (isRollbackOnly()) {
+                connection.rollback();
+                return;
+            }
+
             connection.commit();
         }
     }
@@ -53,9 +60,22 @@ public final class TransactionContext {
         }
     }
 
+    public static void setRollbackOnly() {
+        if (CURRENT_CONNECTION.get() == null) {
+            throw new IllegalStateException("No transaction is active on the current thread.");
+        }
+
+        ROLLBACK_ONLY.set(Boolean.TRUE);
+    }
+
+    public static boolean isRollbackOnly() {
+        return Boolean.TRUE.equals(ROLLBACK_ONLY.get());
+    }
+
     public static void close() throws SQLException {
         Connection connection = CURRENT_CONNECTION.get();
         CURRENT_CONNECTION.remove();
+        ROLLBACK_ONLY.remove();
 
         if (connection != null) {
             try {

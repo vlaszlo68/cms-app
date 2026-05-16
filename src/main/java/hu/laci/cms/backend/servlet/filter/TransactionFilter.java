@@ -18,7 +18,7 @@ public class TransactionFilter implements Filter {
         try {
             TransactionContext.begin();
             chain.doFilter(request, response);
-            TransactionContext.commit();
+            commitOrRollback();
         } catch (IOException | ServletException | RuntimeException | Error e) {
             rollback();
             throw e;
@@ -27,6 +27,19 @@ public class TransactionFilter implements Filter {
             throw new ServletException("Failed to handle request transaction.", e);
         } finally {
             close();
+        }
+    }
+
+    private void commitOrRollback() throws ServletException {
+        try {
+            if (TransactionContext.isRollbackOnly()) {
+                TransactionContext.rollback();
+                return;
+            }
+
+            TransactionContext.commit();
+        } catch (SQLException e) {
+            throw new ServletException("Failed to finish request transaction.", e);
         }
     }
 
