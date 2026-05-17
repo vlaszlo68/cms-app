@@ -2,7 +2,9 @@ package hu.laci.cms.backend.dao.user;
 
 import hu.laci.cms.backend.config.database.DatabaseConfig;
 import hu.laci.cms.backend.config.database.TransactionContext;
+import hu.laci.cms.backend.dao.common.BaseDao;
 import hu.laci.cms.backend.dao.common.DataAccessException;
+import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.model.common.LikeFilterPosition;
 import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.user.User;
@@ -37,10 +39,12 @@ class UserDaoImplTest {
     @BeforeAll
     static void initializeDatabase() {
         DatabaseConfig.initialize(createEmptyServletContext());
+        DaoRegistry.initialize();
     }
 
     @AfterAll
     static void shutdownDatabase() {
+        DaoRegistry.shutdown();
         DatabaseConfig.shutdown();
     }
 
@@ -302,6 +306,46 @@ class UserDaoImplTest {
         Optional<User> loadedUser = userDao.findById(savedUser.getId());
         assertTrue(loadedUser.isPresent());
         assertEquals(TEST_PREFIX + "save-after", loadedUser.get().getUserName());
+    }
+
+    @Test
+    void staticSaveEntityDelegatesToRegisteredDao() {
+        User user = new User(null, TEST_PREFIX + "static-save", TEST_PREFIX + "static_save_login",
+                TEST_PREFIX + "static-save@example.com", TEST_PREFIX + "static_save_hash");
+
+        User savedUser = BaseDao.saveEntity(user);
+
+        assertNotNull(savedUser.getId());
+        assertTrue(userDao.findById(savedUser.getId()).isPresent());
+    }
+
+    @Test
+    void staticLoadEntityDelegatesToRegisteredDaoAndOverwritesProperties() throws SQLException {
+        long userId = insertUser("load-source", "load-source", "load-source");
+        User user = new User(userId, "stale", "stale", "stale", "stale");
+
+        User loadedUser = BaseDao.loadEntity(user);
+
+        assertEquals(user, loadedUser);
+        assertEquals(userId, user.getId());
+        assertEquals(TEST_PREFIX + "load-source", user.getUserName());
+        assertEquals(TEST_PREFIX + "load-source_login", user.getLoginName());
+        assertEquals(TEST_PREFIX + "load-source@example.com", user.getEmailAddress());
+        assertEquals(TEST_PREFIX + "load-source_hash", user.getPasswordHash());
+    }
+
+    @Test
+    void staticLoadEntityRejectsEntityWithoutId() {
+        User user = new User(null, "stale", "stale", "stale", "stale");
+
+        assertThrows(IllegalArgumentException.class, () -> BaseDao.loadEntity(user));
+    }
+
+    @Test
+    void staticLoadEntityRejectsMissingEntity() {
+        User user = new User(-1L, "stale", "stale", "stale", "stale");
+
+        assertThrows(IllegalArgumentException.class, () -> BaseDao.loadEntity(user));
     }
 
     @Test

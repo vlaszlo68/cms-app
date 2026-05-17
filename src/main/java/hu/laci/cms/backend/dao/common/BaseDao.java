@@ -59,6 +59,33 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
                 + getRequiredQualifiedColumnName(entityClass, "id") + " = ?";
     }
 
+    @SuppressWarnings("unchecked")
+    public static <E extends BaseEntity> E saveEntity(E entity) {
+        if (entity == null) {
+            throw new IllegalArgumentException("Entity must not be null.");
+        }
+
+        CrudDao<E, ? extends BaseProperty> dao = DaoRegistry.getDao(entity.getClass());
+        return dao.save(entity);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <E extends BaseEntity> E loadEntity(E entity) {
+        if (entity == null) {
+            throw new IllegalArgumentException("Entity must not be null.");
+        }
+        if (entity.getId() == null) {
+            throw new IllegalArgumentException("Entity id must not be null for load.");
+        }
+
+        CrudDao<E, ? extends BaseProperty> dao = DaoRegistry.getDao(entity.getClass());
+        E loadedEntity = dao.findById(entity.getId())
+                .orElseThrow(() -> new IllegalArgumentException("No "
+                        + entity.getClass().getSimpleName() + " found by id: " + entity.getId()));
+        copyEntityProperties(loadedEntity, entity);
+        return entity;
+    }
+
     @Override
     public List<T> findAll(QuerySpec<P> querySpec) {
         return findAll(querySpec, "Failed to get " + entityClass.getSimpleName() + " list.");
@@ -624,6 +651,22 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
 
         return joinedEntity;
+    }
+
+    private static void copyEntityProperties(BaseEntity source, BaseEntity target) {
+        if (source.getClass() != target.getClass()) {
+            throw new IllegalArgumentException("Cannot copy entity properties between different classes: "
+                    + source.getClass().getName() + " -> " + target.getClass().getName());
+        }
+
+        for (Field field : getAllFields(source.getClass())) {
+            try {
+                setFieldValue(field, target, getFieldValue(field, source));
+            } catch (SQLException e) {
+                throw new IllegalArgumentException("Unable to copy entity property "
+                        + target.getClass().getName() + "." + field.getName(), e);
+            }
+        }
     }
 
     private static void requireEntityId(BaseEntity entity) {
