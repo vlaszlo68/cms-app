@@ -20,17 +20,36 @@ import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.Optional;
 
+/**
+ * Login endpoint for session-based authentication.
+ * <p>
+ * Successful login rotates the session id, stores an {@link AuthenticatedUser}
+ * in the session, creates a CSRF token, and returns an {@link AuthUserResponse}
+ * inside the common JSON response envelope.
+ */
 @WebServlet("/api/auth/login")
 public class AuthServlet extends JsonServletSupport {
 
     private AuthService authService;
 
+    /**
+     * Resolves dependencies needed by the login endpoint.
+     *
+     * @throws ServletException when servlet initialization fails
+     */
     @Override
     public void init() throws ServletException {
         UserDao userDao = DaoRegistry.getDao(User.class);
         this.authService = new AuthService(userDao);
     }
 
+    /**
+     * Handles {@code POST /api/auth/login}.
+     *
+     * @param request HTTP request containing a {@link LoginRequest} JSON body
+     * @param response HTTP response
+     * @throws IOException when reading or writing fails
+     */
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
         try {

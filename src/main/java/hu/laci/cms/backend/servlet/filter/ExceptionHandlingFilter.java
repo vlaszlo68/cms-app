@@ -14,6 +14,13 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
+/**
+ * Converts unhandled request exceptions into the common JSON error envelope.
+ * <p>
+ * If the response has not been committed yet, the filter writes a
+ * {@code 500 INTERNAL_ERROR} response and logs the original exception. If the
+ * response is already committed, the original exception is rethrown.
+ */
 public class ExceptionHandlingFilter implements Filter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ExceptionHandlingFilter.class);
@@ -22,6 +29,15 @@ public class ExceptionHandlingFilter implements Filter {
 
     private final Gson gson = new Gson();
 
+    /**
+     * Executes downstream processing and converts unhandled exceptions to JSON when possible.
+     *
+     * @param request servlet request
+     * @param response servlet response
+     * @param chain downstream filter chain
+     * @throws IOException when downstream processing or response writing fails
+     * @throws ServletException when downstream processing fails
+     */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {

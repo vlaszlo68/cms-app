@@ -8,6 +8,13 @@ import hu.laci.cms.backend.model.user.User;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Application-wide registry that resolves an entity class to its DAO instance.
+ * <p>
+ * The registry is initialized by {@code DaoRegistryListener} during servlet
+ * application startup. Static DAO convenience methods, such as
+ * {@link BaseDao#saveEntity(BaseEntity)}, use this registry.
+ */
 public final class DaoRegistry {
 
     private static final Map<Class<? extends BaseEntity>, CrudDao<? extends BaseEntity, ? extends BaseProperty>> DAOS = new HashMap<>();
@@ -15,15 +22,41 @@ public final class DaoRegistry {
     private DaoRegistry() {
     }
 
+    /**
+     * Initializes the registry with known DAO implementations.
+     * <p>
+     * This method is idempotent from the caller's perspective: it clears current
+     * registrations first, then registers the current DAO set.
+     */
     public static synchronized void initialize() {
         DAOS.clear();
         register(User.class, new UserDaoImpl());
     }
 
+    /**
+     * Clears all DAO registrations.
+     * <p>
+     * Called from application shutdown to release references held by the static
+     * registry.
+     */
     public static synchronized void shutdown() {
         DAOS.clear();
     }
 
+    /**
+     * Returns the DAO registered for the given entity class.
+     * <p>
+     * Example:
+     *
+     * <pre>{@code
+     * UserDao userDao = DaoRegistry.getDao(User.class);
+     * }</pre>
+     *
+     * @param entityClass entity class used as registry key
+     * @param <D> expected DAO interface or implementation type
+     * @return registered DAO
+     * @throws IllegalStateException when no DAO has been registered for the entity class
+     */
     @SuppressWarnings("unchecked")
     public static <D extends CrudDao<? extends BaseEntity, ? extends BaseProperty>> D getDao(Class<? extends BaseEntity> entityClass) {
         CrudDao<? extends BaseEntity, ? extends BaseProperty> dao = DAOS.get(entityClass);

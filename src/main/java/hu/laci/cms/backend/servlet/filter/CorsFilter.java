@@ -13,6 +13,13 @@ import java.util.Arrays;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * Applies CORS headers for configured frontend origins.
+ * <p>
+ * Allowed origins are read from the filter init parameter {@code allowedOrigins}.
+ * Preflight {@code OPTIONS} requests are answered directly with {@code 204} for
+ * allowed origins or {@code 403} otherwise.
+ */
 public class CorsFilter implements Filter {
 
     private static final String ALLOWED_ORIGINS_PARAM = "allowedOrigins";
@@ -22,6 +29,11 @@ public class CorsFilter implements Filter {
 
     private Set<String> allowedOrigins = Set.of();
 
+    /**
+     * Reads allowed CORS origins from filter configuration.
+     *
+     * @param filterConfig filter configuration
+     */
     @Override
     public void init(FilterConfig filterConfig) {
         String configuredOrigins = filterConfig.getInitParameter(ALLOWED_ORIGINS_PARAM);
@@ -36,6 +48,15 @@ public class CorsFilter implements Filter {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
+    /**
+     * Adds CORS headers for allowed origins and handles preflight requests.
+     *
+     * @param request servlet request
+     * @param response servlet response
+     * @param chain downstream filter chain
+     * @throws IOException when downstream processing fails
+     * @throws ServletException when downstream processing fails
+     */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
         HttpServletRequest httpRequest = (HttpServletRequest) request;

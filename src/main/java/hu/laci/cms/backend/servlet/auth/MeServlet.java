@@ -11,9 +11,22 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
 
+/**
+ * Session restore endpoint for the currently authenticated user.
+ * <p>
+ * Returns the session user and a CSRF token when authentication is active,
+ * otherwise returns {@code AUTH_REQUIRED}.
+ */
 @WebServlet("/api/auth/me")
 public class MeServlet extends JsonServletSupport {
 
+    /**
+     * Handles {@code GET /api/auth/me}.
+     *
+     * @param request HTTP request
+     * @param response HTTP response
+     * @throws IOException when writing fails
+     */
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
         HttpSession session = request.getSession(false);

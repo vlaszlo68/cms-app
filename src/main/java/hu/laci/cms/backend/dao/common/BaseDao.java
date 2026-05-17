@@ -34,6 +34,32 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+/**
+ * Reusable JDBC DAO base class for annotation-mapped entities.
+ * <p>
+ * Subclasses normally only provide the entity class and optional domain-specific
+ * finder methods:
+ *
+ * <pre>{@code
+ * public final class UserDaoImpl extends BaseDao<User, UserProperty> implements UserDao {
+ *     public UserDaoImpl() {
+ *         super(User.class);
+ *     }
+ *
+ *     public Optional<User> findByLoginName(String loginName) {
+ *         return findOneByProperty("loginName", loginName, "Failed to find user by login name.");
+ *     }
+ * }
+ * }</pre>
+ *
+ * The base class handles generated CRUD SQL, {@link QuerySpec}-based filtering,
+ * sorting and joining, custom SQL helper methods, parameter binding, SQL
+ * logging, boolean conversion, reflection metadata caching, and
+ * {@link TransactionContext} integration.
+ *
+ * @param <T> entity type handled by the DAO
+ * @param <P> property descriptor type accepted by {@link QuerySpec}
+ */
 public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         implements CrudDao<T, P> {
 
@@ -49,6 +75,11 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     private final String updateSql;
     private final String deleteByIdSql;
 
+    /**
+     * Creates a DAO for the given entity class and prebuilds common SQL.
+     *
+     * @param entityClass annotation-mapped entity class handled by this DAO
+     */
     protected BaseDao(Class<T> entityClass) {
         this.entityClass = entityClass;
         this.baseSelectSql = buildBaseSelectSql(entityClass);
@@ -59,6 +90,22 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
                 + getRequiredQualifiedColumnName(entityClass, "id") + " = ?";
     }
 
+    /**
+     * Saves an entity through the DAO registered for the entity runtime class.
+     * <p>
+     * This is a convenience entry point for code that has an entity instance but
+     * does not directly hold the matching DAO.
+     *
+     * <pre>{@code
+     * User user = BaseDao.saveEntity(new User(null, "admin", "..."));
+     * }</pre>
+     *
+     * @param entity entity to create or update
+     * @param <E> concrete entity type
+     * @return saved entity returned by the registered DAO
+     * @throws IllegalArgumentException when {@code entity} is {@code null}
+     * @throws IllegalStateException when no DAO is registered for the entity class
+     */
     @SuppressWarnings("unchecked")
     public static <E extends BaseEntity> E saveEntity(E entity) {
         if (entity == null) {
@@ -69,6 +116,23 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         return dao.save(entity);
     }
 
+    /**
+     * Reloads the passed entity from the database and overwrites its properties.
+     * <p>
+     * The entity must already have an id. The matching DAO is resolved through
+     * {@link DaoRegistry}.
+     *
+     * <pre>{@code
+     * user.setEmail("stale@example.com");
+     * BaseDao.loadEntity(user); // user fields now reflect the current DB row
+     * }</pre>
+     *
+     * @param entity entity instance to refresh
+     * @param <E> concrete entity type
+     * @return the same entity instance passed in
+     * @throws IllegalArgumentException when the entity or its id is {@code null}, or no row exists
+     * @throws IllegalStateException when no DAO is registered for the entity class
+     */
     @SuppressWarnings("unchecked")
     public static <E extends BaseEntity> E loadEntity(E entity) {
         if (entity == null) {
@@ -86,16 +150,34 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         return entity;
     }
 
+    /**
+     * Finds entities by {@link QuerySpec}.
+     *
+     * @param querySpec filters, joins, and sort orders; {@code null} means all rows with default ordering
+     * @return matching entities
+     */
     @Override
     public List<T> findAll(QuerySpec<P> querySpec) {
         return findAll(querySpec, "Failed to get " + entityClass.getSimpleName() + " list.");
     }
 
+    /**
+     * Finds one entity by primary key.
+     *
+     * @param id entity id
+     * @return matching entity, or empty when no row exists
+     */
     @Override
     public Optional<T> findById(Long id) {
         return findById(id, "Failed to find " + entityClass.getSimpleName() + " by id: " + id);
     }
 
+    /**
+     * Saves an entity by inserting it when id is {@code null}, otherwise updating it.
+     *
+     * @param entity entity to save
+     * @return saved entity
+     */
     @Override
     public T save(T entity) {
         if (entity.getId() == null) {
@@ -105,6 +187,15 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         return update(entity);
     }
 
+    /**
+     * Inserts a new entity and fills its generated id.
+     * <p>
+     * The generated SQL uses PostgreSQL-style {@code INSERT ... RETURNING id}.
+     *
+     * @param entity entity to insert
+     * @return the same entity instance with id set
+     * @throws DataAccessException when insert fails or no id is returned
+     */
     @Override
     public T create(T entity) {
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
@@ -133,6 +224,14 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
     }
 
+    /**
+     * Updates an existing entity by id.
+     *
+     * @param entity entity with non-null id
+     * @return the same entity instance after successful update
+     * @throws IllegalArgumentException when the entity id is {@code null}
+     * @throws DataAccessException when update fails or no row exists for the id
+     */
     @Override
     public T update(T entity) {
         requireEntityId(entity);
@@ -163,6 +262,13 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
     }
 
+    /**
+     * Deletes an entity by primary key.
+     *
+     * @param id entity id
+     * @return {@code true} when a row was deleted, otherwise {@code false}
+     * @throws DataAccessException when SQL execution fails
+     */
     @Override
     public boolean deleteById(Long id) {
         List<SqlParameter> parameters = List.of(new SqlParameter("id", id));
@@ -179,23 +285,45 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
     }
 
+    /**
+     * Returns the entity class handled by this DAO.
+     *
+     * @return entity class
+     */
     protected Class<T> getEntityClass() {
         return entityClass;
     }
 
-    protected String getBaseSelectSql() {
-        return baseSelectSql;
-    }
-
+    /**
+     * Returns the default row mapper for this DAO's entity.
+     *
+     * @return row mapper that delegates to {@link #mapEntity(ResultSet)}
+     */
     protected RowMapper<T> getRowMapper() {
         return this::mapEntity;
     }
 
-    protected static String buildBaseSelectSql(Class<? extends BaseEntity> entityClass) {
+    /**
+     * Builds the base {@code SELECT} SQL for an entity.
+     *
+     * @param entityClass annotation-mapped entity class
+     * @return select SQL with aliased entity columns
+     */
+    private static String buildBaseSelectSql(Class<? extends BaseEntity> entityClass) {
         return buildSelectSql(entityClass, List.of());
     }
 
-    protected static String buildSelectSql(Class<? extends BaseEntity> entityClass, List<JoinSpec> joins) {
+    /**
+     * Builds {@code SELECT} SQL for the root entity and joined entities.
+     * <p>
+     * Joined entity columns are selected using table-name/alias based result
+     * aliases so result mapping can distinguish columns safely.
+     *
+     * @param entityClass root entity class
+     * @param joins joins whose entity columns should be selected
+     * @return select SQL without join clauses, filters, or ordering
+     */
+    private static String buildSelectSql(Class<? extends BaseEntity> entityClass, List<JoinSpec> joins) {
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
         List<String> selectExpressions = new ArrayList<>(entityMetadata.selectExpressions());
         if (joins != null) {
@@ -213,7 +341,13 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
                 + System.lineSeparator();
     }
 
-    protected static String buildInsertSql(Class<? extends BaseEntity> entityClass) {
+    /**
+     * Builds insert SQL for an entity class.
+     *
+     * @param entityClass annotation-mapped entity class
+     * @return SQL in the form {@code INSERT ... RETURNING id}
+     */
+    private static String buildInsertSql(Class<? extends BaseEntity> entityClass) {
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
         List<String> columnNames = entityMetadata.insertableColumnFields().stream()
                 .map(ColumnFieldMetadata::columnName)
@@ -230,7 +364,13 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
                 + "RETURNING " + getRequiredColumnName(entityClass, "id");
     }
 
-    protected static String buildUpdateSql(Class<? extends BaseEntity> entityClass) {
+    /**
+     * Builds update SQL for an entity class.
+     *
+     * @param entityClass annotation-mapped entity class
+     * @return SQL that updates all non-id mapped columns by id
+     */
+    private static String buildUpdateSql(Class<? extends BaseEntity> entityClass) {
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
         String assignments = entityMetadata.updatableColumnFields().stream()
                 .map(columnField -> columnField.columnName() + " = ?")
@@ -243,16 +383,39 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
                 + "WHERE " + getRequiredQualifiedColumnName(entityClass, "id") + " = ?";
     }
 
-    protected static String buildFindBySql(String baseSelectSql, Class<? extends BaseEntity> entityClass,
+    /**
+     * Builds a select-by-property SQL by appending a simple equality condition.
+     *
+     * @param baseSelectSql select SQL to append to
+     * @param entityClass entity class that owns the property
+     * @param propertyName Java field name
+     * @return select SQL with {@code WHERE property = ?}
+     */
+    private static String buildFindBySql(String baseSelectSql, Class<? extends BaseEntity> entityClass,
                                            String propertyName) {
         return baseSelectSql + buildWhereEqualsCondition(entityClass, propertyName);
     }
 
-    protected static String buildWhereEqualsCondition(Class<? extends BaseEntity> entityClass, String propertyName) {
+    /**
+     * Builds a simple equality {@code WHERE} condition for one property.
+     *
+     * @param entityClass entity class that owns the property
+     * @param propertyName Java field name
+     * @return SQL where condition
+     */
+    private static String buildWhereEqualsCondition(Class<? extends BaseEntity> entityClass, String propertyName) {
         return "WHERE " + getRequiredQualifiedColumnName(entityClass, propertyName) + " = ?";
     }
 
-    protected void appendJoins(StringBuilder sqlBuilder, List<Object> parameters,
+    /**
+     * Appends SQL join clauses to a query.
+     *
+     * @param sqlBuilder SQL buffer to append to
+     * @param parameters mutable parameter list receiving extra join-condition values
+     * @param entityClass root entity class
+     * @param joins join definitions
+     */
+    private void appendJoins(StringBuilder sqlBuilder, List<Object> parameters,
                                Class<? extends BaseEntity> entityClass, List<JoinSpec> joins) {
         if (joins == null || joins.isEmpty()) {
             return;
@@ -305,7 +468,15 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
     }
 
-    protected void appendOrder(StringBuilder sqlBuilder, Class<? extends BaseEntity> entityClass,
+    /**
+     * Appends an {@code ORDER BY} clause.
+     *
+     * @param sqlBuilder SQL buffer to append to
+     * @param entityClass root entity class
+     * @param sort sort orders; empty or {@code null} means {@code id ASC}
+     * @param joins joins available for resolving joined-property aliases
+     */
+    private void appendOrder(StringBuilder sqlBuilder, Class<? extends BaseEntity> entityClass,
                                List<? extends SortOrder<? extends BaseProperty>> sort, List<JoinSpec> joins) {
         List<? extends SortOrder<? extends BaseProperty>> selectedSort =
                 sort == null || sort.isEmpty() ? List.of(new SortOrder<>(BaseProperty.ID)) : sort;
@@ -318,7 +489,15 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
                         .collect(Collectors.joining(", ")));
     }
 
-    protected void appendQueryFilters(StringBuilder sqlBuilder, List<Object> parameters,
+    /**
+     * Appends query filters as a {@code WHERE} clause and fills SQL parameters.
+     *
+     * @param sqlBuilder SQL buffer to append to
+     * @param parameters mutable parameter list receiving filter values
+     * @param entityClass root entity class
+     * @param querySpec query specification; {@code null} appends nothing
+     */
+    private void appendQueryFilters(StringBuilder sqlBuilder, List<Object> parameters,
                                       Class<? extends BaseEntity> entityClass,
                                       QuerySpec<? extends BaseProperty> querySpec) {
         if (querySpec == null) {
@@ -348,10 +527,33 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         sqlBuilder.append(String.join(" AND ", conditions));
     }
 
-    protected Optional<T> findById(Long id, String errorMessage) {
+    /**
+     * Finds one entity by id with caller-provided error message.
+     *
+     * @param id entity id
+     * @param errorMessage message used when SQL execution fails
+     * @return matching entity, or empty when no row exists
+     */
+    private Optional<T> findById(Long id, String errorMessage) {
         return findOne(findByIdSql, List.of(new SqlParameter("id", id)), getRowMapper(), errorMessage);
     }
 
+    /**
+     * Finds one entity by a simple equality check on a mapped Java property.
+     * <p>
+     * Example:
+     *
+     * <pre>{@code
+     * protected Optional<User> findByLoginName(String loginName) {
+     *     return findOneByProperty("loginName", loginName, "Failed to find user by login name.");
+     * }
+     * }</pre>
+     *
+     * @param propertyName Java field name
+     * @param value expected value
+     * @param errorMessage message used when SQL execution fails
+     * @return matching entity, or empty when no row exists
+     */
     protected Optional<T> findOneByProperty(String propertyName, Object value, String errorMessage) {
         String columnName = getRequiredColumnName(entityClass, propertyName);
         return findOne(buildFindBySql(baseSelectSql, entityClass, propertyName),
@@ -359,7 +561,15 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
                 errorMessage);
     }
 
-    protected List<T> findAll(QuerySpec<P> querySpec, String errorMessage) {
+    /**
+     * Finds entities using the generated {@link QuerySpec} pipeline with custom
+     * error message.
+     *
+     * @param querySpec filters, joins, and sort orders; {@code null} means all rows
+     * @param errorMessage message used when SQL execution fails
+     * @return matching entities
+     */
+    private List<T> findAll(QuerySpec<P> querySpec, String errorMessage) {
         List<JoinSpec> joins = querySpec == null ? List.of() : querySpec.getJoins();
         validateQuerySpec(entityClass, querySpec);
         StringBuilder sqlBuilder = new StringBuilder(joins.isEmpty() ? baseSelectSql : buildSelectSql(entityClass, joins));
@@ -503,22 +713,100 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
     }
 
-    protected void setParameters(PreparedStatement preparedStatement, List<?> parameters) throws SQLException {
+    /**
+     * Binds SQL parameters to a prepared statement.
+     * <p>
+     * {@link SqlParameter} wrappers are unwrapped, {@link BaseEntity} references
+     * are converted to their id, Java {@link Boolean} values are converted to
+     * database {@code T}/{@code F}, and {@link Date} values are converted to
+     * {@link Timestamp}.
+     *
+     * @param preparedStatement statement receiving parameters
+     * @param parameters parameter values
+     * @throws SQLException when parameter binding fails
+     */
+    private void setParameters(PreparedStatement preparedStatement, List<?> parameters) throws SQLException {
         for (int index = 0; index < parameters.size(); index++) {
             preparedStatement.setObject(index + 1, getParameterValue(parameters.get(index)));
         }
     }
 
-    protected Optional<T> findOne(String sql, List<?> parameters, RowMapper<T> rowMapper, String errorMessage) {
+    /**
+     * Executes a select expected to return at most one entity-like result.
+     *
+     * @param sql SQL select statement
+     * @param parameters statement parameters
+     * @param rowMapper mapper for the current result row
+     * @param errorMessage message used when SQL execution fails
+     * @return mapped result, or empty when no row exists
+     */
+    private Optional<T> findOne(String sql, List<?> parameters, RowMapper<T> rowMapper, String errorMessage) {
         return findOne("findOne", sql, parameters, rowMapper, errorMessage);
     }
 
+    /**
+     * Executes a custom select expected to return at most one mapped result.
+     * <p>
+     * Use this for projections, aggregations, or PostgreSQL {@code RETURNING}
+     * queries that need a result row.
+     * <p>
+     * Simple example, loading one projection by id:
+     *
+     * <pre>{@code
+     * return findCustomOne("userOptionById",
+     *         "SELECT id, login_name FROM users WHERE id = ?",
+     *         List.of(userId),
+     *         rs -> new UserOption(rs.getLong("id"), rs.getString("login_name")),
+     *         "Failed to load user option.");
+     * }</pre>
+     *
+     * More complex example, returning an aggregate projection with multiple
+     * parameters:
+     *
+     * <pre>{@code
+     * return findCustomOne("userEmailDomainSummary",
+     *         """
+     *         SELECT split_part(email_address, '@', 2) AS email_domain,
+     *                COUNT(*) AS user_count
+     *         FROM users
+     *         WHERE login_name LIKE ?
+     *           AND email_address LIKE ?
+     *         GROUP BY split_part(email_address, '@', 2)
+     *         ORDER BY user_count DESC
+     *         LIMIT ?
+     *         """,
+     *         List.of(loginPrefix + "%", "%@" + domain, 1),
+     *         rs -> new UserEmailDomainSummary(
+     *                 rs.getString("email_domain"),
+     *                 rs.getLong("user_count")),
+     *         "Failed to summarize users by email domain.");
+     * }</pre>
+     *
+     * @param operation short operation name used in SQL debug logs
+     * @param sql SQL select statement
+     * @param parameters statement parameters; {@code null} is treated as empty
+     * @param rowMapper mapper for the current result row
+     * @param errorMessage message used when SQL execution fails
+     * @param <R> mapped result type
+     * @return mapped result, or empty when no row exists
+     */
     protected <R> Optional<R> findCustomOne(String operation, String sql, List<?> parameters,
                                             RowMapper<R> rowMapper, String errorMessage) {
         return findOne(operationName(operation, "customFindOne"), sql, parameters, rowMapper, errorMessage);
     }
 
-    protected <R> Optional<R> findOne(String operation, String sql, List<?> parameters,
+    /**
+     * Executes a select expected to return at most one mapped result.
+     *
+     * @param operation short operation name used in SQL debug logs
+     * @param sql SQL select statement
+     * @param parameters statement parameters; {@code null} is treated as empty
+     * @param rowMapper mapper for the current result row
+     * @param errorMessage message used when SQL execution fails
+     * @param <R> mapped result type
+     * @return mapped result, or empty when no row exists
+     */
+    private <R> Optional<R> findOne(String operation, String sql, List<?> parameters,
                                       RowMapper<R> rowMapper, String errorMessage) {
         List<?> selectedParameters = normalizeParameters(parameters);
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
@@ -540,16 +828,83 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
     }
 
-    protected List<T> findList(String sql, List<?> parameters, RowMapper<T> rowMapper, String errorMessage) {
+    /**
+     * Executes a select returning a list of entity-like results.
+     *
+     * @param sql SQL select statement
+     * @param parameters statement parameters
+     * @param rowMapper mapper for each result row
+     * @param errorMessage message used when SQL execution fails
+     * @return mapped result list
+     */
+    private List<T> findList(String sql, List<?> parameters, RowMapper<T> rowMapper, String errorMessage) {
         return findList("findList", sql, parameters, rowMapper, errorMessage);
     }
 
+    /**
+     * Executes a custom select returning a list of mapped results.
+     * <p>
+     * Use this for custom projections or optimized SQL that does not fit the
+     * generic {@link QuerySpec} builder.
+     * <p>
+     * Simple example, loading options filtered by login-name prefix:
+     *
+     * <pre>{@code
+     * return findCustomList("userOptions",
+     *         "SELECT id, login_name FROM users WHERE login_name LIKE ? ORDER BY login_name",
+     *         List.of(prefix + "%"),
+     *         rs -> new UserOption(rs.getLong("id"), rs.getString("login_name")),
+     *         "Failed to load user options.");
+     * }</pre>
+     *
+     * More complex example, loading a custom report from a grouped query:
+     *
+     * <pre>{@code
+     * return findCustomList("userDomainReport",
+     *         """
+     *         SELECT split_part(email_address, '@', 2) AS email_domain,
+     *                MIN(id) AS first_user_id,
+     *                COUNT(*) AS user_count
+     *         FROM users
+     *         WHERE id >= ?
+     *           AND email_address LIKE ?
+     *         GROUP BY split_part(email_address, '@', 2)
+     *         HAVING COUNT(*) >= ?
+     *         ORDER BY user_count DESC, email_domain ASC
+     *         """,
+     *         List.of(minId, "%@%", minCount),
+     *         rs -> new UserDomainReport(
+     *                 rs.getString("email_domain"),
+     *                 rs.getLong("first_user_id"),
+     *                 rs.getLong("user_count")),
+     *         "Failed to load user domain report.");
+     * }</pre>
+     *
+     * @param operation short operation name used in SQL debug logs
+     * @param sql SQL select statement
+     * @param parameters statement parameters; {@code null} is treated as empty
+     * @param rowMapper mapper for each result row
+     * @param errorMessage message used when SQL execution fails
+     * @param <R> mapped result type
+     * @return mapped result list
+     */
     protected <R> List<R> findCustomList(String operation, String sql, List<?> parameters,
                                          RowMapper<R> rowMapper, String errorMessage) {
         return findList(operationName(operation, "customFindList"), sql, parameters, rowMapper, errorMessage);
     }
 
-    protected <R> List<R> findList(String operation, String sql, List<?> parameters,
+    /**
+     * Executes a select returning a list of mapped results.
+     *
+     * @param operation short operation name used in SQL debug logs
+     * @param sql SQL select statement
+     * @param parameters statement parameters; {@code null} is treated as empty
+     * @param rowMapper mapper for each result row
+     * @param errorMessage message used when SQL execution fails
+     * @param <R> mapped result type
+     * @return mapped result list
+     */
+    private <R> List<R> findList(String operation, String sql, List<?> parameters,
                                    RowMapper<R> rowMapper, String errorMessage) {
         List<?> selectedParameters = normalizeParameters(parameters);
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
@@ -572,6 +927,42 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
     }
 
+    /**
+     * Executes a custom SQL statement that changes rows and returns an update count.
+     * <p>
+     * This is intended for {@code INSERT}, {@code UPDATE}, {@code DELETE}, and
+     * full-table {@code DELETE} style operations that do not return result rows.
+     * Use {@link #findCustomOne(String, String, List, RowMapper, String)} for
+     * SQL such as PostgreSQL {@code INSERT ... RETURNING}.
+     * <p>
+     * Simple example, updating one row:
+     *
+     * <pre>{@code
+     * int rows = executeCustomUpdate("updateUserEmail",
+     *         "UPDATE users SET email_address = ? WHERE id = ?",
+     *         List.of(emailAddress, userId),
+     *         "Failed to update user email address.");
+     * }</pre>
+     *
+     * More complex example, deleting a selected set with an additional condition:
+     *
+     * <pre>{@code
+     * int rows = executeCustomUpdate("deleteTemporaryUsers",
+     *         """
+     *         DELETE FROM users
+     *         WHERE id IN (?, ?, ?)
+     *           AND login_name LIKE ?
+     *         """,
+     *         List.of(firstId, secondId, thirdId, "tmp_%"),
+     *         "Failed to delete temporary users.");
+     * }</pre>
+     *
+     * @param operation short operation name used in SQL debug logs
+     * @param sql SQL statement executed with {@link PreparedStatement#executeUpdate()}
+     * @param parameters statement parameters; {@code null} is treated as empty
+     * @param errorMessage message used when SQL execution fails
+     * @return affected row count reported by JDBC
+     */
     protected int executeCustomUpdate(String operation, String sql, List<?> parameters, String errorMessage) {
         List<?> selectedParameters = normalizeParameters(parameters);
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
@@ -585,10 +976,26 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
     }
 
+    /**
+     * Maps the current result-set row to this DAO's entity type.
+     *
+     * @param resultSet result set positioned on a row
+     * @return mapped entity
+     * @throws SQLException when mapping fails
+     */
     protected T mapEntity(ResultSet resultSet) throws SQLException {
         return mapEntity(resultSet, List.of());
     }
 
+    /**
+     * Maps the current result-set row to this DAO's entity type and maps joined
+     * entities according to the supplied joins.
+     *
+     * @param resultSet result set positioned on a row
+     * @param joins joins whose target properties should be mapped
+     * @return mapped root entity
+     * @throws SQLException when mapping fails
+     */
     protected T mapEntity(ResultSet resultSet, List<JoinSpec> joins) throws SQLException {
         T entity = createEntity();
         for (ColumnFieldMetadata columnField : getEntityMetadata(entityClass).columnFields()) {

@@ -5,9 +5,20 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+/**
+ * Maps an entity field to a database column.
+ * <p>
+ * The annotation is read by {@code BaseDao} when building SQL and mapping
+ * {@code ResultSet} rows back to entities.
+ */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
 public @interface DbColumn {
 
+    /**
+     * Database column name.
+     *
+     * @return column name, for example {@code login_name}
+     */
     String value();
 }

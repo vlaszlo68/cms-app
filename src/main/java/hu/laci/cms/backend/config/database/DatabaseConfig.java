@@ -7,6 +7,16 @@ import javax.servlet.ServletContext;
 import java.sql.Connection;
 import java.sql.SQLException;
 
+/**
+ * Central HikariCP datasource configuration for the application.
+ * <p>
+ * Configuration values are resolved in this order:
+ * environment variables ({@code DB_HOST}, {@code DB_PORT}, {@code DB_NAME},
+ * {@code DB_USER}, {@code DB_PASSWORD}), servlet context parameters, then local
+ * development defaults. Application startup initializes the datasource through
+ * {@link DatabaseConfigListener}; DAO code normally receives connections
+ * indirectly through {@link TransactionContext}.
+ */
 public final class DatabaseConfig {
 
     private static final String DEFAULT_DB_HOST = "localhost";
@@ -20,6 +30,11 @@ public final class DatabaseConfig {
     private DatabaseConfig() {
     }
 
+    /**
+     * Initializes the shared datasource if it has not been initialized yet.
+     *
+     * @param servletContext servlet context used for fallback context parameters
+     */
     public static void initialize(ServletContext servletContext) {
         if (dataSource != null) {
             return;
@@ -107,6 +122,13 @@ public final class DatabaseConfig {
         return value == null || value.isBlank();
     }
 
+    /**
+     * Gets a connection from the configured datasource.
+     *
+     * @return pooled JDBC connection
+     * @throws SQLException when the datasource cannot provide a connection
+     * @throws IllegalStateException when the datasource has not been initialized
+     */
     public static Connection getConnection() throws SQLException {
         if (dataSource == null) {
             throw new IllegalStateException("DatabaseConfig is not initialized.");
@@ -115,6 +137,9 @@ public final class DatabaseConfig {
         return dataSource.getConnection();
     }
 
+    /**
+     * Closes the shared datasource and clears the static reference.
+     */
     public static void shutdown() {
         HikariDataSource currentDataSource = dataSource;
         if (currentDataSource != null) {

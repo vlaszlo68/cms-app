@@ -10,8 +10,24 @@ import javax.servlet.ServletResponse;
 import java.io.IOException;
 import java.sql.SQLException;
 
+/**
+ * Wraps request processing in a request-scoped database transaction.
+ * <p>
+ * It initializes {@link TransactionContext}, lets downstream filters and
+ * servlets run, then commits on success or rolls back on exceptions and
+ * rollback-only state.
+ */
 public class TransactionFilter implements Filter {
 
+    /**
+     * Runs downstream request processing inside a transaction boundary.
+     *
+     * @param request servlet request
+     * @param response servlet response
+     * @param chain downstream filter chain
+     * @throws IOException when downstream processing fails
+     * @throws ServletException when transaction handling or downstream processing fails
+     */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {

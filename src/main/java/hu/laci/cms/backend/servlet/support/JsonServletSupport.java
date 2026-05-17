@@ -9,19 +9,53 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
+/**
+ * Base servlet with common JSON request/response helpers.
+ * <p>
+ * Servlet subclasses use this class to keep API responses in the common
+ * {@link ApiResponse} envelope and to centralize Gson usage.
+ */
 public abstract class JsonServletSupport extends HttpServlet {
 
+    /**
+     * Shared JSON serializer/deserializer for servlet subclasses.
+     */
     protected final Gson gson = new Gson();
 
+    /**
+     * Reads a JSON request body into the target type.
+     *
+     * @param reader request body reader
+     * @param targetType target DTO class
+     * @param <T> target DTO type
+     * @return parsed DTO
+     */
     protected <T> T readJsonBody(InputStreamReader reader, Class<T> targetType) {
         return gson.fromJson(reader, targetType);
     }
 
+    /**
+     * Writes a successful JSON response wrapped in {@link ApiResponse}.
+     *
+     * @param response HTTP response
+     * @param status HTTP status code
+     * @param payload response payload
+     * @throws IOException when writing fails
+     */
     protected void writeJsonResponse(HttpServletResponse response, int status, Object payload)
             throws IOException {
         writeJson(response, status, ApiResponse.success(payload));
     }
 
+    /**
+     * Writes an error JSON response wrapped in {@link ApiResponse}.
+     *
+     * @param response HTTP response
+     * @param status HTTP status code
+     * @param code stable API error code
+     * @param message human-readable error message
+     * @throws IOException when writing fails
+     */
     protected void writeErrorResponse(HttpServletResponse response, int status, String code, String message)
             throws IOException {
         writeJson(response, status, ApiResponse.error(new ApiErrorResponse(code, message)));

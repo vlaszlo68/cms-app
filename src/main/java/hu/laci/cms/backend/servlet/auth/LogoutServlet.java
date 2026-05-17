@@ -9,9 +9,19 @@ import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.Map;
 
+/**
+ * Logout endpoint that invalidates the current HTTP session.
+ */
 @WebServlet("/api/auth/logout")
 public class LogoutServlet extends JsonServletSupport {
 
+    /**
+     * Handles {@code POST /api/auth/logout}.
+     *
+     * @param request HTTP request
+     * @param response HTTP response
+     * @throws IOException when writing fails
+     */
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
         HttpSession session = request.getSession(false);

@@ -14,10 +14,25 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
 
+/**
+ * Logs one summary line for every HTTP request after downstream processing ends.
+ * <p>
+ * The log entry contains method, URI, final response status, duration, remote
+ * address, and authenticated user information when a session user is available.
+ */
 public class RequestLoggingFilter implements Filter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RequestLoggingFilter.class);
 
+    /**
+     * Measures downstream processing and logs the final request summary.
+     *
+     * @param request servlet request
+     * @param response servlet response
+     * @param chain downstream filter chain
+     * @throws IOException when downstream processing fails
+     * @throws ServletException when downstream processing fails
+     */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {

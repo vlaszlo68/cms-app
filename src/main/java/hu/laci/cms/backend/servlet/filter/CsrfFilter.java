@@ -17,6 +17,13 @@ import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.util.Set;
 
+/**
+ * Validates CSRF tokens for state-changing API requests.
+ * <p>
+ * Safe methods ({@code GET}, {@code HEAD}, {@code OPTIONS}) and login are
+ * skipped. Other requests must come from an authenticated session and must send
+ * the session token in the {@code X-CSRF-Token} header.
+ */
 public class CsrfFilter implements Filter {
 
     private static final String LOGIN_PATH = "/api/auth/login";
@@ -24,6 +31,15 @@ public class CsrfFilter implements Filter {
 
     private final Gson gson = new Gson();
 
+    /**
+     * Validates CSRF state and either continues the filter chain or writes an error response.
+     *
+     * @param request servlet request
+     * @param response servlet response
+     * @param chain downstream filter chain
+     * @throws IOException when writing or downstream processing fails
+     * @throws ServletException when downstream processing fails
+     */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {

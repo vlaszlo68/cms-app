@@ -8,8 +8,24 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 
+/**
+ * Adds cache-control and browser security headers to every response.
+ * <p>
+ * The current header set disables caching and adds basic hardening headers such
+ * as {@code X-Content-Type-Options}, {@code X-Frame-Options},
+ * {@code Referrer-Policy}, and {@code Permissions-Policy}.
+ */
 public class SecurityHeadersFilter implements Filter {
 
+    /**
+     * Adds security headers before continuing the filter chain.
+     *
+     * @param request servlet request
+     * @param response servlet response
+     * @param chain downstream filter chain
+     * @throws IOException when downstream processing fails
+     * @throws ServletException when downstream processing fails
+     */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
