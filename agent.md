@@ -80,6 +80,18 @@ When building a feature:
 
 ---
 
+## Javadoc Rules
+
+- Write Javadoc as part of creating new API, not as a separate cleanup step before commit.
+- Every new class should have class-level Javadoc explaining its role, layer, and important lifecycle or usage constraints.
+- Every new public or protected method should have Javadoc when it is part of the usable API or subclass extension surface.
+- Public/protected DAO, query, transaction, servlet support, and infrastructure APIs should include parameters, return values, exceptions where relevant, and a short example when usage is not obvious.
+- Private methods do not need Javadoc by default. Document private methods only when they contain non-trivial logic, important invariants, or decisions that are hard to infer from names and code.
+- DTO getters/setters and standard servlet/filter/listener overrides may use short, basic Javadoc.
+- Before finishing a change, check that newly added public/protected classes and methods are documented consistently.
+
+---
+
 ## Constraints
 
 Do NOT:

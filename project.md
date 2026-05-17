@@ -266,6 +266,16 @@ DAO responsibilities and behavior:
 
 - `CrudDao<T, P>` defines common CRUD operations.
 - `BaseDao<T, P>` implements reusable CRUD, query filtering, sorting, mapping, and SQL parameter handling.
+- `BaseDao` keeps its subclass API intentionally narrow; internal SQL builders, parameter binding, and query assembly helpers are private implementation details.
+- intended `BaseDao` subclass extension points are:
+  - constructor with entity class
+  - `getEntityClass()`
+  - `getRowMapper()`
+  - `findOneByProperty(...)`
+  - `findCustomOne(...)`
+  - `findCustomList(...)`
+  - `executeCustomUpdate(...)`
+  - `mapEntity(...)`
 - Entity classes extend `BaseEntity`; `id` is always `Long`.
 - `save(entity)` delegates to `create` when `id == null`, otherwise to `update`.
 - `create` uses `INSERT ... RETURNING id`.
@@ -290,6 +300,7 @@ Custom SQL support:
   - `findCustomList(operation, sql, parameters, rowMapper, errorMessage)`
   - `executeCustomUpdate(operation, sql, parameters, errorMessage)`
 - custom `SELECT` helpers can map arbitrary projection/DTO/entity result types through `RowMapper<R>`
+- custom SQL helper Javadocs contain simple and more complex examples with non-empty parameter lists
 - `executeCustomUpdate` is intended for `INSERT`, `UPDATE`, `DELETE`, and full-table `DELETE` style operations
 - SQL operations still reuse `TransactionContext`, prepared statement parameter binding, boolean parameter conversion, SQL logging, and `DataAccessException` wrapping
 - SQL with result rows, such as PostgreSQL `INSERT ... RETURNING`, should use a custom select helper or a dedicated helper rather than `executeCustomUpdate`
@@ -425,6 +436,11 @@ Package conventions:
 - Keep API errors in the common response envelope
 - Avoid leaking implementation details or stack traces to frontend responses
 - Treat DB-backed DAO tests as integration tests, even if they run under Maven Surefire
+- Write Javadoc when creating new classes and public/protected APIs, not as a separate final cleanup.
+- Every class should have class-level Javadoc.
+- Public/protected APIs should document parameters, return values, relevant exceptions, and usage examples when helpful.
+- Private methods need Javadoc only for non-trivial logic or important invariants.
+- DAO/query/transaction/infrastructure APIs should have more detailed Javadoc than DTO getters or standard servlet/filter/listener overrides.
 
 ---
 
