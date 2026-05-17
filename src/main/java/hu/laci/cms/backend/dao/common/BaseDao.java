@@ -510,11 +510,22 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     }
 
     protected Optional<T> findOne(String sql, List<?> parameters, RowMapper<T> rowMapper, String errorMessage) {
+        return findOne("findOne", sql, parameters, rowMapper, errorMessage);
+    }
+
+    protected <R> Optional<R> findCustomOne(String operation, String sql, List<?> parameters,
+                                            RowMapper<R> rowMapper, String errorMessage) {
+        return findOne(operationName(operation, "customFindOne"), sql, parameters, rowMapper, errorMessage);
+    }
+
+    protected <R> Optional<R> findOne(String operation, String sql, List<?> parameters,
+                                      RowMapper<R> rowMapper, String errorMessage) {
+        List<?> selectedParameters = normalizeParameters(parameters);
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
              PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(sql)) {
 
-            logSql("findOne", sql, parameters);
-            setParameters(preparedStatement, parameters);
+            logSql(operationName(operation, "findOne"), sql, selectedParameters);
+            setParameters(preparedStatement, selectedParameters);
 
             try (ResultSet resultSet = preparedStatement.executeQuery()) {
                 if (!resultSet.next()) {
@@ -530,14 +541,25 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     }
 
     protected List<T> findList(String sql, List<?> parameters, RowMapper<T> rowMapper, String errorMessage) {
+        return findList("findList", sql, parameters, rowMapper, errorMessage);
+    }
+
+    protected <R> List<R> findCustomList(String operation, String sql, List<?> parameters,
+                                         RowMapper<R> rowMapper, String errorMessage) {
+        return findList(operationName(operation, "customFindList"), sql, parameters, rowMapper, errorMessage);
+    }
+
+    protected <R> List<R> findList(String operation, String sql, List<?> parameters,
+                                   RowMapper<R> rowMapper, String errorMessage) {
+        List<?> selectedParameters = normalizeParameters(parameters);
         try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
              PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(sql)) {
 
-            logSql("findList", sql, parameters);
-            setParameters(preparedStatement, parameters);
+            logSql(operationName(operation, "findList"), sql, selectedParameters);
+            setParameters(preparedStatement, selectedParameters);
 
             try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                List<T> results = new ArrayList<>();
+                List<R> results = new ArrayList<>();
                 while (resultSet.next()) {
                     results.add(rowMapper.map(resultSet));
                 }
@@ -546,6 +568,19 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
             }
         } catch (SQLException e) {
             LOGGER.error("Failed to execute findList SQL.", e);
+            throw new DataAccessException(errorMessage, e);
+        }
+    }
+
+    protected int executeCustomUpdate(String operation, String sql, List<?> parameters, String errorMessage) {
+        List<?> selectedParameters = normalizeParameters(parameters);
+        try (TransactionContext.ConnectionScope connectionScope = TransactionContext.openConnection();
+             PreparedStatement preparedStatement = connectionScope.getConnection().prepareStatement(sql)) {
+            logSql(operationName(operation, "customUpdate"), sql, selectedParameters);
+            setParameters(preparedStatement, selectedParameters);
+            return preparedStatement.executeUpdate();
+        } catch (SQLException e) {
+            LOGGER.error("Failed to execute custom update SQL.", e);
             throw new DataAccessException(errorMessage, e);
         }
     }
@@ -910,6 +945,14 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
 
         return value;
+    }
+
+    private static List<?> normalizeParameters(List<?> parameters) {
+        return parameters == null ? List.of() : parameters;
+    }
+
+    private static String operationName(String operation, String defaultOperation) {
+        return operation == null || operation.isBlank() ? defaultOperation : operation;
     }
 
     private static void logSql(String operation, String sql, List<?> parameters) {

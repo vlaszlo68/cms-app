@@ -20,6 +20,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -96,6 +97,42 @@ class BaseDaoBooleanMappingTest {
 
         assertNull(findRawActiveValue(entity.getId()));
         assertNull(dao.findById(entity.getId()).orElseThrow().getActive());
+    }
+
+    @Test
+    void customFindOneMapsProjection() throws SQLException {
+        insertRawActiveValue("T");
+        insertRawActiveValue("F");
+
+        Optional<BooleanSummary> summary = dao.findCustomSummary();
+
+        assertTrue(summary.isPresent());
+        assertEquals(2L, summary.orElseThrow().rowCount());
+        assertEquals(1L, summary.orElseThrow().activeCount());
+    }
+
+    @Test
+    void customFindListMapsProjectionRows() throws SQLException {
+        long activeId = insertRawActiveValue("T");
+        long inactiveId = insertRawActiveValue("F");
+
+        List<BooleanRow> rows = dao.findCustomRows();
+
+        assertEquals(List.of(new BooleanRow(activeId, true), new BooleanRow(inactiveId, false)), rows);
+    }
+
+    @Test
+    void customUpdateSupportsInsertUpdateAndDelete() throws SQLException {
+        assertEquals(1, dao.insertCustomActive(true));
+        BooleanRow row = dao.findCustomRows().get(0);
+        assertEquals(Boolean.TRUE, row.active());
+        assertEquals("T", findRawActiveValue(row.id()));
+
+        assertEquals(1, dao.updateCustomActive(row.id(), false));
+        assertEquals("F", findRawActiveValue(row.id()));
+
+        assertEquals(1, dao.deleteAllCustom());
+        assertTrue(dao.findCustomRows().isEmpty());
     }
 
     @Test
@@ -410,6 +447,55 @@ class BaseDaoBooleanMappingTest {
         private BooleanEntityDao() {
             super(BooleanEntity.class);
         }
+
+        private int insertCustomActive(Boolean active) {
+            return executeCustomUpdate("insertBooleanEntity", """
+                    INSERT INTO dao_boolean_test_entities (active)
+                    VALUES (?)
+                    """, List.of(active), "Failed to insert boolean entity.");
+        }
+
+        private int updateCustomActive(Long id, Boolean active) {
+            return executeCustomUpdate("updateBooleanEntity", """
+                    UPDATE dao_boolean_test_entities
+                    SET active = ?
+                    WHERE id = ?
+                    """, List.of(active, id), "Failed to update boolean entity.");
+        }
+
+        private int deleteAllCustom() {
+            return executeCustomUpdate("deleteAllBooleanEntities",
+                    "DELETE FROM dao_boolean_test_entities",
+                    List.of(),
+                    "Failed to delete boolean entities.");
+        }
+
+        private Optional<BooleanSummary> findCustomSummary() {
+            return findCustomOne("booleanSummary", """
+                    SELECT COUNT(*) AS row_count,
+                           COUNT(*) FILTER (WHERE active = ?) AS active_count
+                    FROM dao_boolean_test_entities
+                    """, List.of(true),
+                    resultSet -> new BooleanSummary(resultSet.getLong("row_count"),
+                            resultSet.getLong("active_count")),
+                    "Failed to summarize boolean entities.");
+        }
+
+        private List<BooleanRow> findCustomRows() {
+            return findCustomList("booleanRows", """
+                    SELECT id, active
+                    FROM dao_boolean_test_entities
+                    ORDER BY id
+                    """, List.of(),
+                    resultSet -> new BooleanRow(resultSet.getLong("id"), "T".equals(resultSet.getString("active"))),
+                    "Failed to list boolean entity rows.");
+        }
+    }
+
+    private record BooleanSummary(long rowCount, long activeCount) {
+    }
+
+    private record BooleanRow(long id, Boolean active) {
     }
 
     private static final class ChildEntityDao extends BaseDao<ChildEntity, ChildProperty> {
