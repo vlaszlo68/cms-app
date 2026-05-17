@@ -1,20 +1,19 @@
 package hu.laci.cms.backend.dao.common;
 
 import hu.laci.cms.backend.model.common.BaseEntity;
-import hu.laci.cms.backend.model.common.BaseFilter;
-import hu.laci.cms.backend.model.common.BaseSort;
-import hu.laci.cms.backend.model.common.SortOrder;
+import hu.laci.cms.backend.model.common.BaseProperty;
+import hu.laci.cms.backend.model.common.QuerySpec;
 
 import java.util.List;
 import java.util.Optional;
 
-public interface CrudDao<T extends BaseEntity, F extends BaseFilter, S extends BaseSort> {
+public interface CrudDao<T extends BaseEntity, P extends BaseProperty> {
 
     default List<T> findAll() {
-        return findAll(null, null);
+        return findAll((QuerySpec<P>) null);
     }
 
-    List<T> findAll(F filter, List<SortOrder<S>> sort);
+    List<T> findAll(QuerySpec<P> querySpec);
 
     Optional<T> findById(Long id);
 

@@ -3,12 +3,11 @@ package hu.laci.cms.backend.dao.common;
 import hu.laci.cms.backend.config.database.TransactionContext;
 import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
-import hu.laci.cms.backend.model.common.annotations.FilterOperation;
-import hu.laci.cms.backend.model.common.annotations.FilterProperty;
-import hu.laci.cms.backend.model.common.annotations.LikeFilterPosition;
 import hu.laci.cms.backend.model.common.BaseEntity;
-import hu.laci.cms.backend.model.common.BaseFilter;
-import hu.laci.cms.backend.model.common.BaseSort;
+import hu.laci.cms.backend.model.common.FilterOperation;
+import hu.laci.cms.backend.model.common.LikeFilterPosition;
+import hu.laci.cms.backend.model.common.BaseProperty;
+import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.common.SortOrder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +21,7 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,14 +30,13 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S extends BaseSort>
-        implements CrudDao<T, F, S> {
+public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
+        implements CrudDao<T, P> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BaseDao.class);
 
     private static final Map<Class<?>, List<Field>> FIELD_CACHE = new ConcurrentHashMap<>();
     private static final Map<Class<? extends BaseEntity>, EntityMetadata> ENTITY_METADATA_CACHE = new ConcurrentHashMap<>();
-    private static final Map<Class<?>, FilterMetadata> FILTER_METADATA_CACHE = new ConcurrentHashMap<>();
 
     private final Class<T> entityClass;
     private final String baseSelectSql;
@@ -57,8 +56,8 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     }
 
     @Override
-    public List<T> findAll(F filter, List<SortOrder<S>> sort) {
-        return findAll(filter, sort, "Failed to get " + entityClass.getSimpleName() + " list.");
+    public List<T> findAll(QuerySpec<P> querySpec) {
+        return findAll(querySpec, "Failed to get " + entityClass.getSimpleName() + " list.");
     }
 
     @Override
@@ -209,24 +208,37 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         return "WHERE " + getRequiredQualifiedColumnName(entityClass, propertyName) + " = ?";
     }
 
-    protected void appendFilters(StringBuilder sqlBuilder, List<Object> parameters,
-                                 Class<? extends BaseEntity> entityClass, BaseFilter filter) {
-        if (filter == null) {
+    protected void appendOrder(StringBuilder sqlBuilder, Class<? extends BaseEntity> entityClass, List<? extends SortOrder<? extends BaseProperty>> sort) {
+        List<? extends SortOrder<? extends BaseProperty>> selectedSort =
+                sort == null || sort.isEmpty() ? List.of(new SortOrder<>(BaseProperty.ID)) : sort;
+
+        sqlBuilder.append(System.lineSeparator())
+                .append("ORDER BY ")
+                .append(selectedSort.stream()
+                        .map(sortOrder -> getRequiredQualifiedColumnName(entityClass, sortOrder.getProperty().getPropertyName())
+                                + " " + sortOrder.getDirection())
+                        .collect(Collectors.joining(", ")));
+    }
+
+    protected void appendQueryFilters(StringBuilder sqlBuilder, List<Object> parameters,
+                                      Class<? extends BaseEntity> entityClass,
+                                      QuerySpec<? extends BaseProperty> querySpec) {
+        if (querySpec == null) {
             return;
         }
 
         List<String> conditions = new ArrayList<>();
-        for (FilterFieldMetadata filterField : getFilterMetadata(filter.getClass()).fields()) {
-            Object value = getFieldValue(filterField.field(), filter);
+        for (QuerySpec.FilterCriterion<? extends BaseProperty> filter : querySpec.getFilters()) {
+            Object value = filter.getValue();
             if (isEmptyFilterValue(value)) {
                 continue;
             }
 
-            String columnName = getRequiredColumnName(entityClass, filterField.entityProperty());
-            String qualifiedColumnName = getRequiredQualifiedColumnName(entityClass, filterField.entityProperty());
-            conditions.add(buildFilterCondition(qualifiedColumnName, filterField));
-            parameters.add(new SqlParameter(columnName,
-                    buildFilterParameter(value, filterField.operation(), filterField.likePosition())));
+            String propertyName = filter.getProperty().getPropertyName();
+            String columnName = getRequiredColumnName(entityClass, propertyName);
+            String qualifiedColumnName = getRequiredQualifiedColumnName(entityClass, propertyName);
+            conditions.add(buildFilterCondition(qualifiedColumnName, filter.getOperation(), value));
+            parameters.addAll(buildFilterParameters(columnName, value, filter.getOperation(), filter.getLikePosition()));
         }
 
         if (conditions.isEmpty()) {
@@ -235,19 +247,6 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
 
         sqlBuilder.append(System.lineSeparator()).append("WHERE ");
         sqlBuilder.append(String.join(" AND ", conditions));
-    }
-
-    protected void appendOrder(StringBuilder sqlBuilder, Class<? extends BaseEntity> entityClass,
-                               List<? extends SortOrder<? extends BaseSort>> sort) {
-        List<? extends SortOrder<? extends BaseSort>> selectedSort =
-                sort == null || sort.isEmpty() ? List.of(new SortOrder<>(BaseSort.ID)) : sort;
-
-        sqlBuilder.append(System.lineSeparator())
-                .append("ORDER BY ")
-                .append(selectedSort.stream()
-                        .map(sortOrder -> getRequiredQualifiedColumnName(entityClass, sortOrder.getSort().getPropertyName())
-                                + " " + sortOrder.getDirection())
-                        .collect(Collectors.joining(", ")));
     }
 
     protected Optional<T> findById(Long id, String errorMessage) {
@@ -261,12 +260,12 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
                 errorMessage);
     }
 
-    protected List<T> findAll(F filter, List<SortOrder<S>> sort, String errorMessage) {
+    protected List<T> findAll(QuerySpec<P> querySpec, String errorMessage) {
         StringBuilder sqlBuilder = new StringBuilder(baseSelectSql);
         List<Object> parameters = new ArrayList<>();
 
-        appendFilters(sqlBuilder, parameters, entityClass, filter);
-        appendOrder(sqlBuilder, entityClass, sort);
+        appendQueryFilters(sqlBuilder, parameters, entityClass, querySpec);
+        appendOrder(sqlBuilder, entityClass, querySpec == null ? null : querySpec.getSortOrders());
 
         return findList(sqlBuilder.toString(), parameters, getRowMapper(), errorMessage);
     }
@@ -453,11 +452,26 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         return fieldType;
     }
 
-    private static String buildFilterCondition(String columnName, FilterFieldMetadata filterField) {
-        return switch (filterField.operation()) {
+    private static String buildFilterCondition(String columnName, FilterOperation operation, Object value) {
+        return switch (operation) {
             case EQUALS -> columnName + " = ?";
             case LIKE -> columnName + " LIKE ?";
+            case LESS -> columnName + " < ?";
+            case LESS_OR_EQUALS -> columnName + " <= ?";
+            case GREATER -> columnName + " > ?";
+            case GREATER_OR_EQUALS -> columnName + " >= ?";
+            case IN -> columnName + " IN (" + buildPlaceholders(getFilterValueCount(value)) + ")";
+            case NOT_IN -> columnName + " NOT IN (" + buildPlaceholders(getFilterValueCount(value)) + ")";
+            case BETWEEN -> columnName + " BETWEEN ? AND ?";
         };
+    }
+
+    private static List<SqlParameter> buildFilterParameters(String columnName, Object value, FilterOperation operation,
+                                                            LikeFilterPosition likePosition) {
+        return getFilterValues(value, operation).stream()
+                .map(filterValue -> new SqlParameter(columnName,
+                        buildFilterParameter(filterValue, operation, likePosition)))
+                .toList();
     }
 
     private static Object buildFilterParameter(Object value, FilterOperation operation, LikeFilterPosition likePosition) {
@@ -471,6 +485,45 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         }
 
         return value;
+    }
+
+    private static String buildPlaceholders(int count) {
+        return java.util.stream.IntStream.range(0, count)
+                .mapToObj(index -> "?")
+                .collect(Collectors.joining(", "));
+    }
+
+    private static int getFilterValueCount(Object value) {
+        return getFilterValues(value, null).size();
+    }
+
+    private static List<?> getFilterValues(Object value, FilterOperation operation) {
+        if (operation == FilterOperation.BETWEEN) {
+            List<?> values = asValueList(value);
+            if (values.size() != 2) {
+                throw new IllegalArgumentException("BETWEEN filter requires exactly two values.");
+            }
+
+            return values;
+        }
+
+        if (operation == FilterOperation.IN || operation == FilterOperation.NOT_IN || value instanceof Collection<?>
+                || value != null && value.getClass().isArray()) {
+            return asValueList(value);
+        }
+
+        return List.of(value);
+    }
+
+    private static List<?> asValueList(Object value) {
+        if (value instanceof Collection<?> collection) {
+            return List.copyOf(collection);
+        }
+        if (value instanceof Object[] array) {
+            return Arrays.asList(array);
+        }
+
+        return List.of(value);
     }
 
     private static Object getFieldValue(Field field, Object instance) {
@@ -574,7 +627,10 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
     }
 
     private static boolean isEmptyFilterValue(Object value) {
-        return value == null || value instanceof String stringValue && stringValue.trim().isEmpty();
+        return value == null
+                || value instanceof String stringValue && stringValue.trim().isEmpty()
+                || value instanceof Collection<?> collection && collection.isEmpty()
+                || value instanceof Object[] array && array.length == 0;
     }
 
     private static String buildResultAlias(String tableName, String columnName) {
@@ -648,25 +704,6 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         return new EntityMetadata(dbTable.value(), List.copyOf(columnFields), selectExpressions,
                 List.copyOf(insertableColumnFields), List.copyOf(updatableColumnFields),
                 Map.copyOf(columnsByProperty), Map.copyOf(qualifiedColumnsByProperty));
-    }
-
-    private static FilterMetadata getFilterMetadata(Class<?> filterClass) {
-        return FILTER_METADATA_CACHE.computeIfAbsent(filterClass, BaseDao::readFilterMetadata);
-    }
-
-    private static FilterMetadata readFilterMetadata(Class<?> filterClass) {
-        List<FilterFieldMetadata> fields = new ArrayList<>();
-        for (Field field : getAllFields(filterClass)) {
-            FilterProperty filterProperty = field.getAnnotation(FilterProperty.class);
-            if (filterProperty == null) {
-                continue;
-            }
-
-            fields.add(new FilterFieldMetadata(field, filterProperty.entityProperty(), filterProperty.operation(),
-                    filterProperty.likePosition()));
-        }
-
-        return new FilterMetadata(List.copyOf(fields));
     }
 
     private static List<Field> getAllFields(Class<?> entityClass) {
@@ -795,48 +832,4 @@ public abstract class BaseDao<T extends BaseEntity, F extends BaseFilter, S exte
         }
     }
 
-    private static final class FilterMetadata {
-
-        private final List<FilterFieldMetadata> fields;
-
-        private FilterMetadata(List<FilterFieldMetadata> fields) {
-            this.fields = fields;
-        }
-
-        private List<FilterFieldMetadata> fields() {
-            return fields;
-        }
-    }
-
-    private static final class FilterFieldMetadata {
-
-        private final Field field;
-        private final String entityProperty;
-        private final FilterOperation operation;
-        private final LikeFilterPosition likePosition;
-
-        private FilterFieldMetadata(Field field, String entityProperty, FilterOperation operation,
-                                    LikeFilterPosition likePosition) {
-            this.field = field;
-            this.entityProperty = entityProperty;
-            this.operation = operation;
-            this.likePosition = likePosition;
-        }
-
-        private Field field() {
-            return field;
-        }
-
-        private String entityProperty() {
-            return entityProperty;
-        }
-
-        private FilterOperation operation() {
-            return operation;
-        }
-
-        private LikeFilterPosition likePosition() {
-            return likePosition;
-        }
-    }
 }

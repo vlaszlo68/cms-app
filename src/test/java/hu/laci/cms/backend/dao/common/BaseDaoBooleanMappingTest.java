@@ -4,8 +4,7 @@ import hu.laci.cms.backend.config.database.DatabaseConfig;
 import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.BaseEntity;
-import hu.laci.cms.backend.model.common.BaseFilter;
-import hu.laci.cms.backend.model.common.BaseSort;
+import hu.laci.cms.backend.model.common.BaseProperty;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -204,7 +203,7 @@ class BaseDaoBooleanMappingTest {
         return null;
     }
 
-    private static final class BooleanEntityDao extends BaseDao<BooleanEntity, BaseFilter, BaseSort> {
+    private static final class BooleanEntityDao extends BaseDao<BooleanEntity, BaseProperty> {
 
         private BooleanEntityDao() {
             super(BooleanEntity.class);

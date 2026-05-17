@@ -2,12 +2,11 @@ package hu.laci.cms.backend.dao.user;
 
 import hu.laci.cms.backend.dao.common.BaseDao;
 import hu.laci.cms.backend.model.user.User;
-import hu.laci.cms.backend.model.user.UserFilter;
-import hu.laci.cms.backend.model.user.UserSort;
+import hu.laci.cms.backend.model.user.UserProperty;
 
 import java.util.Optional;
 
-public class UserDaoImpl extends BaseDao<User, UserFilter, UserSort> implements UserDao {
+public class UserDaoImpl extends BaseDao<User, UserProperty> implements UserDao {
 
     public UserDaoImpl() {
         super(User.class);

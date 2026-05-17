@@ -258,22 +258,22 @@ DAO layer notes:
 - `LIKE` filters add `%` in the base DAO according to annotation configuration
 - Java `Boolean`/`boolean` maps to database `VARCHAR(1)` values `T`/`F`
 - DB mapping annotations live under `hu.laci.cms.backend.dao.common.annotations`
-- filter annotations live under `hu.laci.cms.backend.model.common.annotations`
+- query filtering uses `QuerySpec` with entity property constants
 
 DAO responsibilities and behavior:
 
-- `CrudDao<T, F, S>` defines common CRUD operations.
-- `BaseDao<T, F, S>` implements reusable CRUD, filtering, sorting, mapping, and SQL parameter handling.
+- `CrudDao<T, P>` defines common CRUD operations.
+- `BaseDao<T, P>` implements reusable CRUD, query filtering, sorting, mapping, and SQL parameter handling.
 - Entity classes extend `BaseEntity`; `id` is always `Long`.
 - `save(entity)` delegates to `create` when `id == null`, otherwise to `update`.
 - `create` uses `INSERT ... RETURNING id`.
 - `update` requires non-null id and fails if no row exists.
 - `deleteById` returns whether a row was deleted.
-- `findAll(filter, sort)` defaults to `ORDER BY id ASC`.
-- Sort input is a list of `SortOrder<S>`, so multi-column order is supported.
-- Filter metadata is annotation-driven through `FilterProperty`.
+- `findAll(querySpec)` defaults to `ORDER BY id ASC`.
+- Query sort input is a list of `SortOrder<P>`, so multi-column order is supported.
+- Query filters are built from `QuerySpec` criteria.
 - Entity metadata is annotation-driven through `DbTable` and `DbColumn`.
-- Reflection metadata is cached per entity/filter class.
+- Reflection metadata is cached per entity class.
 - Result mapping uses generated column aliases, not raw column names.
 
 Supported common type conversions:
@@ -373,8 +373,8 @@ cms-app/
 
 Package conventions:
 
-- `model.*`: persistence/domain-like model classes, filters, sort definitions
-- `model.common.annotations`: annotations that describe filter/model behavior
+- `model.*`: persistence/domain-like model classes and query property definitions
+- `model.common`: common model, query, filter operation, and sort-order support
 - `dao.*`: DAO interfaces and implementations
 - `dao.common`: shared DAO infrastructure
 - `dao.common.annotations`: DB mapping annotations

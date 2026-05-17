@@ -3,9 +3,10 @@ package hu.laci.cms.backend.dao.user;
 import hu.laci.cms.backend.config.database.DatabaseConfig;
 import hu.laci.cms.backend.config.database.TransactionContext;
 import hu.laci.cms.backend.dao.common.DataAccessException;
+import hu.laci.cms.backend.model.common.LikeFilterPosition;
+import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.user.User;
-import hu.laci.cms.backend.model.user.UserFilter;
-import hu.laci.cms.backend.model.user.UserSort;
+import hu.laci.cms.backend.model.user.UserProperty;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -96,25 +97,104 @@ class UserDaoImplTest {
     }
 
     @Test
-    void findAllFiltersByIdUsingBaseFilter() throws SQLException {
+    void findAllWithQuerySpecFiltersById() throws SQLException {
         long userId = insertUser("alpha", "alpha", "alpha");
         insertUser("beta", "beta", "beta");
 
-        List<User> users = userDao.findAll(new UserFilter(userId, null, null, null), null);
+        List<User> users = userDao.findAll(QuerySpec.<UserProperty>create()
+                .where(UserProperty.ID).equalsTo(userId));
 
         assertEquals(1, users.size());
         assertEquals(userId, users.get(0).getId());
     }
 
     @Test
-    void findAllFiltersByLikePrefix() throws SQLException {
+    void findAllWithQuerySpecFiltersByLikePrefix() throws SQLException {
         insertUser("alpha", "alpha", "alpha");
         insertUser("beta", "beta", "beta");
 
-        List<User> users = userDao.findAll(new UserFilter(TEST_PREFIX + "al", null, null), null);
+        List<User> users = userDao.findAll(QuerySpec.<UserProperty>create()
+                .where(UserProperty.USER_NAME).like(TEST_PREFIX + "al"));
 
         assertEquals(1, users.size());
         assertEquals(TEST_PREFIX + "alpha", users.get(0).getUserName());
+    }
+
+    @Test
+    void findAllWithQuerySpecFiltersByLikeContains() throws SQLException {
+        insertUser("alpha", "alpha", "alpha");
+        insertUser("beta", "beta", "beta");
+
+        List<User> users = userDao.findAll(QuerySpec.<UserProperty>create()
+                .where(UserProperty.USER_NAME).like("lph", LikeFilterPosition.CONTAINS));
+
+        assertEquals(1, users.size());
+        assertEquals(TEST_PREFIX + "alpha", users.get(0).getUserName());
+    }
+
+    @Test
+    void findAllWithQuerySpecFiltersByRelationalOperation() throws SQLException {
+        long firstUserId = insertUser("alpha", "alpha", "alpha");
+        long secondUserId = insertUser("beta", "beta", "beta");
+
+        List<User> users = userDao.findAll(QuerySpec.<UserProperty>create()
+                .where(UserProperty.ID).greaterThan(firstUserId));
+
+        assertEquals(List.of(secondUserId), users.stream().map(User::getId).toList());
+    }
+
+    @Test
+    void findAllWithQuerySpecFiltersByIn() throws SQLException {
+        long firstUserId = insertUser("alpha", "alpha", "alpha");
+        insertUser("beta", "beta", "beta");
+        long thirdUserId = insertUser("gamma", "gamma", "gamma");
+
+        List<User> users = userDao.findAll(QuerySpec.<UserProperty>create()
+                .where(UserProperty.ID).in(firstUserId, thirdUserId));
+
+        assertEquals(List.of(firstUserId, thirdUserId), users.stream().map(User::getId).toList());
+    }
+
+    @Test
+    void findAllWithQuerySpecFiltersByNotIn() throws SQLException {
+        long firstUserId = insertUser("alpha", "alpha", "alpha");
+        long secondUserId = insertUser("beta", "beta", "beta");
+        long thirdUserId = insertUser("gamma", "gamma", "gamma");
+
+        List<User> users = userDao.findAll(QuerySpec.<UserProperty>create()
+                .where(UserProperty.USER_NAME).like(TEST_PREFIX)
+                .where(UserProperty.ID).notIn(secondUserId));
+
+        assertEquals(List.of(firstUserId, thirdUserId), users.stream().map(User::getId).toList());
+    }
+
+    @Test
+    void findAllWithQuerySpecFiltersByBetween() throws SQLException {
+        long firstUserId = insertUser("alpha", "alpha", "alpha");
+        long secondUserId = insertUser("beta", "beta", "beta");
+        insertUser("gamma", "gamma", "gamma");
+
+        List<User> users = userDao.findAll(QuerySpec.<UserProperty>create()
+                .where(UserProperty.ID).between(firstUserId, secondUserId));
+
+        assertEquals(List.of(firstUserId, secondUserId), users.stream().map(User::getId).toList());
+    }
+
+    @Test
+    void findAllWithQuerySpecSortsByMultipleFields() throws SQLException {
+        insertUser("same", "charlie", "charlie");
+        insertUser("same", "bravo", "bravo");
+        insertUser("same", "alpha", "alpha");
+
+        List<User> users = userDao.findAll(QuerySpec.<UserProperty>create()
+                .where(UserProperty.USER_NAME).equalsTo(TEST_PREFIX + "same")
+                .orderBy(UserProperty.LOGIN_NAME.desc()));
+
+        assertEquals(List.of(
+                        TEST_PREFIX + "charlie_login",
+                        TEST_PREFIX + "bravo_login",
+                        TEST_PREFIX + "alpha_login"),
+                users.stream().map(User::getLoginName).toList());
     }
 
     @Test
@@ -122,7 +202,8 @@ class UserDaoImplTest {
         long firstUserId = insertUser("alpha", "alpha", "alpha");
         long secondUserId = insertUser("beta", "beta", "beta");
 
-        List<User> users = userDao.findAll(new UserFilter(TEST_PREFIX, null, null), null);
+        List<User> users = userDao.findAll(QuerySpec.<UserProperty>create()
+                .where(UserProperty.USER_NAME).like(TEST_PREFIX));
 
         assertEquals(List.of(firstUserId, secondUserId), users.stream().map(User::getId).toList());
     }
@@ -134,8 +215,9 @@ class UserDaoImplTest {
         insertUser("same", "alpha", "alpha");
 
         List<User> users = userDao.findAll(
-                new UserFilter(TEST_PREFIX + "same", null, null),
-                List.of(UserSort.USER_NAME.asc(), UserSort.LOGIN_NAME.desc()));
+                QuerySpec.<UserProperty>create()
+                        .where(UserProperty.USER_NAME).like(TEST_PREFIX + "same")
+                        .orderBy(UserProperty.USER_NAME.asc(), UserProperty.LOGIN_NAME.desc()));
 
         assertEquals(List.of(
                         TEST_PREFIX + "charlie_login",

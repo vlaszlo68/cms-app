@@ -1,4 +1,4 @@
-package hu.laci.cms.backend.model.common.annotations;
+package hu.laci.cms.backend.model.common;
 
 public enum LikeFilterPosition {
     STARTS_WITH,
