@@ -8,8 +8,9 @@ import java.util.Objects;
 
 public final class QuerySpec<P extends BaseProperty> {
 
-    private final List<FilterCriterion<P>> filters = new ArrayList<>();
+    private final List<FilterCriterion> filters = new ArrayList<>();
     private final List<SortOrder<P>> sortOrders = new ArrayList<>();
+    private final List<JoinSpec> joins = new ArrayList<>();
 
     private QuerySpec() {
     }
@@ -18,18 +19,44 @@ public final class QuerySpec<P extends BaseProperty> {
         return new QuerySpec<>();
     }
 
-    public QuerySpec<P> where(P property, FilterOperation operation, Object value) {
-        filters.add(new FilterCriterion<>(property, operation, value, LikeFilterPosition.STARTS_WITH));
+    public QuerySpec<P> where(BaseProperty property, FilterOperation operation, Object value) {
+        filters.add(new FilterCriterion(property, operation, value, LikeFilterPosition.STARTS_WITH));
         return this;
     }
 
-    public QuerySpec<P> where(P property, FilterOperation operation, Object value, LikeFilterPosition likePosition) {
-        filters.add(new FilterCriterion<>(property, operation, value, likePosition));
+    public QuerySpec<P> where(BaseProperty property, FilterOperation operation, Object value,
+                              LikeFilterPosition likePosition) {
+        filters.add(new FilterCriterion(property, operation, value, likePosition));
         return this;
     }
 
-    public FilterBuilder<P> where(P property) {
+    public FilterBuilder<P> where(BaseProperty property) {
         return new FilterBuilder<>(this, property);
+    }
+
+    public QuerySpec<P> join(JoinSpec join) {
+        joins.add(Objects.requireNonNull(join, "join must not be null"));
+        return this;
+    }
+
+    public QuerySpec<P> innerJoin(Class<? extends BaseEntity> entityClass, BaseProperty leftProperty,
+                                  BaseProperty rightProperty, BaseProperty targetProperty) {
+        return join(JoinSpec.inner(entityClass, leftProperty, rightProperty, targetProperty));
+    }
+
+    public QuerySpec<P> innerJoin(Class<? extends BaseEntity> entityClass, BaseProperty leftProperty,
+                                  BaseProperty rightProperty, BaseProperty targetProperty, String tableAlias) {
+        return join(JoinSpec.inner(entityClass, leftProperty, rightProperty, targetProperty, tableAlias));
+    }
+
+    public QuerySpec<P> leftJoin(Class<? extends BaseEntity> entityClass, BaseProperty leftProperty,
+                                 BaseProperty rightProperty, BaseProperty targetProperty) {
+        return join(JoinSpec.left(entityClass, leftProperty, rightProperty, targetProperty));
+    }
+
+    public QuerySpec<P> leftJoin(Class<? extends BaseEntity> entityClass, BaseProperty leftProperty,
+                                 BaseProperty rightProperty, BaseProperty targetProperty, String tableAlias) {
+        return join(JoinSpec.left(entityClass, leftProperty, rightProperty, targetProperty, tableAlias));
     }
 
     public QuerySpec<P> orderBy(P property) {
@@ -52,7 +79,7 @@ public final class QuerySpec<P extends BaseProperty> {
         return this;
     }
 
-    public List<FilterCriterion<P>> getFilters() {
+    public List<FilterCriterion> getFilters() {
         return List.copyOf(filters);
     }
 
@@ -60,12 +87,16 @@ public final class QuerySpec<P extends BaseProperty> {
         return List.copyOf(sortOrders);
     }
 
+    public List<JoinSpec> getJoins() {
+        return List.copyOf(joins);
+    }
+
     public static final class FilterBuilder<P extends BaseProperty> {
 
         private final QuerySpec<P> querySpec;
-        private final P property;
+        private final BaseProperty property;
 
-        private FilterBuilder(QuerySpec<P> querySpec, P property) {
+        private FilterBuilder(QuerySpec<P> querySpec, BaseProperty property) {
             this.querySpec = querySpec;
             this.property = Objects.requireNonNull(property, "property must not be null");
         }
@@ -121,21 +152,22 @@ public final class QuerySpec<P extends BaseProperty> {
         }
     }
 
-    public static final class FilterCriterion<P extends BaseProperty> {
+    public static final class FilterCriterion {
 
-        private final P property;
+        private final BaseProperty property;
         private final FilterOperation operation;
         private final Object value;
         private final LikeFilterPosition likePosition;
 
-        private FilterCriterion(P property, FilterOperation operation, Object value, LikeFilterPosition likePosition) {
+        private FilterCriterion(BaseProperty property, FilterOperation operation, Object value,
+                                LikeFilterPosition likePosition) {
             this.property = Objects.requireNonNull(property, "property must not be null");
             this.operation = Objects.requireNonNull(operation, "operation must not be null");
             this.value = value;
             this.likePosition = likePosition == null ? LikeFilterPosition.STARTS_WITH : likePosition;
         }
 
-        public P getProperty() {
+        public BaseProperty getProperty() {
             return property;
         }
 

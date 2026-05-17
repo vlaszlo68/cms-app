@@ -5,6 +5,8 @@ import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.BaseEntity;
 import hu.laci.cms.backend.model.common.FilterOperation;
+import hu.laci.cms.backend.model.common.JoinSpec;
+import hu.laci.cms.backend.model.common.JoinType;
 import hu.laci.cms.backend.model.common.LikeFilterPosition;
 import hu.laci.cms.backend.model.common.BaseProperty;
 import hu.laci.cms.backend.model.common.QuerySpec;
@@ -23,10 +25,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -161,9 +165,22 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     }
 
     protected static String buildBaseSelectSql(Class<? extends BaseEntity> entityClass) {
-        EntityMetadata entityMetadata = getEntityMetadata(entityClass);
+        return buildSelectSql(entityClass, List.of());
+    }
 
-        return "SELECT " + String.join(", ", entityMetadata.selectExpressions())
+    protected static String buildSelectSql(Class<? extends BaseEntity> entityClass, List<JoinSpec> joins) {
+        EntityMetadata entityMetadata = getEntityMetadata(entityClass);
+        List<String> selectExpressions = new ArrayList<>(entityMetadata.selectExpressions());
+        if (joins != null) {
+            for (JoinSpec join : joins) {
+                String tableAlias = getJoinSqlAlias(join);
+                selectExpressions.addAll(getEntityMetadata(join.getEntityClass()).columnFields().stream()
+                        .map(columnField -> columnField.selectExpression(tableAlias))
+                        .toList());
+            }
+        }
+
+        return "SELECT " + String.join(", ", selectExpressions)
                 + System.lineSeparator()
                 + "FROM " + entityMetadata.tableName()
                 + System.lineSeparator();
@@ -208,14 +225,68 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         return "WHERE " + getRequiredQualifiedColumnName(entityClass, propertyName) + " = ?";
     }
 
-    protected void appendOrder(StringBuilder sqlBuilder, Class<? extends BaseEntity> entityClass, List<? extends SortOrder<? extends BaseProperty>> sort) {
+    protected void appendJoins(StringBuilder sqlBuilder, List<Object> parameters,
+                               Class<? extends BaseEntity> entityClass, List<JoinSpec> joins) {
+        if (joins == null || joins.isEmpty()) {
+            return;
+        }
+
+        List<JoinSpec> previousJoins = new ArrayList<>();
+        for (JoinSpec join : joins) {
+            String joinType = switch (join.getType()) {
+                case INNER -> "INNER JOIN";
+                case LEFT -> "LEFT JOIN";
+            };
+            String tableName = getEntityMetadata(join.getEntityClass()).tableName();
+            String tableAlias = getJoinSqlAlias(join);
+            sqlBuilder.append(joinType)
+                    .append(" ")
+                    .append(tableName);
+            if (!tableName.equals(tableAlias)) {
+                sqlBuilder.append(" ").append(tableAlias);
+            }
+            sqlBuilder
+                    .append(" ON ")
+                    .append(getRequiredQualifiedColumnName(entityClass, join.getLeftProperty(), previousJoins))
+                    .append(" = ")
+                    .append(getRequiredQualifiedColumnName(join.getEntityClass(), join.getRightProperty(), tableAlias));
+            appendJoinConditions(sqlBuilder, parameters, entityClass, join, previousJoins);
+            sqlBuilder.append(System.lineSeparator());
+            previousJoins.add(join);
+        }
+    }
+
+    private static void appendJoinConditions(StringBuilder sqlBuilder, List<Object> parameters,
+                                             Class<? extends BaseEntity> entityClass, JoinSpec join,
+                                             List<JoinSpec> previousJoins) {
+        List<JoinSpec> availableJoins = new ArrayList<>(previousJoins);
+        availableJoins.add(join);
+        for (JoinSpec.JoinCondition condition : join.getConditions()) {
+            Object value = condition.getValue();
+            if (isEmptyFilterValue(value)) {
+                continue;
+            }
+
+            String columnName = getRequiredColumnName(resolvePropertyEntityClass(entityClass, condition.getProperty()),
+                    condition.getProperty().getPropertyName());
+            String qualifiedColumnName = getRequiredQualifiedColumnName(entityClass, condition.getProperty(),
+                    availableJoins);
+            sqlBuilder.append(" AND ")
+                    .append(buildFilterCondition(qualifiedColumnName, condition.getOperation(), value));
+            parameters.addAll(buildFilterParameters(columnName, value, condition.getOperation(),
+                    condition.getLikePosition()));
+        }
+    }
+
+    protected void appendOrder(StringBuilder sqlBuilder, Class<? extends BaseEntity> entityClass,
+                               List<? extends SortOrder<? extends BaseProperty>> sort, List<JoinSpec> joins) {
         List<? extends SortOrder<? extends BaseProperty>> selectedSort =
                 sort == null || sort.isEmpty() ? List.of(new SortOrder<>(BaseProperty.ID)) : sort;
 
         sqlBuilder.append(System.lineSeparator())
                 .append("ORDER BY ")
                 .append(selectedSort.stream()
-                        .map(sortOrder -> getRequiredQualifiedColumnName(entityClass, sortOrder.getProperty().getPropertyName())
+                        .map(sortOrder -> getRequiredQualifiedColumnName(entityClass, sortOrder.getProperty(), joins)
                                 + " " + sortOrder.getDirection())
                         .collect(Collectors.joining(", ")));
     }
@@ -228,15 +299,16 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
 
         List<String> conditions = new ArrayList<>();
-        for (QuerySpec.FilterCriterion<? extends BaseProperty> filter : querySpec.getFilters()) {
+        for (QuerySpec.FilterCriterion filter : querySpec.getFilters()) {
             Object value = filter.getValue();
             if (isEmptyFilterValue(value)) {
                 continue;
             }
 
-            String propertyName = filter.getProperty().getPropertyName();
-            String columnName = getRequiredColumnName(entityClass, propertyName);
-            String qualifiedColumnName = getRequiredQualifiedColumnName(entityClass, propertyName);
+            String columnName = getRequiredColumnName(resolvePropertyEntityClass(entityClass, filter.getProperty()),
+                    filter.getProperty().getPropertyName());
+            String qualifiedColumnName = getRequiredQualifiedColumnName(entityClass, filter.getProperty(),
+                    querySpec.getJoins());
             conditions.add(buildFilterCondition(qualifiedColumnName, filter.getOperation(), value));
             parameters.addAll(buildFilterParameters(columnName, value, filter.getOperation(), filter.getLikePosition()));
         }
@@ -261,13 +333,147 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     }
 
     protected List<T> findAll(QuerySpec<P> querySpec, String errorMessage) {
-        StringBuilder sqlBuilder = new StringBuilder(baseSelectSql);
+        List<JoinSpec> joins = querySpec == null ? List.of() : querySpec.getJoins();
+        validateQuerySpec(entityClass, querySpec);
+        StringBuilder sqlBuilder = new StringBuilder(joins.isEmpty() ? baseSelectSql : buildSelectSql(entityClass, joins));
         List<Object> parameters = new ArrayList<>();
 
+        appendJoins(sqlBuilder, parameters, entityClass, joins);
         appendQueryFilters(sqlBuilder, parameters, entityClass, querySpec);
-        appendOrder(sqlBuilder, entityClass, querySpec == null ? null : querySpec.getSortOrders());
+        appendOrder(sqlBuilder, entityClass, querySpec == null ? null : querySpec.getSortOrders(), joins);
 
-        return findList(sqlBuilder.toString(), parameters, getRowMapper(), errorMessage);
+        return findList(sqlBuilder.toString(), parameters, resultSet -> mapEntity(resultSet, joins), errorMessage);
+    }
+
+    private static void validateQuerySpec(Class<? extends BaseEntity> rootEntityClass,
+                                          QuerySpec<? extends BaseProperty> querySpec) {
+        if (querySpec == null) {
+            return;
+        }
+
+        validateJoins(rootEntityClass, querySpec.getJoins());
+        querySpec.getFilters().forEach(filter -> validateColumnProperty(rootEntityClass, filter.getProperty(),
+                querySpec.getJoins()));
+        querySpec.getSortOrders().forEach(sortOrder -> validateColumnProperty(rootEntityClass,
+                sortOrder.getProperty(), querySpec.getJoins()));
+    }
+
+    private static void validateJoins(Class<? extends BaseEntity> rootEntityClass, List<JoinSpec> joins) {
+        if (joins == null || joins.isEmpty()) {
+            return;
+        }
+
+        validateRepeatedJoinAliases(joins);
+        Set<String> aliases = new HashSet<>();
+        aliases.add(getEntityMetadata(rootEntityClass).tableName());
+        Set<Class<? extends BaseEntity>> loadedEntityClasses = new HashSet<>();
+        loadedEntityClasses.add(rootEntityClass);
+
+        List<JoinSpec> previousJoins = new ArrayList<>();
+        for (JoinSpec join : joins) {
+            getEntityMetadata(join.getEntityClass());
+            String alias = getJoinSqlAlias(join);
+            if (!aliases.add(alias)) {
+                throw new IllegalArgumentException("Duplicate SQL table alias in joins: " + alias);
+            }
+
+            validateColumnProperty(rootEntityClass, join.getLeftProperty(), previousJoins);
+            validateColumnProperty(join.getEntityClass(), join.getRightProperty(), List.of());
+            validateTargetProperty(rootEntityClass, join, loadedEntityClasses);
+            List<JoinSpec> availableJoins = new ArrayList<>(previousJoins);
+            availableJoins.add(join);
+            join.getConditions().forEach(condition -> validateColumnProperty(rootEntityClass,
+                    condition.getProperty(), availableJoins));
+
+            previousJoins.add(join);
+            loadedEntityClasses.add(join.getEntityClass());
+        }
+    }
+
+    private static void validateRepeatedJoinAliases(List<JoinSpec> joins) {
+        Map<Class<? extends BaseEntity>, Long> joinCountsByEntityClass = joins.stream()
+                .collect(Collectors.groupingBy(JoinSpec::getEntityClass, Collectors.counting()));
+
+        for (JoinSpec join : joins) {
+            if (joinCountsByEntityClass.getOrDefault(join.getEntityClass(), 0L) <= 1) {
+                continue;
+            }
+            if (join.getTableAlias() == null || join.getTableAlias().isBlank()) {
+                throw new IllegalArgumentException("Entity joined multiple times requires explicit aliases: "
+                        + join.getEntityClass().getName());
+            }
+        }
+    }
+
+    private static void validateColumnProperty(Class<? extends BaseEntity> rootEntityClass, BaseProperty property,
+                                               List<JoinSpec> joins) {
+        Class<? extends BaseEntity> propertyEntityClass = resolvePropertyEntityClass(rootEntityClass, property);
+        getRequiredColumnFieldMetadata(propertyEntityClass, property.getPropertyName());
+        validatePropertyAlias(rootEntityClass, property, joins);
+        validateUnambiguousProperty(rootEntityClass, property, joins);
+    }
+
+    private static void validateTargetProperty(Class<? extends BaseEntity> rootEntityClass, JoinSpec join,
+                                               Set<Class<? extends BaseEntity>> loadedEntityClasses) {
+        Class<? extends BaseEntity> targetOwnerClass = resolvePropertyEntityClass(rootEntityClass,
+                join.getTargetProperty());
+        if (!loadedEntityClasses.contains(targetOwnerClass)) {
+            throw new IllegalArgumentException("Join target owner must be loaded before target mapping: "
+                    + targetOwnerClass.getName() + "." + join.getTargetProperty().getPropertyName());
+        }
+
+        Field targetField = getRequiredField(targetOwnerClass, join.getTargetProperty().getPropertyName());
+        if (!BaseEntity.class.isAssignableFrom(targetField.getType())) {
+            throw new IllegalArgumentException("Join target property must be a BaseEntity reference: "
+                    + targetOwnerClass.getName() + "." + targetField.getName());
+        }
+        if (!targetField.getType().isAssignableFrom(join.getEntityClass())) {
+            throw new IllegalArgumentException("Join entity " + join.getEntityClass().getName()
+                    + " cannot be assigned to target property " + targetOwnerClass.getName()
+                    + "." + targetField.getName());
+        }
+        getRequiredColumnFieldMetadata(targetOwnerClass, join.getTargetProperty().getPropertyName());
+    }
+
+    private static void validatePropertyAlias(Class<? extends BaseEntity> rootEntityClass, BaseProperty property,
+                                              List<JoinSpec> joins) {
+        if (property.getTableAlias() == null || property.getTableAlias().isBlank()) {
+            return;
+        }
+
+        String propertyAlias = sanitizeAliasPart(property.getTableAlias());
+        if (propertyAlias.equals(getEntityMetadata(rootEntityClass).tableName())) {
+            return;
+        }
+
+        boolean aliasExists = joins != null && joins.stream()
+                .anyMatch(join -> getJoinSqlAlias(join).equals(propertyAlias)
+                        && join.getEntityClass() == resolvePropertyEntityClass(rootEntityClass, property));
+        if (!aliasExists) {
+            throw new IllegalArgumentException("Unknown or mismatched table alias for property "
+                    + resolvePropertyEntityClass(rootEntityClass, property).getName()
+                    + "." + property.getPropertyName() + ": " + propertyAlias);
+        }
+    }
+
+    private static void validateUnambiguousProperty(Class<? extends BaseEntity> rootEntityClass, BaseProperty property,
+                                                    List<JoinSpec> joins) {
+        if (property.getTableAlias() != null && !property.getTableAlias().isBlank()) {
+            return;
+        }
+
+        Class<? extends BaseEntity> propertyEntityClass = resolvePropertyEntityClass(rootEntityClass, property);
+        if (propertyEntityClass == rootEntityClass || joins == null) {
+            return;
+        }
+
+        long joinCount = joins.stream()
+                .filter(join -> join.getEntityClass() == propertyEntityClass)
+                .count();
+        if (joinCount > 1) {
+            throw new IllegalArgumentException("Property requires explicit table alias because entity is joined "
+                    + "multiple times: " + propertyEntityClass.getName() + "." + property.getPropertyName());
+        }
     }
 
     protected void setParameters(PreparedStatement preparedStatement, List<?> parameters) throws SQLException {
@@ -318,23 +524,106 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     }
 
     protected T mapEntity(ResultSet resultSet) throws SQLException {
+        return mapEntity(resultSet, List.of());
+    }
+
+    protected T mapEntity(ResultSet resultSet, List<JoinSpec> joins) throws SQLException {
         T entity = createEntity();
         for (ColumnFieldMetadata columnField : getEntityMetadata(entityClass).columnFields()) {
             setFieldValue(columnField.field(), entity,
                     getColumnValue(resultSet, columnField.resultAlias(), columnField.field()));
         }
+        mapJoinedEntities(resultSet, entity, joins);
 
         return entity;
     }
 
     private T createEntity() throws SQLException {
+        return createEntity(entityClass);
+    }
+
+    private static <E extends BaseEntity> E createEntity(Class<E> entityClass) throws SQLException {
         try {
-            Constructor<T> constructor = entityClass.getDeclaredConstructor();
+            Constructor<E> constructor = entityClass.getDeclaredConstructor();
             constructor.setAccessible(true);
             return constructor.newInstance();
         } catch (ReflectiveOperationException e) {
             throw new SQLException("Unable to create entity instance: " + entityClass.getName(), e);
         }
+    }
+
+    private static void mapJoinedEntities(ResultSet resultSet, BaseEntity entity, List<JoinSpec> joins)
+            throws SQLException {
+        if (joins == null || joins.isEmpty()) {
+            return;
+        }
+
+        for (JoinSpec join : joins) {
+            BaseEntity joinedEntity = mapJoinedEntity(resultSet, join.getEntityClass(), getJoinSqlAlias(join));
+            setJoinedEntity(entity, join.getTargetProperty(), joinedEntity);
+        }
+    }
+
+    private static void setJoinedEntity(BaseEntity rootEntity, BaseProperty targetProperty, BaseEntity joinedEntity)
+            throws SQLException {
+        Class<? extends BaseEntity> targetOwnerClass = targetProperty.getEntityClass();
+        BaseEntity targetOwner = targetOwnerClass == null || targetOwnerClass == rootEntity.getClass()
+                ? rootEntity
+                : findMappedEntity(rootEntity, targetOwnerClass);
+        if (targetOwner == null) {
+            throw new SQLException("Unable to map joined entity. Target owner is not loaded: "
+                    + targetOwnerClass.getName());
+        }
+
+        Field targetField = getRequiredField(targetOwner.getClass(), targetProperty.getPropertyName());
+        if (joinedEntity != null && !targetField.getType().isAssignableFrom(joinedEntity.getClass())) {
+            throw new SQLException("Joined entity " + joinedEntity.getClass().getName()
+                    + " cannot be assigned to " + targetOwner.getClass().getName()
+                    + "." + targetField.getName());
+        }
+
+        setFieldValue(targetField, targetOwner, joinedEntity);
+    }
+
+    private static BaseEntity findMappedEntity(BaseEntity entity, Class<? extends BaseEntity> targetClass) {
+        if (entity == null) {
+            return null;
+        }
+        if (entity.getClass() == targetClass) {
+            return entity;
+        }
+
+        for (Field field : getAllFields(entity.getClass())) {
+            if (!BaseEntity.class.isAssignableFrom(field.getType())) {
+                continue;
+            }
+
+            Object value = getFieldValue(field, entity);
+            BaseEntity foundEntity = findMappedEntity((BaseEntity) value, targetClass);
+            if (foundEntity != null) {
+                return foundEntity;
+            }
+        }
+
+        return null;
+    }
+
+    private static BaseEntity mapJoinedEntity(ResultSet resultSet, Class<? extends BaseEntity> joinedEntityClass,
+                                              String tableAlias) throws SQLException {
+        EntityMetadata entityMetadata = getEntityMetadata(joinedEntityClass);
+        Object idValue = resultSet.getObject(getRequiredColumnFieldMetadata(joinedEntityClass, "id")
+                .resultAlias(tableAlias));
+        if (idValue == null) {
+            return null;
+        }
+
+        BaseEntity joinedEntity = createEntity(joinedEntityClass);
+        for (ColumnFieldMetadata columnField : entityMetadata.columnFields()) {
+            setFieldValue(columnField.field(), joinedEntity,
+                    getColumnValue(resultSet, columnField.resultAlias(tableAlias), columnField.field()));
+        }
+
+        return joinedEntity;
     }
 
     private static void requireEntityId(BaseEntity entity) {
@@ -405,16 +694,16 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
 
     private static BaseEntity getEntityReference(ResultSet resultSet, String columnName, Field field)
             throws SQLException {
-        Long id = resultSet.getObject(columnName, Long.class);
+        Long id = getLongValue(resultSet, columnName);
         if (id == null) {
             return null;
         }
 
         try {
-            BaseEntity entity = field.getType().asSubclass(BaseEntity.class).getDeclaredConstructor().newInstance();
+            BaseEntity entity = createEntity(field.getType().asSubclass(BaseEntity.class));
             entity.setId(id);
             return entity;
-        } catch (ReflectiveOperationException e) {
+        } catch (SQLException e) {
             throw new SQLException("Unable to create referenced entity instance: " + field.getType().getName(), e);
         }
     }
@@ -533,6 +822,14 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
             throw new IllegalArgumentException("Unable to read filter property "
                     + instance.getClass().getName() + "." + field.getName(), e);
         }
+    }
+
+    private static Field getRequiredField(Class<?> entityClass, String propertyName) {
+        return getAllFields(entityClass).stream()
+                .filter(field -> field.getName().equals(propertyName))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Missing property on "
+                        + entityClass.getName() + "." + propertyName));
     }
 
     private static Object getSqlParameterValue(Field field, Object instance) {
@@ -662,8 +959,80 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         return columnName;
     }
 
+    private static String getRequiredQualifiedColumnName(Class<? extends BaseEntity> baseEntityClass,
+                                                        BaseProperty property) {
+        Class<? extends BaseEntity> selectedEntityClass = resolvePropertyEntityClass(baseEntityClass, property);
+        return getRequiredQualifiedColumnName(selectedEntityClass, property.getPropertyName());
+    }
+
+    private static String getRequiredQualifiedColumnName(Class<? extends BaseEntity> baseEntityClass,
+                                                        BaseProperty property, List<JoinSpec> joins) {
+        Class<? extends BaseEntity> selectedEntityClass = resolvePropertyEntityClass(baseEntityClass, property);
+        String tableAlias = resolvePropertySqlAlias(baseEntityClass, property, joins);
+        return getRequiredQualifiedColumnName(selectedEntityClass, property.getPropertyName(), tableAlias);
+    }
+
+    private static String getRequiredQualifiedColumnName(Class<? extends BaseEntity> entityClass,
+                                                        BaseProperty property, String tableAlias) {
+        return getRequiredQualifiedColumnName(entityClass, property.getPropertyName(), tableAlias);
+    }
+
+    private static String getRequiredQualifiedColumnName(Class<? extends BaseEntity> entityClass,
+                                                        String propertyName, String tableAlias) {
+        String columnName = getEntityMetadata(entityClass).columnsByProperty().get(propertyName);
+        if (columnName == null) {
+            throw new IllegalArgumentException("Missing DbColumn annotation on "
+                    + entityClass.getName() + "." + propertyName);
+        }
+
+        return tableAlias + "." + columnName;
+    }
+
+    private static Class<? extends BaseEntity> resolvePropertyEntityClass(Class<? extends BaseEntity> baseEntityClass,
+                                                                         BaseProperty property) {
+        return property.getEntityClass() == null ? baseEntityClass : property.getEntityClass();
+    }
+
+    private static String resolvePropertySqlAlias(Class<? extends BaseEntity> baseEntityClass, BaseProperty property,
+                                                  List<JoinSpec> joins) {
+        if (property.getTableAlias() != null && !property.getTableAlias().isBlank()) {
+            return property.getTableAlias();
+        }
+
+        Class<? extends BaseEntity> selectedEntityClass = resolvePropertyEntityClass(baseEntityClass, property);
+        if (selectedEntityClass == baseEntityClass) {
+            return getEntityMetadata(baseEntityClass).tableName();
+        }
+
+        List<JoinSpec> matchingJoins = joins == null ? List.of() : joins.stream()
+                .filter(join -> join.getEntityClass() == selectedEntityClass)
+                .toList();
+        if (matchingJoins.size() == 1) {
+            return getJoinSqlAlias(matchingJoins.get(0));
+        }
+
+        return getEntityMetadata(selectedEntityClass).tableName();
+    }
+
+    private static String getJoinSqlAlias(JoinSpec join) {
+        if (join.getTableAlias() != null && !join.getTableAlias().isBlank()) {
+            return sanitizeAliasPart(join.getTableAlias());
+        }
+
+        return getEntityMetadata(join.getEntityClass()).tableName();
+    }
+
     private static EntityMetadata getEntityMetadata(Class<? extends BaseEntity> entityClass) {
         return ENTITY_METADATA_CACHE.computeIfAbsent(entityClass, BaseDao::readEntityMetadata);
+    }
+
+    private static ColumnFieldMetadata getRequiredColumnFieldMetadata(Class<? extends BaseEntity> entityClass,
+                                                                     String propertyName) {
+        return getEntityMetadata(entityClass).columnFields().stream()
+                .filter(columnField -> columnField.field().getName().equals(propertyName))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Missing DbColumn annotation on "
+                        + entityClass.getName() + "." + propertyName));
     }
 
     private static EntityMetadata readEntityMetadata(Class<? extends BaseEntity> entityClass) {
@@ -823,12 +1192,24 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
             return qualifiedColumnName;
         }
 
+        private String qualifiedColumnName(String tableAlias) {
+            return tableAlias + "." + columnName;
+        }
+
         private String resultAlias() {
             return resultAlias;
         }
 
+        private String resultAlias(String tableAlias) {
+            return buildResultAlias(tableAlias, columnName);
+        }
+
         private String selectExpression() {
             return selectExpression;
+        }
+
+        private String selectExpression(String tableAlias) {
+            return qualifiedColumnName(tableAlias) + " AS " + resultAlias(tableAlias);
         }
     }
 

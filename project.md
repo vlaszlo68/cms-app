@@ -272,6 +272,8 @@ DAO responsibilities and behavior:
 - `findAll(querySpec)` defaults to `ORDER BY id ASC`.
 - Query sort input is a list of `SortOrder<P>`, so multi-column order is supported.
 - Query filters are built from `QuerySpec` criteria.
+- Query joins are built from `JoinSpec`; joined entity mapping requires an explicit target property.
+- Join SQL aliases are supported, and join/filter/sort properties are validated before SQL execution.
 - Entity metadata is annotation-driven through `DbTable` and `DbColumn`.
 - Reflection metadata is cached per entity class.
 - Result mapping uses generated column aliases, not raw column names.
