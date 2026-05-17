@@ -62,7 +62,7 @@ When building a feature:
 2. Create DAO
 3. Create Service
 4. Create Servlet
-5. Map endpoint with annotations
+5. Map endpoint with annotations or `web.xml`, following the existing local pattern
 
 ---
 
@@ -74,6 +74,9 @@ When building a feature:
 - No ORM
 - Use HikariCP connections
 - DAO code should use `hu.laci.cms.backend.config.database.TransactionContext#openConnection()` so request-scoped transactions are respected
+- Prefer the existing `BaseDao` + `QuerySpec` path for normal CRUD/list/filter/sort/join queries
+- Use `BaseDao` custom SQL helpers from DAO subclasses for projections, aggregations, optimized SQL, or custom insert/update/delete operations that do not fit the generic query builder
+- Keep old annotation-style filter classes out of new code; use entity property constants with `QuerySpec`
 
 ---
 

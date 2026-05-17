@@ -251,14 +251,16 @@ Important Docker note:
 DAO layer notes:
 
 - generic CRUD support lives in `hu.laci.cms.backend.dao.common.BaseDao`
+- DAO instances are registered centrally through `hu.laci.cms.backend.dao.common.DaoRegistry`
 - DAO IDs are `Long`
 - generated `SELECT` SQL uses table-qualified columns with aliases, for example `users.id AS users_id`
 - `findAll` supports multiple sort fields
 - default sort is `id ASC`
-- `LIKE` filters add `%` in the base DAO according to annotation configuration
+- `LIKE` filters add `%` in the base DAO according to the requested `LikeFilterPosition`
+- query filtering uses `QuerySpec` with entity property constants, not annotation-based filter classes
+- supported query filter operations: `EQUALS`, `LIKE`, `LESS`, `LESS_OR_EQUALS`, `GREATER`, `GREATER_OR_EQUALS`, `IN`, `NOT_IN`, `BETWEEN`
 - Java `Boolean`/`boolean` maps to database `VARCHAR(1)` values `T`/`F`
 - DB mapping annotations live under `hu.laci.cms.backend.dao.common.annotations`
-- query filtering uses `QuerySpec` with entity property constants
 
 DAO responsibilities and behavior:
 
@@ -272,11 +274,30 @@ DAO responsibilities and behavior:
 - `findAll(querySpec)` defaults to `ORDER BY id ASC`.
 - Query sort input is a list of `SortOrder<P>`, so multi-column order is supported.
 - Query filters are built from `QuerySpec` criteria.
-- Query joins are built from `JoinSpec`; joined entity mapping requires an explicit target property.
+- Query joins are built from `JoinSpec`; joined entity mapping requires an explicit target property and is never inferred automatically.
+- Join chains are supported when each joined entity is explicitly mapped before it is used as the owner of a nested join target.
+- Joining the same entity type more than once requires explicit SQL aliases.
+- Join `ON` clauses can include extra filter conditions in addition to the key equality.
 - Join SQL aliases are supported, and join/filter/sort properties are validated before SQL execution.
 - Entity metadata is annotation-driven through `DbTable` and `DbColumn`.
 - Reflection metadata is cached per entity class.
 - Result mapping uses generated column aliases, not raw column names.
+
+Custom SQL support:
+
+- `BaseDao` exposes protected custom SQL helpers for DAO subclasses:
+  - `findCustomOne(operation, sql, parameters, rowMapper, errorMessage)`
+  - `findCustomList(operation, sql, parameters, rowMapper, errorMessage)`
+  - `executeCustomUpdate(operation, sql, parameters, errorMessage)`
+- custom `SELECT` helpers can map arbitrary projection/DTO/entity result types through `RowMapper<R>`
+- `executeCustomUpdate` is intended for `INSERT`, `UPDATE`, `DELETE`, and full-table `DELETE` style operations
+- SQL operations still reuse `TransactionContext`, prepared statement parameter binding, boolean parameter conversion, SQL logging, and `DataAccessException` wrapping
+- SQL with result rows, such as PostgreSQL `INSERT ... RETURNING`, should use a custom select helper or a dedicated helper rather than `executeCustomUpdate`
+
+Static DAO convenience helpers:
+
+- `BaseDao.saveEntity(entity)` resolves the matching DAO from `DaoRegistry` and calls its non-static `save`
+- `BaseDao.loadEntity(entity)` requires a non-null id, loads the current DB row through the matching DAO, and copies DB values into the passed entity instance
 
 Supported common type conversions:
 
@@ -410,8 +431,11 @@ Package conventions:
 ## Current Backend Status
 
 - `User`, `UserDao`, `UserDaoImpl`, `AuthService`, `AuthServiceException`, `DatabaseConfig` already exist
-- generic DAO CRUD and filtering/sorting support are implemented in `BaseDao`
-- DAO integration tests currently cover user DAO behavior, CRUD, transaction commit/rollback, boolean mapping, filtering, sorting, and save/create/update/delete
+- generic DAO CRUD, `QuerySpec` filtering/sorting/join support, and custom SQL helpers are implemented in `BaseDao`
+- DAO integration tests currently cover user DAO behavior, CRUD, transaction commit/rollback, boolean mapping, filtering, sorting, relational filters, `IN` / `NOT_IN` / `BETWEEN`, joins, duplicate join alias validation, repeated joined entity aliases, nested join mapping, extra join conditions, static DAO convenience helpers, and custom SQL helpers
+- application startup/shutdown listeners initialize and close shared infrastructure:
+  - `hu.laci.cms.backend.config.database.DatabaseConfigListener`
+  - `hu.laci.cms.backend.config.app.DaoRegistryListener`
 - auth servlet layer is now implemented with:
   - `hu.laci.cms.backend.servlet.auth.AuthServlet`
   - `hu.laci.cms.backend.servlet.auth.LogoutServlet`
@@ -600,7 +624,7 @@ Testing notes:
 
 - `mvn test` runs DB-backed DAO tests
 - `mvn package` also runs tests unless skipped
-- current verified test count: 25
+- current verified test count: 45
 - PostgreSQL schema comes from `docker/postgres/init.sql`
 - tests clean up their own `dao_test_` user data and temporary boolean test table
 
