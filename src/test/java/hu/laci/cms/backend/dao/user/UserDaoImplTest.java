@@ -9,6 +9,7 @@ import hu.laci.cms.backend.dao.common.DataAccessException;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.model.common.LikeFilterPosition;
 import hu.laci.cms.backend.model.common.QuerySpec;
+import hu.laci.cms.backend.model.user.RegistrationState;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.model.user.UserProperty;
 import hu.laci.cms.backend.model.user.UserRole;
@@ -79,6 +80,7 @@ class UserDaoImplTest {
         assertEquals(TEST_PREFIX + "alpha_hash", user.get().getPasswordHash());
         assertEquals(UserRole.USER, user.get().getRole());
         assertEquals(Boolean.TRUE, user.get().getActive());
+        assertEquals(RegistrationState.PENDING, user.get().getRegistrationState());
         assertNotNull(user.get().getCreatedAt());
         assertNotNull(user.get().getUpdatedAt());
     }
@@ -257,6 +259,7 @@ class UserDaoImplTest {
         assertEquals(TEST_PREFIX + "created_hash", loadedUser.get().getPasswordHash());
         assertEquals(UserRole.USER, loadedUser.get().getRole());
         assertEquals(Boolean.TRUE, loadedUser.get().getActive());
+        assertEquals(RegistrationState.PENDING, loadedUser.get().getRegistrationState());
         assertNotNull(loadedUser.get().getCreatedAt());
         assertNotNull(loadedUser.get().getUpdatedAt());
     }
@@ -265,7 +268,7 @@ class UserDaoImplTest {
     void createAndLoadMapsRoleAndActive() {
         User user = new User(null, TEST_PREFIX + "role-active", TEST_PREFIX + "role_active_login",
                 TEST_PREFIX + "role-active@example.com", TEST_PREFIX + "role_active_hash",
-                UserRole.ADMIN, Boolean.FALSE);
+                UserRole.ADMIN, Boolean.FALSE, RegistrationState.EMAIL_VERIFICATION_REQUIRED);
 
         User createdUser = userDao.create(user);
 
@@ -273,6 +276,7 @@ class UserDaoImplTest {
         assertTrue(loadedUser.isPresent());
         assertEquals(UserRole.ADMIN, loadedUser.get().getRole());
         assertEquals(Boolean.FALSE, loadedUser.get().getActive());
+        assertEquals(RegistrationState.EMAIL_VERIFICATION_REQUIRED, loadedUser.get().getRegistrationState());
     }
 
     @Test
@@ -309,6 +313,7 @@ class UserDaoImplTest {
         user.setPasswordHash(TEST_PREFIX + "after_hash");
         user.setRole(UserRole.ADMIN);
         user.setActive(Boolean.FALSE);
+        user.setRegistrationState(RegistrationState.COMPLETED);
 
         User updatedUser = userDao.update(user);
 
@@ -322,6 +327,7 @@ class UserDaoImplTest {
         assertEquals(TEST_PREFIX + "after_hash", loadedUser.get().getPasswordHash());
         assertEquals(UserRole.ADMIN, loadedUser.get().getRole());
         assertEquals(Boolean.FALSE, loadedUser.get().getActive());
+        assertEquals(RegistrationState.COMPLETED, loadedUser.get().getRegistrationState());
         assertEquals(originalCreatedAt, loadedUser.get().getCreatedAt());
         assertEquals(originalCreatedBy, loadedUser.get().getCreatedBy());
         assertNotNull(loadedUser.get().getUpdatedAt());

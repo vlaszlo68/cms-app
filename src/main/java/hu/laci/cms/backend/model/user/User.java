@@ -25,15 +25,24 @@ public class User extends AuditableEntity {
     @DbColumn("active")
     private Boolean active = Boolean.TRUE;
 
+    @DbColumn("registration_state")
+    private RegistrationState registrationState = RegistrationState.PENDING;
+
     public User() {
     }
 
     public User(Long id, String userName, String loginName, String emailAddress, String passwordHash) {
-        this(id, userName, loginName, emailAddress, passwordHash, UserRole.USER, Boolean.TRUE);
+        this(id, userName, loginName, emailAddress, passwordHash, UserRole.USER, Boolean.TRUE,
+                RegistrationState.PENDING);
     }
 
     public User(Long id, String userName, String loginName, String emailAddress, String passwordHash,
                 UserRole role, Boolean active) {
+        this(id, userName, loginName, emailAddress, passwordHash, role, active, RegistrationState.PENDING);
+    }
+
+    public User(Long id, String userName, String loginName, String emailAddress, String passwordHash,
+                UserRole role, Boolean active, RegistrationState registrationState) {
         setId(id);
         this.userName = userName;
         this.loginName = loginName;
@@ -41,6 +50,7 @@ public class User extends AuditableEntity {
         this.passwordHash = passwordHash;
         this.role = role;
         this.active = active;
+        this.registrationState = registrationState;
     }
 
     public String getUserName() {
@@ -89,5 +99,13 @@ public class User extends AuditableEntity {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+    public RegistrationState getRegistrationState() {
+        return registrationState;
+    }
+
+    public void setRegistrationState(RegistrationState registrationState) {
+        this.registrationState = registrationState;
     }
 }
