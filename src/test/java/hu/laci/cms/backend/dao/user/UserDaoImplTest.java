@@ -2,6 +2,7 @@ package hu.laci.cms.backend.dao.user;
 
 import hu.laci.cms.backend.config.database.DatabaseConfig;
 import hu.laci.cms.backend.config.database.TransactionContext;
+import hu.laci.cms.backend.config.database.migration.DatabaseMigrationRunner;
 import hu.laci.cms.backend.dao.common.BaseDao;
 import hu.laci.cms.backend.dao.common.DataAccessException;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
@@ -9,6 +10,7 @@ import hu.laci.cms.backend.model.common.LikeFilterPosition;
 import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.model.user.UserProperty;
+import hu.laci.cms.backend.model.user.UserRole;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -39,6 +41,7 @@ class UserDaoImplTest {
     @BeforeAll
     static void initializeDatabase() {
         DatabaseConfig.initialize(createEmptyServletContext());
+        DatabaseMigrationRunner.runMigrations();
         DaoRegistry.initialize();
     }
 
@@ -71,6 +74,8 @@ class UserDaoImplTest {
         assertEquals(TEST_PREFIX + "alpha_login", user.get().getLoginName());
         assertEquals(TEST_PREFIX + "alpha@example.com", user.get().getEmailAddress());
         assertEquals(TEST_PREFIX + "alpha_hash", user.get().getPasswordHash());
+        assertEquals(UserRole.USER, user.get().getRole());
+        assertEquals(Boolean.TRUE, user.get().getActive());
     }
 
     @Test
@@ -245,6 +250,22 @@ class UserDaoImplTest {
         assertEquals(TEST_PREFIX + "created_login", loadedUser.get().getLoginName());
         assertEquals(TEST_PREFIX + "created@example.com", loadedUser.get().getEmailAddress());
         assertEquals(TEST_PREFIX + "created_hash", loadedUser.get().getPasswordHash());
+        assertEquals(UserRole.USER, loadedUser.get().getRole());
+        assertEquals(Boolean.TRUE, loadedUser.get().getActive());
+    }
+
+    @Test
+    void createAndLoadMapsRoleAndActive() {
+        User user = new User(null, TEST_PREFIX + "role-active", TEST_PREFIX + "role_active_login",
+                TEST_PREFIX + "role-active@example.com", TEST_PREFIX + "role_active_hash",
+                UserRole.ADMIN, Boolean.FALSE);
+
+        User createdUser = userDao.create(user);
+
+        Optional<User> loadedUser = userDao.findById(createdUser.getId());
+        assertTrue(loadedUser.isPresent());
+        assertEquals(UserRole.ADMIN, loadedUser.get().getRole());
+        assertEquals(Boolean.FALSE, loadedUser.get().getActive());
     }
 
     @Test
@@ -255,6 +276,8 @@ class UserDaoImplTest {
         user.setLoginName(TEST_PREFIX + "after_login");
         user.setEmailAddress(TEST_PREFIX + "after@example.com");
         user.setPasswordHash(TEST_PREFIX + "after_hash");
+        user.setRole(UserRole.ADMIN);
+        user.setActive(Boolean.FALSE);
 
         User updatedUser = userDao.update(user);
 
@@ -266,6 +289,8 @@ class UserDaoImplTest {
         assertEquals(TEST_PREFIX + "after_login", loadedUser.get().getLoginName());
         assertEquals(TEST_PREFIX + "after@example.com", loadedUser.get().getEmailAddress());
         assertEquals(TEST_PREFIX + "after_hash", loadedUser.get().getPasswordHash());
+        assertEquals(UserRole.ADMIN, loadedUser.get().getRole());
+        assertEquals(Boolean.FALSE, loadedUser.get().getActive());
     }
 
     @Test

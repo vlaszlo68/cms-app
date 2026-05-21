@@ -1127,6 +1127,9 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         if (field.getType() == Boolean.class || field.getType() == boolean.class) {
             return getBooleanValue(resultSet, columnName, field.getType());
         }
+        if (field.getType().isEnum()) {
+            return getEnumValue(resultSet, columnName, field.getType().asSubclass(Enum.class));
+        }
         if (field.getType() == Long.class || field.getType() == long.class) {
             return getLongValue(resultSet, columnName);
         }
@@ -1159,6 +1162,21 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
 
         return value;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Enum<?> getEnumValue(ResultSet resultSet, String columnName, Class<? extends Enum> enumType)
+            throws SQLException {
+        String value = resultSet.getString(columnName);
+        if (value == null) {
+            return null;
+        }
+
+        try {
+            return Enum.valueOf(enumType, value.trim());
+        } catch (IllegalArgumentException e) {
+            throw new SQLException("Invalid enum value in column " + columnName + ": " + value, e);
+        }
     }
 
     private static Date getDateValue(ResultSet resultSet, String columnName, Class<?> fieldType) throws SQLException {
@@ -1328,6 +1346,9 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         if (value instanceof Boolean booleanValue) {
             return booleanValue ? "T" : "F";
         }
+        if (value instanceof Enum<?> enumValue) {
+            return enumValue.name();
+        }
         if (value instanceof Timestamp || value instanceof java.sql.Date) {
             return value;
         }
@@ -1349,6 +1370,9 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     private static Object getSqlValue(Object value) {
         if (value instanceof Boolean booleanValue) {
             return booleanValue ? "T" : "F";
+        }
+        if (value instanceof Enum<?> enumValue) {
+            return enumValue.name();
         }
 
         return value;

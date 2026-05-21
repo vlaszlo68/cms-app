@@ -1,5 +1,7 @@
 package hu.laci.cms.backend.dto.auth;
 
+import hu.laci.cms.backend.model.user.UserRole;
+
 import java.io.Serializable;
 
 /**
@@ -15,6 +17,7 @@ public class AuthenticatedUser implements Serializable {
     private final Long id;
     private final String loginName;
     private final String email;
+    private final UserRole role;
 
     /**
      * Creates a session-safe authenticated user snapshot.
@@ -23,10 +26,11 @@ public class AuthenticatedUser implements Serializable {
      * @param loginName login name
      * @param email email address
      */
-    public AuthenticatedUser(Long id, String loginName, String email) {
+    public AuthenticatedUser(Long id, String loginName, String email, UserRole role) {
         this.id = id;
         this.loginName = loginName;
         this.email = email;
+        this.role = role;
     }
 
     /**
@@ -54,5 +58,14 @@ public class AuthenticatedUser implements Serializable {
      */
     public String getEmail() {
         return email;
+    }
+
+    /**
+     * Returns the user role.
+     *
+     * @return user role
+     */
+    public UserRole getRole() {
+        return role;
     }
 }

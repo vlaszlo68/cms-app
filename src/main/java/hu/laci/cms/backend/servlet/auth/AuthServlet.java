@@ -108,7 +108,8 @@ public class AuthServlet extends JsonServletSupport {
         AuthenticatedUser authenticatedUser = new AuthenticatedUser(
                 user.getId(),
                 user.getLoginName(),
-                user.getEmailAddress()
+                user.getEmailAddress(),
+                user.getRole()
         );
         session.setAttribute("user", authenticatedUser);
         session.setAttribute(CsrfTokenSupport.SESSION_ATTRIBUTE, CsrfTokenSupport.createToken());

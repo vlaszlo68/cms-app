@@ -19,15 +19,28 @@ public class User extends BaseEntity {
     @DbColumn("password_hash")
     private String passwordHash;
 
+    @DbColumn("role")
+    private UserRole role = UserRole.USER;
+
+    @DbColumn("active")
+    private Boolean active = Boolean.TRUE;
+
     public User() {
     }
 
     public User(Long id, String userName, String loginName, String emailAddress, String passwordHash) {
+        this(id, userName, loginName, emailAddress, passwordHash, UserRole.USER, Boolean.TRUE);
+    }
+
+    public User(Long id, String userName, String loginName, String emailAddress, String passwordHash,
+                UserRole role, Boolean active) {
         setId(id);
         this.userName = userName;
         this.loginName = loginName;
         this.emailAddress = emailAddress;
         this.passwordHash = passwordHash;
+        this.role = role;
+        this.active = active;
     }
 
     public String getUserName() {
@@ -60,5 +73,21 @@ public class User extends BaseEntity {
 
     public void setPasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public UserRole getRole() {
+        return role;
+    }
+
+    public void setRole(UserRole role) {
+        this.role = role;
+    }
+
+    public Boolean getActive() {
+        return active;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
     }
 }

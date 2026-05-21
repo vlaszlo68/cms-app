@@ -1,5 +1,7 @@
 package hu.laci.cms.backend.config.database;
 
+import hu.laci.cms.backend.config.database.migration.DatabaseMigrationRunner;
+
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
 
@@ -19,6 +21,7 @@ public class DatabaseConfigListener implements ServletContextListener {
     @Override
     public void contextInitialized(ServletContextEvent sce) {
         DatabaseConfig.initialize(sce.getServletContext());
+        DatabaseMigrationRunner.runMigrations();
     }
 
     /**

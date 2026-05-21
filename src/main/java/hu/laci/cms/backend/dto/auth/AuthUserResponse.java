@@ -1,5 +1,7 @@
 package hu.laci.cms.backend.dto.auth;
 
+import hu.laci.cms.backend.model.user.UserRole;
+
 /**
  * Authentication response DTO returned by login and session-restore endpoints.
  */
@@ -8,6 +10,7 @@ public class AuthUserResponse {
     private final Long id;
     private final String loginName;
     private final String email;
+    private final UserRole role;
     private final String csrfToken;
 
     /**
@@ -18,10 +21,11 @@ public class AuthUserResponse {
      * @param email email address
      * @param csrfToken CSRF token to use for state-changing requests
      */
-    public AuthUserResponse(Long id, String loginName, String email, String csrfToken) {
+    public AuthUserResponse(Long id, String loginName, String email, UserRole role, String csrfToken) {
         this.id = id;
         this.loginName = loginName;
         this.email = email;
+        this.role = role;
         this.csrfToken = csrfToken;
     }
 
@@ -32,7 +36,8 @@ public class AuthUserResponse {
      * @param csrfToken CSRF token
      */
     public AuthUserResponse(AuthenticatedUser authenticatedUser, String csrfToken) {
-        this(authenticatedUser.getId(), authenticatedUser.getLoginName(), authenticatedUser.getEmail(), csrfToken);
+        this(authenticatedUser.getId(), authenticatedUser.getLoginName(), authenticatedUser.getEmail(),
+                authenticatedUser.getRole(), csrfToken);
     }
 
     /**
@@ -60,6 +65,15 @@ public class AuthUserResponse {
      */
     public String getEmail() {
         return email;
+    }
+
+    /**
+     * Returns the user role.
+     *
+     * @return user role
+     */
+    public UserRole getRole() {
+        return role;
     }
 
     /**
