@@ -108,6 +108,7 @@ Successful response:
     "id": 1,
     "loginName": "tester",
     "email": "tester@example.com",
+    "role": "ADMIN",
     "csrfToken": "base64url-token"
   }
 }
@@ -202,6 +203,7 @@ Successful response:
     "id": 1,
     "loginName": "tester",
     "email": "tester@example.com",
+    "role": "ADMIN",
     "csrfToken": "base64url-token"
   }
 }
@@ -406,5 +408,6 @@ The backend was locally verified with this user in PostgreSQL:
 - `loginName`: `tester`
 - `password`: `pw`
 - `email`: `tester@example.com`
+- current local role used during verification: `ADMIN`
 
 This is only a local development/test detail, not a product requirement.

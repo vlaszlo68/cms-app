@@ -144,6 +144,7 @@ export type AuthUser = {
   id: number;
   loginName: string;
   email: string;
+  role: 'ADMIN' | 'USER';
   csrfToken: string;
 };
 

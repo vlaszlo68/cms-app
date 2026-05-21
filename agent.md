@@ -5,6 +5,7 @@
 Edit ONLY in:
 - src/main/java/hu/laci/cms/backend/
 - src/main/java/hu/laci/cms/Main.java
+- src/main/resources/
 - src/main/webapp/
 
 You may also read project instruction files from:
@@ -73,6 +74,8 @@ When building a feature:
 - Simple, readable SQL
 - No ORM
 - Use HikariCP connections
+- Database schema changes belong in versioned SQL files under `src/main/resources/db/migration/`
+- Do not reintroduce one-off schema management through `docker/postgres/init.sql`
 - DAO code should use `hu.laci.cms.backend.config.database.TransactionContext#openConnection()` so request-scoped transactions are respected
 - Prefer the existing `BaseDao` + `QuerySpec` path for normal CRUD/list/filter/sort/join queries
 - Use `BaseDao` custom SQL helpers from DAO subclasses for projections, aggregations, optimized SQL, or custom insert/update/delete operations that do not fit the generic query builder

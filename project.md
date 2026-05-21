@@ -78,6 +78,7 @@ Cross-cutting HTTP behavior is handled by servlet filters:
 - UTF-8 request/response encoding
 - authentication
 - CSRF validation
+- HTTP session context propagation
 - request-scoped DB transaction handling
 
 Layer boundary rules:
@@ -96,8 +97,9 @@ Current request lifecycle for `/api/*` requests:
 4. `SecurityHeadersFilter` adds no-store and browser security headers.
 5. `CharacterEncodingFilter` sets UTF-8 request/response encoding.
 6. `AuthFilter` validates session authentication except public auth endpoints.
-7. `CsrfFilter` validates `X-CSRF-Token` for state-changing API requests.
-8. `TransactionFilter` opens, commits, rolls back, and closes request-scoped DB transactions.
+7. `HttpSessionContextFilter` copies selected `HttpSession` data into request-local `SessionContext`.
+8. `CsrfFilter` validates `X-CSRF-Token` for state-changing API requests.
+9. `TransactionFilter` opens, commits, rolls back, and closes request-scoped DB transactions.
 
 ---
 
@@ -167,6 +169,7 @@ Implemented auth response shape:
     "id": 1,
     "loginName": "tester",
     "email": "tester@example.com",
+    "role": "ADMIN",
     "csrfToken": "..."
   }
 }
@@ -195,6 +198,7 @@ Session details:
 - session attribute for authenticated user: `user`
 - stored object: `hu.laci.cms.backend.dto.auth.AuthenticatedUser`
 - full persistence `User` is not stored in session
+- `AuthenticatedUser` currently contains `id`, `loginName`, `email`, and `role`
 - successful login calls `request.changeSessionId()`
 - session attribute for CSRF token: `csrfToken`
 - CSRF token header: `X-CSRF-Token`
@@ -230,6 +234,8 @@ Frontend requirements:
 - Prefer ANSI SQL where possible
 - Use vendor-specific SQL only when justified
 - Current connection entry point: `hu.laci.cms.backend.config.database.DatabaseConfig`
+- Application startup runs versioned SQL migrations through `DatabaseMigrationRunner`
+- Applied migration versions, script names, and checksums are tracked in `schema_migrations`
 
 Connection configuration priority:
 
@@ -260,7 +266,9 @@ DAO layer notes:
 - query filtering uses `QuerySpec` with entity property constants, not annotation-based filter classes
 - supported query filter operations: `EQUALS`, `LIKE`, `LESS`, `LESS_OR_EQUALS`, `GREATER`, `GREATER_OR_EQUALS`, `IN`, `NOT_IN`, `BETWEEN`
 - Java `Boolean`/`boolean` maps to database `VARCHAR(1)` values `T`/`F`
+- Java enum values map to database `VARCHAR` values through `Enum.name()`
 - DB mapping annotations live under `hu.laci.cms.backend.dao.common.annotations`
+- `DbColumn` supports `insertable` and `updatable` flags for generated CRUD SQL
 
 DAO responsibilities and behavior:
 
@@ -277,9 +285,12 @@ DAO responsibilities and behavior:
   - `executeCustomUpdate(...)`
   - `mapEntity(...)`
 - Entity classes extend `BaseEntity`; `id` is always `Long`.
+- Audit-capable entity classes extend `AuditableEntity`, which adds `createdAt`, `updatedAt`, `createdBy`, and `updatedBy`.
 - `save(entity)` delegates to `create` when `id == null`, otherwise to `update`.
 - `create` uses `INSERT ... RETURNING id`.
+- `create` automatically fills audit fields for `AuditableEntity` instances.
 - `update` requires non-null id and fails if no row exists.
+- `update` automatically refreshes `updatedAt` and `updatedBy` for `AuditableEntity` instances.
 - `deleteById` returns whether a row was deleted.
 - `findAll(querySpec)` defaults to `ORDER BY id ASC`.
 - Query sort input is a list of `SortOrder<P>`, so multi-column order is supported.
@@ -315,14 +326,34 @@ Supported common type conversions:
 - `Long` / `long`
 - `Date`, `java.sql.Date`, `Timestamp`
 - `Boolean` / `boolean` as DB `VARCHAR(1)` values `T` and `F`
+- `enum` values as DB `VARCHAR` values using the enum constant name
 - `BaseEntity` references as foreign-key id values
 
-Specialized future conversions, such as JSON columns or richer audit support, should be added deliberately when a concrete model needs them.
+Specialized future conversions, such as JSON columns, should be added deliberately when a concrete model needs them.
 
-Audit model direction:
+Session-derived request context:
 
-- audit fields should be introduced through a dedicated model base class, for example an `AuditableEntity` that extends `BaseEntity`
-- when this is added, `DbColumn` may need insert/update flags, for example for `created_at` and `updated_at`
+- `HttpSessionContextFilter` populates `SessionContext` for the current request.
+- `SessionContext` is a thread-local holder for data derived from the HTTP session.
+- It currently exposes the current authenticated user id for audit field population.
+- The context is cleared at the end of every request.
+
+Audit behavior:
+
+- `AuditableEntity` adds `createdAt`, `updatedAt`, `createdBy`, and `updatedBy`.
+- `createdAt` and `createdBy` are insert-only in generated DAO SQL.
+- `updatedAt` and `updatedBy` are refreshed by `BaseDao.update`.
+- `createdBy` and `updatedBy` are nullable; no foreign key is currently defined.
+
+Migration behavior:
+
+- migration files live under `src/main/resources/db/migration/`
+- file names use the pattern `V<version>__<description>.sql`
+- startup creates `schema_migrations` if needed
+- migrations are applied in version order
+- already applied migrations are skipped after script name and checksum validation
+- PostgreSQL advisory locking prevents concurrent migration execution by multiple app instances
+- `docker/postgres/init.sql` no longer owns the schema; it only points to app-managed migrations
 
 Transaction behavior:
 
@@ -354,7 +385,8 @@ cms-app/
 |   |   |       `-- backend/
 |   |   |           |-- config/
 |   |   |           |   |-- app/
-|   |   |           |   `-- database/
+|   |   |           |   |-- database/
+|   |   |           |   `-- session/
 |   |   |           |-- dao/
 |   |   |           |   |-- common/
 |   |   |           |   |   `-- annotations/
@@ -373,6 +405,8 @@ cms-app/
 |   |   |               |-- health/
 |   |   |               `-- support/
 |   |   |-- resources/
+|   |   |   `-- db/
+|   |   |       `-- migration/
 |   |   `-- webapp/
 |   |       `-- WEB-INF/
 |   |           `-- web.xml
@@ -418,6 +452,7 @@ Package conventions:
 - `servlet.filter`: cross-cutting HTTP filters
 - `servlet.support`: reusable servlet helpers
 - `config.database`: DB pool and transaction context
+- `config.session`: request-local context populated from HTTP session data
 - `config.app`: app initialization listeners
 
 ---
@@ -447,6 +482,8 @@ Package conventions:
 ## Current Backend Status
 
 - `User`, `UserDao`, `UserDaoImpl`, `AuthService`, `AuthServiceException`, `DatabaseConfig` already exist
+- `User` currently has `role`, `active`, and `registrationState` fields in addition to identity and credential fields
+- user enum models currently include `UserRole` and `RegistrationState`
 - generic DAO CRUD, `QuerySpec` filtering/sorting/join support, and custom SQL helpers are implemented in `BaseDao`
 - DAO integration tests currently cover user DAO behavior, CRUD, transaction commit/rollback, boolean mapping, filtering, sorting, relational filters, `IN` / `NOT_IN` / `BETWEEN`, joins, duplicate join alias validation, repeated joined entity aliases, nested join mapping, extra join conditions, static DAO convenience helpers, and custom SQL helpers
 - application startup/shutdown listeners initialize and close shared infrastructure:
@@ -462,6 +499,7 @@ Package conventions:
   - `hu.laci.cms.backend.dto.common.ApiErrorResponse`
   - `hu.laci.cms.backend.servlet.support.JsonServletSupport`
   - `hu.laci.cms.backend.servlet.filter.AuthFilter`
+  - `hu.laci.cms.backend.servlet.filter.HttpSessionContextFilter`
   - `hu.laci.cms.backend.servlet.filter.ExceptionHandlingFilter`
   - `hu.laci.cms.backend.servlet.filter.RequestLoggingFilter`
   - `hu.laci.cms.backend.servlet.filter.CorsFilter`
@@ -476,6 +514,7 @@ Package conventions:
 - session-based authentication is active through `HttpSession`
 - successful login rotates the session id before storing auth state
 - the session stores `AuthenticatedUser`, not the full persistence `User`
+- `AuthenticatedUser` and auth responses include the user `role`
 - successful login creates a session CSRF token
 - `POST /api/auth/login` and `GET /api/auth/me` return `csrfToken`
 - `AuthFilter` uses `request.getServletPath()`, so public auth endpoints work both under root context and `/cms-app`
@@ -489,8 +528,9 @@ Current filter order in `web.xml`:
 4. `securityHeadersFilter`
 5. `characterEncodingFilter`
 6. `authFilter`
-7. `csrfFilter`
-8. `transactionFilter`
+7. `httpSessionContextFilter`
+8. `csrfFilter`
+9. `transactionFilter`
 
 Current auth endpoints:
 
@@ -514,6 +554,7 @@ Success:
     "id": 1,
     "loginName": "tester",
     "email": "tester@example.com",
+    "role": "ADMIN",
     "csrfToken": "..."
   }
 }
@@ -548,6 +589,7 @@ Current filter responsibilities:
 | `SecurityHeadersFilter` | `/*` | Adds no-store cache and browser hardening headers. |
 | `CharacterEncodingFilter` | `/*` | Sets UTF-8 request and response encoding. |
 | `AuthFilter` | `/api/*` | Requires authenticated session except public auth paths. |
+| `HttpSessionContextFilter` | `/*` | Copies selected HTTP session data into request-local `SessionContext`. |
 | `CsrfFilter` | `/api/*` | Requires CSRF token for state-changing API requests. |
 | `TransactionFilter` | `/*` | Wraps request processing in DB transaction scope. |
 
@@ -640,8 +682,8 @@ Testing notes:
 
 - `mvn test` runs DB-backed DAO tests
 - `mvn package` also runs tests unless skipped
-- current verified test count: 45
-- PostgreSQL schema comes from `docker/postgres/init.sql`
+- current verified test count: 47
+- PostgreSQL schema comes from app startup migrations in `src/main/resources/db/migration/`
 - tests clean up their own `dao_test_` user data and temporary boolean test table
 
 ---
