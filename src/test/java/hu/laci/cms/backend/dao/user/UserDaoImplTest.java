@@ -3,6 +3,7 @@ package hu.laci.cms.backend.dao.user;
 import hu.laci.cms.backend.config.database.DatabaseConfig;
 import hu.laci.cms.backend.config.database.TransactionContext;
 import hu.laci.cms.backend.config.database.migration.DatabaseMigrationRunner;
+import hu.laci.cms.backend.config.session.SessionContext;
 import hu.laci.cms.backend.dao.common.BaseDao;
 import hu.laci.cms.backend.dao.common.DataAccessException;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
@@ -53,12 +54,14 @@ class UserDaoImplTest {
 
     @BeforeEach
     void setUp() throws SQLException {
+        SessionContext.clear();
         userDao = new UserDaoImpl();
         deleteTestUsers();
     }
 
     @AfterEach
     void tearDown() throws SQLException {
+        SessionContext.clear();
         deleteTestUsers();
     }
 
@@ -76,6 +79,8 @@ class UserDaoImplTest {
         assertEquals(TEST_PREFIX + "alpha_hash", user.get().getPasswordHash());
         assertEquals(UserRole.USER, user.get().getRole());
         assertEquals(Boolean.TRUE, user.get().getActive());
+        assertNotNull(user.get().getCreatedAt());
+        assertNotNull(user.get().getUpdatedAt());
     }
 
     @Test
@@ -252,6 +257,8 @@ class UserDaoImplTest {
         assertEquals(TEST_PREFIX + "created_hash", loadedUser.get().getPasswordHash());
         assertEquals(UserRole.USER, loadedUser.get().getRole());
         assertEquals(Boolean.TRUE, loadedUser.get().getActive());
+        assertNotNull(loadedUser.get().getCreatedAt());
+        assertNotNull(loadedUser.get().getUpdatedAt());
     }
 
     @Test
@@ -269,9 +276,33 @@ class UserDaoImplTest {
     }
 
     @Test
+    void createSetsAuditFieldsFromSessionContext() {
+        SessionContext.setCurrentUserId(99L);
+        User user = new User(null, TEST_PREFIX + "audit-create", TEST_PREFIX + "audit_create_login",
+                TEST_PREFIX + "audit-create@example.com", TEST_PREFIX + "audit_create_hash");
+
+        User createdUser = userDao.create(user);
+
+        assertNotNull(createdUser.getCreatedAt());
+        assertNotNull(createdUser.getUpdatedAt());
+        assertEquals(99L, createdUser.getCreatedBy());
+        assertEquals(99L, createdUser.getUpdatedBy());
+
+        Optional<User> loadedUser = userDao.findById(createdUser.getId());
+        assertTrue(loadedUser.isPresent());
+        assertNotNull(loadedUser.get().getCreatedAt());
+        assertNotNull(loadedUser.get().getUpdatedAt());
+        assertEquals(99L, loadedUser.get().getCreatedBy());
+        assertEquals(99L, loadedUser.get().getUpdatedBy());
+    }
+
+    @Test
     void updateModifiesExistingUser() {
         User user = userDao.create(new User(null, TEST_PREFIX + "before", TEST_PREFIX + "before_login",
                 TEST_PREFIX + "before@example.com", TEST_PREFIX + "before_hash"));
+        var originalCreatedAt = user.getCreatedAt();
+        Long originalCreatedBy = user.getCreatedBy();
+        SessionContext.setCurrentUserId(100L);
         user.setUserName(TEST_PREFIX + "after");
         user.setLoginName(TEST_PREFIX + "after_login");
         user.setEmailAddress(TEST_PREFIX + "after@example.com");
@@ -291,6 +322,10 @@ class UserDaoImplTest {
         assertEquals(TEST_PREFIX + "after_hash", loadedUser.get().getPasswordHash());
         assertEquals(UserRole.ADMIN, loadedUser.get().getRole());
         assertEquals(Boolean.FALSE, loadedUser.get().getActive());
+        assertEquals(originalCreatedAt, loadedUser.get().getCreatedAt());
+        assertEquals(originalCreatedBy, loadedUser.get().getCreatedBy());
+        assertNotNull(loadedUser.get().getUpdatedAt());
+        assertEquals(100L, loadedUser.get().getUpdatedBy());
     }
 
     @Test

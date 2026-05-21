@@ -93,6 +93,16 @@
     </filter-mapping>
 
     <filter>
+        <filter-name>httpSessionContextFilter</filter-name>
+        <filter-class>hu.laci.cms.backend.servlet.filter.HttpSessionContextFilter</filter-class>
+    </filter>
+
+    <filter-mapping>
+        <filter-name>httpSessionContextFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+
+    <filter>
         <filter-name>csrfFilter</filter-name>
         <filter-class>hu.laci.cms.backend.servlet.filter.CsrfFilter</filter-class>
     </filter>

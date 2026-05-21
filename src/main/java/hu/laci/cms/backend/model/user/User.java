@@ -2,10 +2,10 @@ package hu.laci.cms.backend.model.user;
 
 import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
-import hu.laci.cms.backend.model.common.BaseEntity;
+import hu.laci.cms.backend.model.common.AuditableEntity;
 
 @DbTable("users")
-public class User extends BaseEntity {
+public class User extends AuditableEntity {
 
     @DbColumn("username")
     private String userName;

@@ -1,8 +1,10 @@
 package hu.laci.cms.backend.dao.common;
 
 import hu.laci.cms.backend.config.database.TransactionContext;
+import hu.laci.cms.backend.config.session.SessionContext;
 import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
+import hu.laci.cms.backend.model.common.AuditableEntity;
 import hu.laci.cms.backend.model.common.BaseEntity;
 import hu.laci.cms.backend.model.common.FilterOperation;
 import hu.laci.cms.backend.model.common.JoinSpec;
@@ -198,6 +200,7 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
      */
     @Override
     public T create(T entity) {
+        applyCreateAudit(entity);
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
         List<SqlParameter> parameters = entityMetadata.insertableColumnFields().stream()
                 .map(columnField -> new SqlParameter(columnField.columnName(),
@@ -235,6 +238,7 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     @Override
     public T update(T entity) {
         requireEntityId(entity);
+        applyUpdateAudit(entity);
 
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
         List<SqlParameter> parameters = new ArrayList<>();
@@ -1117,6 +1121,28 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         }
     }
 
+    private static void applyCreateAudit(BaseEntity entity) {
+        if (!(entity instanceof AuditableEntity auditableEntity)) {
+            return;
+        }
+
+        Timestamp now = new Timestamp(System.currentTimeMillis());
+        Long currentUserId = SessionContext.getCurrentUserId().orElse(null);
+        auditableEntity.setCreatedAt(now);
+        auditableEntity.setUpdatedAt(now);
+        auditableEntity.setCreatedBy(currentUserId);
+        auditableEntity.setUpdatedBy(currentUserId);
+    }
+
+    private static void applyUpdateAudit(BaseEntity entity) {
+        if (!(entity instanceof AuditableEntity auditableEntity)) {
+            return;
+        }
+
+        auditableEntity.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+        auditableEntity.setUpdatedBy(SessionContext.getCurrentUserId().orElse(null));
+    }
+
     private static Object getColumnValue(ResultSet resultSet, String columnName, Field field) throws SQLException {
         if (BaseEntity.class.isAssignableFrom(field.getType())) {
             return getEntityReference(resultSet, columnName, field);
@@ -1569,10 +1595,13 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
                 continue;
             }
 
-            ColumnFieldMetadata columnField = new ColumnFieldMetadata(field, dbTable.value(), dbColumn.value());
+            ColumnFieldMetadata columnField = new ColumnFieldMetadata(field, dbTable.value(), dbColumn.value(),
+                    dbColumn.insertable(), dbColumn.updatable());
             columnFields.add(columnField);
-            if (!"id".equals(field.getName())) {
+            if (!"id".equals(field.getName()) && columnField.insertable()) {
                 insertableColumnFields.add(columnField);
+            }
+            if (!"id".equals(field.getName()) && columnField.updatable()) {
                 updatableColumnFields.add(columnField);
             }
             columnsByProperty.put(field.getName(), dbColumn.value());
@@ -1688,13 +1717,18 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
         private final String qualifiedColumnName;
         private final String resultAlias;
         private final String selectExpression;
+        private final boolean insertable;
+        private final boolean updatable;
 
-        private ColumnFieldMetadata(Field field, String tableName, String columnName) {
+        private ColumnFieldMetadata(Field field, String tableName, String columnName, boolean insertable,
+                                    boolean updatable) {
             this.field = field;
             this.columnName = columnName;
             this.qualifiedColumnName = tableName + "." + columnName;
             this.resultAlias = buildResultAlias(tableName, columnName);
             this.selectExpression = qualifiedColumnName + " AS " + resultAlias;
+            this.insertable = insertable;
+            this.updatable = updatable;
         }
 
         private Field field() {
@@ -1727,6 +1761,14 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
 
         private String selectExpression(String tableAlias) {
             return qualifiedColumnName(tableAlias) + " AS " + resultAlias(tableAlias);
+        }
+
+        private boolean insertable() {
+            return insertable;
+        }
+
+        private boolean updatable() {
+            return updatable;
         }
     }
 

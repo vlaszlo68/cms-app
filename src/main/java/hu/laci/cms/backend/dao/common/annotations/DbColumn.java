@@ -21,4 +21,18 @@ public @interface DbColumn {
      * @return column name, for example {@code login_name}
      */
     String value();
+
+    /**
+     * Whether the column is included in generated INSERT statements.
+     *
+     * @return true when insertable
+     */
+    boolean insertable() default true;
+
+    /**
+     * Whether the column is included in generated UPDATE statements.
+     *
+     * @return true when updatable
+     */
+    boolean updatable() default true;
 }
