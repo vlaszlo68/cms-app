@@ -626,7 +626,14 @@ Public endpoint for frontend auth screen feature flags.
   "success": true,
   "data": {
     "loginCaptchaEnabled": true,
-    "registrationCaptchaEnabled": true
+    "registrationCaptchaEnabled": true,
+    "passwordPolicy": {
+      "minLength": 2,
+      "requireUppercase": false,
+      "requireLowercase": false,
+      "requireDigit": false,
+      "requireSpecial": false
+    }
   }
 }
 ```

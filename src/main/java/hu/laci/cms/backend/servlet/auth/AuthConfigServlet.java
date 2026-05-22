@@ -2,6 +2,7 @@ package hu.laci.cms.backend.servlet.auth;
 
 import hu.laci.cms.backend.config.security.SecurityConfig;
 import hu.laci.cms.backend.dto.auth.AuthConfigResponse;
+import hu.laci.cms.backend.dto.auth.PasswordPolicyResponse;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.annotation.WebServlet;
@@ -20,7 +21,8 @@ public class AuthConfigServlet extends JsonServletSupport {
         SecurityConfig securityConfig = SecurityConfig.getCurrent();
         writeJsonResponse(response, HttpServletResponse.SC_OK, new AuthConfigResponse(
                 securityConfig.isLoginCaptchaEnabled(),
-                securityConfig.isRegistrationCaptchaEnabled()
+                securityConfig.isRegistrationCaptchaEnabled(),
+                new PasswordPolicyResponse(securityConfig.getPasswordPolicy())
         ));
     }
 }
