@@ -32,10 +32,11 @@ Check for missing or weak test coverage when a change is risky.
 Stay aligned with the project structure under `src/main/java/hu/laci/cms/`.
 
 Verify package placement is consistent with:
-- `hu.laci.cms.model`
-- `hu.laci.cms.dao`
-- `hu.laci.cms.service`
-- `hu.laci.cms.servlet`
+- `hu.laci.cms.backend.model`
+- `hu.laci.cms.backend.dao`
+- `hu.laci.cms.backend.service`
+- `hu.laci.cms.backend.servlet`
+- `hu.laci.cms.backend.dto`
 - `hu.laci.cms.backend.config`
 
 Enforce the 3-layer backend split:

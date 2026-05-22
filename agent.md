@@ -103,6 +103,7 @@ Do NOT:
 - rename existing classes
 - introduce frameworks
 - modify frontend unless asked
+- introduce `var`; use explicit Java types in production and test code
 
 ---
 

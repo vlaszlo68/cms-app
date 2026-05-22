@@ -8,7 +8,7 @@ Goal: clean, minimal, framework-light architecture with full control over implem
 
 The backend is intentionally servlet/JDBC based. The project avoids Spring, ORM frameworks, and large infrastructure abstractions so the request lifecycle, transaction boundaries, SQL generation, and HTTP contract remain explicit and easy to inspect.
 
-The frontend lives in a separate React repository. This backend repository still contains frontend handoff documents because the backend API contract is the source of truth for frontend integration.
+The frontend lives in a separate React repository. Backend API behavior is documented in this file and in the source code; old frontend handoff planning files were removed after being copied to the frontend repository.
 
 ---
 
@@ -110,11 +110,17 @@ Current request lifecycle for `/api/*` requests:
 - Common API response envelope:
   - success: `{ "success": true, "data": ... }`
   - error: `{ "success": false, "error": { "code": "...", "message": "..." } }`
+  - validation failures may include `error.validationErrors`
 
 Examples:
 
 - `POST /api/auth/login`
+- `GET /api/auth/captcha`
+- `POST /api/auth/register`
 - `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `POST /api/users/{id}/approve`
+- `POST /api/users/{id}/reject`
 - `GET /api/pages`
 - `POST /api/pages`
 - `PUT /api/pages/{id}`
@@ -145,16 +151,22 @@ Current implementation note:
 
 - current auth endpoints are implemented under `/api/auth/*`
   - `POST /api/auth/login`
+  - `GET /api/auth/captcha`
+  - `POST /api/auth/register`
   - `POST /api/auth/logout`
   - `GET /api/auth/me`
 - auth endpoints now use the common API response envelope
 - successful auth responses include a CSRF token in `data.csrfToken`
 - local standalone Tomcat deploy path in current development is:
   - `http://localhost:8081/cms-app/api/auth/login`
+  - `http://localhost:8081/cms-app/api/auth/captcha`
+  - `http://localhost:8081/cms-app/api/auth/register`
   - `http://localhost:8081/cms-app/api/auth/logout`
   - `http://localhost:8081/cms-app/api/auth/me`
 - Docker Tomcat deploy path in current development is:
   - `http://localhost:8081/api/auth/login`
+  - `http://localhost:8081/api/auth/captcha`
+  - `http://localhost:8081/api/auth/register`
   - `http://localhost:8081/api/auth/logout`
   - `http://localhost:8081/api/auth/me`
 - the current DB connection code reads `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` first, then falls back to `web.xml` context params and finally hardcoded defaults
@@ -180,6 +192,11 @@ Implemented auth error examples:
 - `AUTH_REQUIRED`
 - `INVALID_CREDENTIALS`
 - `INVALID_REQUEST`
+- `CAPTCHA_INVALID`
+- `RATE_LIMITED`
+- `DUPLICATE_LOGIN_NAME`
+- `DUPLICATE_EMAIL_ADDRESS`
+- `VALIDATION_ERROR`
 - `CSRF_INVALID`
 - `INTERNAL_ERROR`
 
@@ -206,14 +223,29 @@ Session details:
 Public auth endpoints:
 
 - `POST /api/auth/login`
+- `GET /api/auth/captcha`
+- `POST /api/auth/register`
 - `POST /api/auth/logout` is public from the auth filter perspective, but CSRF-protected if a session exists and the request reaches the CSRF filter
 
 CSRF rules:
 
 - checked methods: `POST`, `PUT`, `PATCH`, `DELETE`
 - skipped methods: `GET`, `HEAD`, `OPTIONS`
-- skipped endpoint: `POST /api/auth/login`
+- skipped endpoints:
+  - `POST /api/auth/login`
+  - `POST /api/auth/register`
 - invalid or missing token returns `403 CSRF_INVALID`
+
+Registration and login hardening:
+
+- `GET /api/auth/captcha` returns SVG content and exposes the generated id in the `X-Captcha-Id` response header.
+- `POST /api/auth/register` creates `USER`, `active=false`, `registrationStatus=PENDING` accounts.
+- registration requires `captchaId` and `captchaAnswer`; CAPTCHA values are stored in the HTTP session and consumed after validation.
+- login returns only `INVALID_CREDENTIALS` for missing users, bad passwords, inactive accounts, and temporary lockouts.
+- login rate limiting is in-memory and keyed by `loginName + request.getRemoteAddr()`.
+- registration rate limiting is in-memory and keyed by `request.getRemoteAddr()`.
+- password policy is configurable through `web.xml` context parameters and enforced for registration and password changes.
+- password policy errors are returned as structured `error.validationErrors` codes such as `TOO_SHORT`, `MISSING_UPPERCASE`, `MISSING_DIGIT`, and `MISSING_SPECIAL`.
 
 Frontend requirements:
 
@@ -386,6 +418,7 @@ cms-app/
 |   |   |           |-- config/
 |   |   |           |   |-- app/
 |   |   |           |   |-- database/
+|   |   |           |   |-- security/
 |   |   |           |   `-- session/
 |   |   |           |-- dao/
 |   |   |           |   |-- common/
@@ -393,12 +426,16 @@ cms-app/
 |   |   |           |   `-- user/
 |   |   |           |-- dto/
 |   |   |           |   |-- auth/
+|   |   |           |   |-- user/
 |   |   |           |   `-- common/
 |   |   |           |-- model/
 |   |   |           |   |-- common/
 |   |   |           |   |   `-- annotations/
 |   |   |           |   `-- user/
 |   |   |           |-- service/
+|   |   |           |   |-- auth/
+|   |   |           |   |-- security/
+|   |   |           |   `-- user/
 |   |   |           `-- servlet/
 |   |   |               |-- auth/
 |   |   |               |-- filter/
@@ -418,8 +455,6 @@ cms-app/
 |   |-- postgres/
 |   `-- tomcat/
 |-- skills/
-|-- FRONTEND_BOOTSTRAP_PLAN.md
-|-- FRONTEND_HANDOFF.md
 |-- SESSION_CONTEXT.md
 |-- docker-compose.yml
 |-- Jenkinsfile
@@ -452,6 +487,7 @@ Package conventions:
 - `servlet.filter`: cross-cutting HTTP filters
 - `servlet.support`: reusable servlet helpers
 - `config.database`: DB pool and transaction context
+- `config.security`: centralized auth and password policy configuration
 - `config.session`: request-local context populated from HTTP session data
 - `config.app`: app initialization listeners
 
@@ -466,6 +502,7 @@ Package conventions:
 - Avoid unnecessary abstractions
 - Prefer existing project patterns over new local styles
 - Add abstractions only when they reduce real duplication or clarify shared behavior
+- Avoid `var`; use explicit Java types in production and test code
 - Keep generated SQL readable and loggable
 - Use prepared statements for SQL parameters
 - Keep API errors in the common response envelope
@@ -491,9 +528,12 @@ Package conventions:
   - `hu.laci.cms.backend.config.app.DaoRegistryListener`
 - auth servlet layer is now implemented with:
   - `hu.laci.cms.backend.servlet.auth.AuthServlet`
+  - `hu.laci.cms.backend.servlet.auth.CaptchaServlet`
+  - `hu.laci.cms.backend.servlet.auth.RegisterServlet`
   - `hu.laci.cms.backend.servlet.auth.LogoutServlet`
   - `hu.laci.cms.backend.servlet.auth.MeServlet`
   - `hu.laci.cms.backend.dto.auth.LoginRequest`
+  - `hu.laci.cms.backend.dto.auth.RegisterRequest`
   - `hu.laci.cms.backend.dto.auth.AuthenticatedUser`
   - `hu.laci.cms.backend.dto.common.ApiResponse`
   - `hu.laci.cms.backend.dto.common.ApiErrorResponse`
@@ -511,6 +551,7 @@ Package conventions:
 - JSON request/response handling currently uses Gson
 - successful JSON API responses are wrapped as `success/data`
 - JSON API errors are wrapped as `success/error.code/error.message`
+- validation errors can include `success/error.validationErrors`
 - session-based authentication is active through `HttpSession`
 - successful login rotates the session id before storing auth state
 - the session stores `AuthenticatedUser`, not the full persistence `User`
@@ -518,7 +559,7 @@ Package conventions:
 - successful login creates a session CSRF token
 - `POST /api/auth/login` and `GET /api/auth/me` return `csrfToken`
 - `AuthFilter` uses `request.getServletPath()`, so public auth endpoints work both under root context and `/cms-app`
-- a frontend handoff and bootstrap planning documents are maintained in this repo and were copied into the separate frontend repo for frontend-side work
+- old frontend handoff and bootstrap planning documents were copied to the separate frontend repo and removed from this backend repo
 
 Current filter order in `web.xml`:
 
@@ -579,6 +620,58 @@ Success:
 }
 ```
 
+### `GET /api/auth/captcha`
+
+Returns an SVG CAPTCHA challenge for public registration.
+
+- response content type: `image/svg+xml`
+- response header: `X-Captcha-Id`
+- request must use credentials so the session-backed answer can be validated later
+
+### `POST /api/auth/register`
+
+Public, CSRF-exempt registration endpoint.
+
+Request:
+
+```json
+{
+  "loginName": "newuser",
+  "userName": "New User",
+  "emailAddress": "newuser@example.com",
+  "password": "Password123!",
+  "captchaId": "captcha-id-from-header",
+  "captchaAnswer": "10"
+}
+```
+
+Success creates a pending inactive user:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 123,
+    "loginName": "newuser",
+    "userName": "New User",
+    "emailAddress": "newuser@example.com",
+    "role": "USER",
+    "active": false,
+    "registrationStatus": "PENDING",
+    "createdAt": "...",
+    "updatedAt": "..."
+  }
+}
+```
+
+### `POST /api/users/{id}/approve`
+
+Admin-only endpoint. Requires CSRF. Sets `registrationStatus=COMPLETED` and `active=true`.
+
+### `POST /api/users/{id}/reject`
+
+Admin-only endpoint. Requires CSRF. Sets `registrationStatus=REJECTED` and `active=false`.
+
 Current filter responsibilities:
 
 | Filter | Scope | Responsibility |
@@ -604,6 +697,10 @@ Security headers currently set:
 - `Permissions-Policy: geolocation=(), microphone=(), camera=()`
 
 `Strict-Transport-Security` is intentionally not enabled yet because HTTPS is not currently configured.
+
+Exposed CORS response headers:
+
+- `X-Captcha-Id`
 
 ---
 
@@ -659,8 +756,7 @@ Jenkins note:
 ## Working Notes
 
 - `SESSION_CONTEXT.md` stores the latest implementation summary and local runtime state for follow-up sessions
-- `FRONTEND_HANDOFF.md` stores the backend contract for the separate React frontend repo
-- `FRONTEND_BOOTSTRAP_PLAN.md` stores the recommended frontend repo bootstrap plan
+- frontend handoff documents were removed from this repo after being transferred to the separate frontend repository
 - keep `project.md` focused on stable project context and intended architecture
 - keep machine-specific or temporary setup details out of this file unless they become permanent project conventions
 
@@ -682,7 +778,7 @@ Testing notes:
 
 - `mvn test` runs DB-backed DAO tests
 - `mvn package` also runs tests unless skipped
-- current verified test count: 47
+- current verified test count: 60
 - PostgreSQL schema comes from app startup migrations in `src/main/resources/db/migration/`
 - tests clean up their own `dao_test_` user data and temporary boolean test table
 
@@ -694,7 +790,5 @@ Testing notes:
 - Implement feature parts separately:
   - model -> DAO -> service -> servlet
 - Avoid large one-step implementations
-- For API changes, update `FRONTEND_HANDOFF.md`.
-- For frontend bootstrap guidance changes, update `FRONTEND_BOOTSTRAP_PLAN.md`.
 - For session-to-session continuity, update `SESSION_CONTEXT.md`.
 - For durable architecture/project conventions, update this file.
