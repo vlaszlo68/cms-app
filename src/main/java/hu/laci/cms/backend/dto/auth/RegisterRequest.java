@@ -11,6 +11,7 @@ public class RegisterRequest {
     private String password;
     private String captchaId;
     private String captchaAnswer;
+    private String captchaHoneypot;
 
     public RegisterRequest() {
     }
@@ -47,5 +48,9 @@ public class RegisterRequest {
 
     public String getCaptchaAnswer() {
         return captchaAnswer;
+    }
+
+    public String getCaptchaHoneypot() {
+        return captchaHoneypot;
     }
 }

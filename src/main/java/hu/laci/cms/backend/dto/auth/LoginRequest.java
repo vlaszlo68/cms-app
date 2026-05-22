@@ -9,6 +9,7 @@ public class LoginRequest {
     private String password;
     private String captchaId;
     private String captchaAnswer;
+    private String captchaHoneypot;
 
     /**
      * Creates an empty request DTO for Gson deserialization.
@@ -66,5 +67,13 @@ public class LoginRequest {
 
     public void setCaptchaAnswer(String captchaAnswer) {
         this.captchaAnswer = captchaAnswer;
+    }
+
+    public String getCaptchaHoneypot() {
+        return captchaHoneypot;
+    }
+
+    public void setCaptchaHoneypot(String captchaHoneypot) {
+        this.captchaHoneypot = captchaHoneypot;
     }
 }

@@ -115,6 +115,9 @@ public class AuthServlet extends JsonServletSupport {
                 || isBlank(loginRequest.getPassword())) {
             throw new BadRequestException("loginName and password are required.");
         }
+        if (!isBlank(loginRequest.getCaptchaHoneypot())) {
+            throw new BadRequestException("Invalid request.");
+        }
     }
 
     private boolean isBlank(String value) {
@@ -144,10 +147,21 @@ public class AuthServlet extends JsonServletSupport {
         Integer expectedCaptchaAnswer = session == null
                 ? null
                 : (Integer) session.getAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
+        String expectedCaptchaPurpose = session == null
+                ? null
+                : (String) session.getAttribute(CaptchaService.SESSION_PURPOSE_ATTRIBUTE);
+        Long createdAt = session == null
+                ? null
+                : (Long) session.getAttribute(CaptchaService.SESSION_CREATED_AT_ATTRIBUTE);
+        Integer attempts = session == null
+                ? null
+                : (Integer) session.getAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE);
 
-        clearCaptcha(session);
-        return captchaService.validate(expectedCaptchaId, expectedCaptchaAnswer,
-                loginRequest.getCaptchaId(), loginRequest.getCaptchaAnswer());
+        CaptchaService.CaptchaValidationResult result = captchaService.validateChallenge(expectedCaptchaId,
+                expectedCaptchaAnswer, expectedCaptchaPurpose, createdAt, attempts, loginRequest.getCaptchaId(),
+                loginRequest.getCaptchaAnswer(), CaptchaService.PURPOSE_LOGIN);
+        updateCaptchaState(session, result);
+        return result.valid();
     }
 
     private void clearCaptcha(HttpSession session) {
@@ -156,6 +170,20 @@ public class AuthServlet extends JsonServletSupport {
         }
         session.removeAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
         session.removeAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
+        session.removeAttribute(CaptchaService.SESSION_PURPOSE_ATTRIBUTE);
+        session.removeAttribute(CaptchaService.SESSION_CREATED_AT_ATTRIBUTE);
+        session.removeAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE);
+    }
+
+    private void updateCaptchaState(HttpSession session, CaptchaService.CaptchaValidationResult result) {
+        if (session == null) {
+            return;
+        }
+        if (result.challengeConsumed()) {
+            clearCaptcha(session);
+            return;
+        }
+        session.setAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE, result.attemptsUsed());
     }
 
     private static String clientIp(HttpServletRequest request) {

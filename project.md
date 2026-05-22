@@ -243,11 +243,15 @@ CSRF rules:
 
 Registration and login hardening:
 
-- `GET /api/auth/captcha` returns SVG content and exposes the generated id in the `X-Captcha-Id` response header.
+- `GET /api/auth/captcha?purpose=login|registration` returns SVG content and exposes the generated id in the `X-Captcha-Id` response header.
 - `GET /api/auth/config` exposes whether CAPTCHA is enabled for login and registration screens.
 - `POST /api/auth/register` creates `USER`, `active=false`, `registrationStatus=PENDING` accounts.
 - login accepts `captchaId` and `captchaAnswer` when `captcha.login.enabled=true`.
-- registration requires `captchaId` and `captchaAnswer`; CAPTCHA values are stored in the HTTP session and consumed after validation.
+- registration requires `captchaId` and `captchaAnswer`; CAPTCHA values are stored in the HTTP session with purpose, created time, and attempt count.
+- CAPTCHA validation enforces 3-minute TTL, 1-second minimum solve time, and 2 attempts per challenge.
+- CAPTCHA generation is rate limited by `request.getRemoteAddr() + sessionId`.
+- CAPTCHA is purpose-bound: a login challenge cannot be used for registration, and a registration challenge cannot be used for login.
+- login and registration reject non-empty `captchaHoneypot` values.
 - login returns only `INVALID_CREDENTIALS` for missing users, bad passwords, inactive accounts, and temporary lockouts.
 - login rate limiting is in-memory and keyed by `loginName + request.getRemoteAddr()`.
 - registration rate limiting is in-memory and keyed by `request.getRemoteAddr()`.
@@ -594,7 +598,8 @@ Request:
   "loginName": "tester",
   "password": "pw",
   "captchaId": "captcha-id-from-header",
-  "captchaAnswer": "10"
+  "captchaAnswer": "10",
+  "captchaHoneypot": ""
 }
 ```
 
@@ -655,11 +660,13 @@ Success:
 
 ### `GET /api/auth/captcha`
 
-Returns an SVG CAPTCHA challenge for public registration.
+Returns an SVG CAPTCHA challenge for public login or registration.
 
 - response content type: `image/svg+xml`
 - response header: `X-Captcha-Id`
+- query parameter: `purpose=login` or `purpose=registration`; missing or invalid values default to `registration`
 - request must use credentials so the session-backed answer can be validated later
+- challenge validity: 3 minutes, 2 validation attempts, minimum 1 second solve time
 
 ### `POST /api/auth/register`
 
@@ -674,7 +681,8 @@ Request:
   "emailAddress": "newuser@example.com",
   "password": "Password123!",
   "captchaId": "captcha-id-from-header",
-  "captchaAnswer": "10"
+  "captchaAnswer": "10",
+  "captchaHoneypot": ""
 }
 ```
 

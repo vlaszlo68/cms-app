@@ -98,6 +98,9 @@ public class RegistrationService {
         if (isBlank(request.getPassword())) {
             throw new UserServiceException(UserService.VALIDATION_ERROR, "password is required.");
         }
+        if (!isBlank(request.getCaptchaHoneypot())) {
+            throw new UserServiceException(UserService.VALIDATION_ERROR, "Invalid request.");
+        }
     }
 
     private void validatePasswordPolicy(String password) {

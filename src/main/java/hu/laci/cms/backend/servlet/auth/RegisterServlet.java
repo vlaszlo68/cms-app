@@ -33,16 +33,18 @@ public class RegisterServlet extends JsonServletSupport {
     private static final int HTTP_TOO_MANY_REQUESTS = 429;
 
     private RegistrationService registrationService;
+    private CaptchaService captchaService;
     private InMemoryRateLimiter registrationRateLimiter;
     private boolean registrationCaptchaEnabled;
 
     @Override
     public void init() throws ServletException {
         UserDao userDao = DaoRegistry.getDao(User.class);
+        this.captchaService = new CaptchaService();
         this.registrationService = new RegistrationService(
                 userDao,
                 new PasswordPolicyValidator(SecurityConfig.getCurrent().getPasswordPolicy()),
-                new CaptchaService()
+                captchaService
         );
         this.registrationRateLimiter = new InMemoryRateLimiter(
                 SecurityConfig.getCurrent().getMaxFailedAttempts(),
@@ -63,18 +65,13 @@ public class RegisterServlet extends JsonServletSupport {
         try {
             RegisterRequest registerRequest = parseJson(request);
             HttpSession session = request.getSession(false);
-            String expectedCaptchaId = session == null
-                    ? null
-                    : (String) session.getAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
-            Integer expectedCaptchaAnswer = session == null
-                    ? null
-                    : (Integer) session.getAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
-
-            if (registrationCaptchaEnabled) {
-                clearCaptcha(session);
+            if (registrationCaptchaEnabled && !validateCaptcha(session, registerRequest)) {
+                registrationRateLimiter.recordFailure(limiterKey);
+                writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST,
+                        RegistrationService.CAPTCHA_INVALID, "Captcha validation failed.");
+                return;
             }
-            UserResponse registeredUser = registrationService.register(registerRequest, expectedCaptchaId,
-                    expectedCaptchaAnswer, registrationCaptchaEnabled);
+            UserResponse registeredUser = registrationService.register(registerRequest, null, null, false);
             registrationRateLimiter.recordSuccess(limiterKey);
             writeJsonResponse(response, HttpServletResponse.SC_CREATED, registeredUser);
         } catch (BadRequestException e) {
@@ -84,6 +81,32 @@ public class RegisterServlet extends JsonServletSupport {
             registrationRateLimiter.recordFailure(limiterKey);
             writeServiceError(response, e);
         }
+    }
+
+    private boolean validateCaptcha(HttpSession session, RegisterRequest registerRequest) {
+        String expectedCaptchaId = session == null
+                ? null
+                : (String) session.getAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
+        Integer expectedCaptchaAnswer = session == null
+                ? null
+                : (Integer) session.getAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
+        String expectedCaptchaPurpose = session == null
+                ? null
+                : (String) session.getAttribute(CaptchaService.SESSION_PURPOSE_ATTRIBUTE);
+        Long createdAt = session == null
+                ? null
+                : (Long) session.getAttribute(CaptchaService.SESSION_CREATED_AT_ATTRIBUTE);
+        Integer attempts = session == null
+                ? null
+                : (Integer) session.getAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE);
+
+        CaptchaService.CaptchaValidationResult result = captchaService.validateChallenge(expectedCaptchaId,
+                expectedCaptchaAnswer, expectedCaptchaPurpose, createdAt, attempts,
+                registerRequest == null ? null : registerRequest.getCaptchaId(),
+                registerRequest == null ? null : registerRequest.getCaptchaAnswer(),
+                CaptchaService.PURPOSE_REGISTRATION);
+        updateCaptchaState(session, result);
+        return result.valid();
     }
 
     private RegisterRequest parseJson(HttpServletRequest request) {
@@ -100,6 +123,20 @@ public class RegisterServlet extends JsonServletSupport {
         }
         session.removeAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
         session.removeAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
+        session.removeAttribute(CaptchaService.SESSION_PURPOSE_ATTRIBUTE);
+        session.removeAttribute(CaptchaService.SESSION_CREATED_AT_ATTRIBUTE);
+        session.removeAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE);
+    }
+
+    private void updateCaptchaState(HttpSession session, CaptchaService.CaptchaValidationResult result) {
+        if (session == null) {
+            return;
+        }
+        if (result.challengeConsumed()) {
+            clearCaptcha(session);
+            return;
+        }
+        session.setAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE, result.attemptsUsed());
     }
 
     private void writeServiceError(HttpServletResponse response, UserServiceException e) throws IOException {
