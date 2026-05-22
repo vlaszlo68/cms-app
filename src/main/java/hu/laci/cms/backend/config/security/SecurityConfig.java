@@ -20,11 +20,16 @@ public final class SecurityConfig {
     private final PasswordPolicyConfig passwordPolicy;
     private final int maxFailedAttempts;
     private final int lockMinutes;
+    private final boolean loginCaptchaEnabled;
+    private final boolean registrationCaptchaEnabled;
 
-    private SecurityConfig(PasswordPolicyConfig passwordPolicy, int maxFailedAttempts, int lockMinutes) {
+    private SecurityConfig(PasswordPolicyConfig passwordPolicy, int maxFailedAttempts, int lockMinutes,
+                           boolean loginCaptchaEnabled, boolean registrationCaptchaEnabled) {
         this.passwordPolicy = passwordPolicy;
         this.maxFailedAttempts = maxFailedAttempts;
         this.lockMinutes = lockMinutes;
+        this.loginCaptchaEnabled = loginCaptchaEnabled;
+        this.registrationCaptchaEnabled = registrationCaptchaEnabled;
     }
 
     public static void initialize(ServletContext servletContext) {
@@ -40,7 +45,8 @@ public final class SecurityConfig {
     }
 
     public static SecurityConfig defaults() {
-        return new SecurityConfig(PasswordPolicyConfig.defaults(), DEFAULT_MAX_FAILED_ATTEMPTS, DEFAULT_LOCK_MINUTES);
+        return new SecurityConfig(PasswordPolicyConfig.defaults(), DEFAULT_MAX_FAILED_ATTEMPTS, DEFAULT_LOCK_MINUTES,
+                true, true);
     }
 
     private static SecurityConfig from(ServletContext servletContext) {
@@ -57,7 +63,9 @@ public final class SecurityConfig {
                 passwordPolicy,
                 ServletContextParameters.getInt(servletContext, "auth.max.failed.attempts",
                         DEFAULT_MAX_FAILED_ATTEMPTS),
-                ServletContextParameters.getInt(servletContext, "auth.lock.minutes", DEFAULT_LOCK_MINUTES)
+                ServletContextParameters.getInt(servletContext, "auth.lock.minutes", DEFAULT_LOCK_MINUTES),
+                ServletContextParameters.getBoolean(servletContext, "captcha.login.enabled", true),
+                ServletContextParameters.getBoolean(servletContext, "captcha.registration.enabled", true)
         );
     }
 
@@ -71,5 +79,13 @@ public final class SecurityConfig {
 
     public int getLockMinutes() {
         return lockMinutes;
+    }
+
+    public boolean isLoginCaptchaEnabled() {
+        return loginCaptchaEnabled;
+    }
+
+    public boolean isRegistrationCaptchaEnabled() {
+        return registrationCaptchaEnabled;
     }
 }

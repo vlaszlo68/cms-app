@@ -10,6 +10,7 @@ import hu.laci.cms.backend.dto.auth.LoginRequest;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.service.AuthService;
 import hu.laci.cms.backend.service.AuthServiceException;
+import hu.laci.cms.backend.service.auth.CaptchaService;
 import hu.laci.cms.backend.service.security.InMemoryRateLimiter;
 import hu.laci.cms.backend.servlet.support.CsrfTokenSupport;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
@@ -35,6 +36,8 @@ import java.util.Optional;
 public class AuthServlet extends JsonServletSupport {
 
     private AuthService authService;
+    private CaptchaService captchaService;
+    private boolean loginCaptchaEnabled;
 
     /**
      * Resolves dependencies needed by the login endpoint.
@@ -51,6 +54,8 @@ public class AuthServlet extends JsonServletSupport {
                         Duration.ofMinutes(SecurityConfig.getCurrent().getLockMinutes())
                 )
         );
+        this.captchaService = new CaptchaService();
+        this.loginCaptchaEnabled = SecurityConfig.getCurrent().isLoginCaptchaEnabled();
     }
 
     /**
@@ -65,6 +70,11 @@ public class AuthServlet extends JsonServletSupport {
         try {
             LoginRequest loginRequest = parseLoginRequest(request);
             validateLoginRequest(loginRequest);
+            if (loginCaptchaEnabled && !validateCaptcha(request, loginRequest)) {
+                writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST,
+                        "CAPTCHA_INVALID", "Captcha validation failed.");
+                return;
+            }
 
             String loginName = loginRequest.getLoginName().trim();
             String password = loginRequest.getPassword();
@@ -124,6 +134,28 @@ public class AuthServlet extends JsonServletSupport {
         session.setAttribute("user", authenticatedUser);
         session.setAttribute(CsrfTokenSupport.SESSION_ATTRIBUTE, CsrfTokenSupport.createToken());
         return authenticatedUser;
+    }
+
+    private boolean validateCaptcha(HttpServletRequest request, LoginRequest loginRequest) {
+        HttpSession session = request.getSession(false);
+        String expectedCaptchaId = session == null
+                ? null
+                : (String) session.getAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
+        Integer expectedCaptchaAnswer = session == null
+                ? null
+                : (Integer) session.getAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
+
+        clearCaptcha(session);
+        return captchaService.validate(expectedCaptchaId, expectedCaptchaAnswer,
+                loginRequest.getCaptchaId(), loginRequest.getCaptchaAnswer());
+    }
+
+    private void clearCaptcha(HttpSession session) {
+        if (session == null) {
+            return;
+        }
+        session.removeAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
+        session.removeAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
     }
 
     private static String clientIp(HttpServletRequest request) {

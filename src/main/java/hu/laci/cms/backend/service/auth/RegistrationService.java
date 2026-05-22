@@ -45,8 +45,13 @@ public class RegistrationService {
     }
 
     public UserResponse register(RegisterRequest request, String expectedCaptchaId, Integer expectedCaptchaAnswer) {
+        return register(request, expectedCaptchaId, expectedCaptchaAnswer, true);
+    }
+
+    public UserResponse register(RegisterRequest request, String expectedCaptchaId, Integer expectedCaptchaAnswer,
+                                 boolean captchaRequired) {
         validateRequest(request);
-        if (!captchaService.validate(expectedCaptchaId, expectedCaptchaAnswer,
+        if (captchaRequired && !captchaService.validate(expectedCaptchaId, expectedCaptchaAnswer,
                 request.getCaptchaId(), request.getCaptchaAnswer())) {
             throw new UserServiceException(CAPTCHA_INVALID, "Captcha validation failed.");
         }

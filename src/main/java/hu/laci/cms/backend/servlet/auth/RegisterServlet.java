@@ -34,6 +34,7 @@ public class RegisterServlet extends JsonServletSupport {
 
     private RegistrationService registrationService;
     private InMemoryRateLimiter registrationRateLimiter;
+    private boolean registrationCaptchaEnabled;
 
     @Override
     public void init() throws ServletException {
@@ -47,6 +48,7 @@ public class RegisterServlet extends JsonServletSupport {
                 SecurityConfig.getCurrent().getMaxFailedAttempts(),
                 Duration.ofMinutes(SecurityConfig.getCurrent().getLockMinutes())
         );
+        this.registrationCaptchaEnabled = SecurityConfig.getCurrent().isRegistrationCaptchaEnabled();
     }
 
     @Override
@@ -68,9 +70,11 @@ public class RegisterServlet extends JsonServletSupport {
                     ? null
                     : (Integer) session.getAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
 
-            clearCaptcha(session);
+            if (registrationCaptchaEnabled) {
+                clearCaptcha(session);
+            }
             UserResponse registeredUser = registrationService.register(registerRequest, expectedCaptchaId,
-                    expectedCaptchaAnswer);
+                    expectedCaptchaAnswer, registrationCaptchaEnabled);
             registrationRateLimiter.recordSuccess(limiterKey);
             writeJsonResponse(response, HttpServletResponse.SC_CREATED, registeredUser);
         } catch (BadRequestException e) {

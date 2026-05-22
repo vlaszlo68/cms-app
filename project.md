@@ -115,6 +115,7 @@ Current request lifecycle for `/api/*` requests:
 Examples:
 
 - `POST /api/auth/login`
+- `GET /api/auth/config`
 - `GET /api/auth/captcha`
 - `POST /api/auth/register`
 - `POST /api/auth/logout`
@@ -151,6 +152,7 @@ Current implementation note:
 
 - current auth endpoints are implemented under `/api/auth/*`
   - `POST /api/auth/login`
+  - `GET /api/auth/config`
   - `GET /api/auth/captcha`
   - `POST /api/auth/register`
   - `POST /api/auth/logout`
@@ -159,12 +161,14 @@ Current implementation note:
 - successful auth responses include a CSRF token in `data.csrfToken`
 - local standalone Tomcat deploy path in current development is:
   - `http://localhost:8081/cms-app/api/auth/login`
+  - `http://localhost:8081/cms-app/api/auth/config`
   - `http://localhost:8081/cms-app/api/auth/captcha`
   - `http://localhost:8081/cms-app/api/auth/register`
   - `http://localhost:8081/cms-app/api/auth/logout`
   - `http://localhost:8081/cms-app/api/auth/me`
 - Docker Tomcat deploy path in current development is:
   - `http://localhost:8081/api/auth/login`
+  - `http://localhost:8081/api/auth/config`
   - `http://localhost:8081/api/auth/captcha`
   - `http://localhost:8081/api/auth/register`
   - `http://localhost:8081/api/auth/logout`
@@ -223,6 +227,7 @@ Session details:
 Public auth endpoints:
 
 - `POST /api/auth/login`
+- `GET /api/auth/config`
 - `GET /api/auth/captcha`
 - `POST /api/auth/register`
 - `POST /api/auth/logout` is public from the auth filter perspective, but CSRF-protected if a session exists and the request reaches the CSRF filter
@@ -239,12 +244,15 @@ CSRF rules:
 Registration and login hardening:
 
 - `GET /api/auth/captcha` returns SVG content and exposes the generated id in the `X-Captcha-Id` response header.
+- `GET /api/auth/config` exposes whether CAPTCHA is enabled for login and registration screens.
 - `POST /api/auth/register` creates `USER`, `active=false`, `registrationStatus=PENDING` accounts.
+- login accepts `captchaId` and `captchaAnswer` when `captcha.login.enabled=true`.
 - registration requires `captchaId` and `captchaAnswer`; CAPTCHA values are stored in the HTTP session and consumed after validation.
 - login returns only `INVALID_CREDENTIALS` for missing users, bad passwords, inactive accounts, and temporary lockouts.
 - login rate limiting is in-memory and keyed by `loginName + request.getRemoteAddr()`.
 - registration rate limiting is in-memory and keyed by `request.getRemoteAddr()`.
 - password policy is configurable through `web.xml` context parameters and enforced for registration and password changes.
+- CAPTCHA display and enforcement is configurable through `captcha.login.enabled` and `captcha.registration.enabled`; both default to `true`.
 - password policy errors are returned as structured `error.validationErrors` codes such as `TOO_SHORT`, `MISSING_UPPERCASE`, `MISSING_DIGIT`, and `MISSING_SPECIAL`.
 
 Frontend requirements:
@@ -528,10 +536,12 @@ Package conventions:
   - `hu.laci.cms.backend.config.app.DaoRegistryListener`
 - auth servlet layer is now implemented with:
   - `hu.laci.cms.backend.servlet.auth.AuthServlet`
+  - `hu.laci.cms.backend.servlet.auth.AuthConfigServlet`
   - `hu.laci.cms.backend.servlet.auth.CaptchaServlet`
   - `hu.laci.cms.backend.servlet.auth.RegisterServlet`
   - `hu.laci.cms.backend.servlet.auth.LogoutServlet`
   - `hu.laci.cms.backend.servlet.auth.MeServlet`
+  - `hu.laci.cms.backend.dto.auth.AuthConfigResponse`
   - `hu.laci.cms.backend.dto.auth.LoginRequest`
   - `hu.laci.cms.backend.dto.auth.RegisterRequest`
   - `hu.laci.cms.backend.dto.auth.AuthenticatedUser`
@@ -582,7 +592,9 @@ Request:
 ```json
 {
   "loginName": "tester",
-  "password": "pw"
+  "password": "pw",
+  "captchaId": "captcha-id-from-header",
+  "captchaAnswer": "10"
 }
 ```
 
@@ -604,6 +616,20 @@ Success:
 ### `GET /api/auth/me`
 
 Returns the same authenticated user shape as login, including `csrfToken`, when the session is valid.
+
+### `GET /api/auth/config`
+
+Public endpoint for frontend auth screen feature flags.
+
+```json
+{
+  "success": true,
+  "data": {
+    "loginCaptchaEnabled": true,
+    "registrationCaptchaEnabled": true
+  }
+}
+```
 
 ### `POST /api/auth/logout`
 
@@ -778,7 +804,7 @@ Testing notes:
 
 - `mvn test` runs DB-backed DAO tests
 - `mvn package` also runs tests unless skipped
-- current verified test count: 60
+- current verified test count: 62
 - PostgreSQL schema comes from app startup migrations in `src/main/resources/db/migration/`
 - tests clean up their own `dao_test_` user data and temporary boolean test table
 

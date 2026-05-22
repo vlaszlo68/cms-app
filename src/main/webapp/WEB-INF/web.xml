@@ -55,6 +55,16 @@
         <param-value>15</param-value>
     </context-param>
 
+    <context-param>
+        <param-name>captcha.login.enabled</param-name>
+        <param-value>true</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>captcha.registration.enabled</param-name>
+        <param-value>true</param-value>
+    </context-param>
+
     <listener>
         <listener-class>hu.laci.cms.backend.config.database.DatabaseConfigListener</listener-class>
     </listener>

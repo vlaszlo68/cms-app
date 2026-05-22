@@ -26,6 +26,7 @@ public class AuthFilter implements Filter {
 
     private static final String LOGIN_PATH = "/api/auth/login";
     private static final String LOGOUT_PATH = "/api/auth/logout";
+    private static final String CONFIG_PATH = "/api/auth/config";
     private static final String REGISTER_PATH = "/api/auth/register";
     private static final String CAPTCHA_PATH = "/api/auth/captcha";
 
@@ -49,6 +50,7 @@ public class AuthFilter implements Filter {
         String servletPath = httpRequest.getServletPath();
         if (LOGIN_PATH.equals(servletPath)
                 || LOGOUT_PATH.equals(servletPath)
+                || CONFIG_PATH.equals(servletPath)
                 || REGISTER_PATH.equals(servletPath)
                 || CAPTCHA_PATH.equals(servletPath)) {
             chain.doFilter(request, response);
