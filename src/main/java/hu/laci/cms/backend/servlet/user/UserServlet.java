@@ -17,6 +17,7 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
+import java.io.BufferedReader;
 import java.io.IOException;
 
 /**
@@ -80,6 +81,19 @@ public class UserServlet extends JsonServletSupport {
         }
 
         try {
+            UserActionPath actionPath = parseActionPath(request);
+            if (actionPath != null) {
+                if ("approve".equals(actionPath.action())) {
+                    writeJsonResponse(response, HttpServletResponse.SC_OK, userService.approve(actionPath.id()));
+                    return;
+                }
+                if ("reject".equals(actionPath.action())) {
+                    writeJsonResponse(response, HttpServletResponse.SC_OK, userService.reject(actionPath.id()));
+                    return;
+                }
+                throw new BadRequestException("Invalid user action.");
+            }
+
             requireCollectionPath(request);
             CreateUserRequest createRequest = parseJson(request, CreateUserRequest.class);
             writeJsonResponse(response, HttpServletResponse.SC_CREATED, userService.create(createRequest));
@@ -138,7 +152,7 @@ public class UserServlet extends JsonServletSupport {
     }
 
     private <T> T parseJson(HttpServletRequest request, Class<T> requestType) {
-        try (var reader = request.getReader()) {
+        try (BufferedReader reader = request.getReader()) {
             return gson.fromJson(reader, requestType);
         } catch (IOException | JsonSyntaxException e) {
             throw new BadRequestException("Invalid JSON request body.", e);
@@ -186,6 +200,20 @@ public class UserServlet extends JsonServletSupport {
         return parseId(pathInfo);
     }
 
+    private UserActionPath parseActionPath(HttpServletRequest request) {
+        String pathInfo = request.getPathInfo();
+        if (pathInfo == null || pathInfo.isBlank() || "/".equals(pathInfo)) {
+            return null;
+        }
+
+        String[] parts = pathInfo.substring(1).split("/");
+        if (parts.length != 2) {
+            return null;
+        }
+
+        return new UserActionPath(parseId(parts[0]), parts[1]);
+    }
+
     private String parsePathInfo(HttpServletRequest request) {
         String pathInfo = request.getPathInfo();
         if (pathInfo == null || pathInfo.isBlank() || "/".equals(pathInfo)) {
@@ -213,7 +241,11 @@ public class UserServlet extends JsonServletSupport {
             case UserService.DUPLICATE_LOGIN_NAME, UserService.DUPLICATE_EMAIL_ADDRESS -> HttpServletResponse.SC_CONFLICT;
             default -> HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         };
-        writeErrorResponse(response, status, e.getCode(), e.getMessage());
+        if (e.getValidationErrors().isEmpty()) {
+            writeErrorResponse(response, status, e.getCode(), e.getMessage());
+            return;
+        }
+        writeErrorResponse(response, status, e.getCode(), e.getMessage(), e.getValidationErrors());
     }
 
     private static final class BadRequestException extends RuntimeException {
@@ -225,5 +257,8 @@ public class UserServlet extends JsonServletSupport {
         private BadRequestException(String message, Throwable cause) {
             super(message, cause);
         }
+    }
+
+    private record UserActionPath(Long id, String action) {
     }
 }

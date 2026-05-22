@@ -8,6 +8,7 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.List;
 
 /**
  * Base servlet with common JSON request/response helpers.
@@ -59,6 +60,21 @@ public abstract class JsonServletSupport extends HttpServlet {
     protected void writeErrorResponse(HttpServletResponse response, int status, String code, String message)
             throws IOException {
         writeJson(response, status, ApiResponse.error(new ApiErrorResponse(code, message)));
+    }
+
+    /**
+     * Writes an error JSON response with structured validation error codes.
+     *
+     * @param response HTTP response
+     * @param status HTTP status code
+     * @param code stable API error code
+     * @param message human-readable error message
+     * @param validationErrors stable validation error codes
+     * @throws IOException when writing fails
+     */
+    protected void writeErrorResponse(HttpServletResponse response, int status, String code, String message,
+                                      List<String> validationErrors) throws IOException {
+        writeJson(response, status, ApiResponse.error(new ApiErrorResponse(code, message, validationErrors)));
     }
 
     private void writeJson(HttpServletResponse response, int status, Object payload)

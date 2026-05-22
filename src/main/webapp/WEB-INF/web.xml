@@ -20,12 +20,51 @@
         <param-value>cms_pw</param-value>
     </context-param>
 
+    <context-param>
+        <param-name>password.min.length</param-name>
+        <param-value>2</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>password.require.uppercase</param-name>
+        <param-value>false</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>password.require.lowercase</param-name>
+        <param-value>false</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>password.require.digit</param-name>
+        <param-value>false</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>password.require.special</param-name>
+        <param-value>false</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>auth.max.failed.attempts</param-name>
+        <param-value>5</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>auth.lock.minutes</param-name>
+        <param-value>15</param-value>
+    </context-param>
+
     <listener>
         <listener-class>hu.laci.cms.backend.config.database.DatabaseConfigListener</listener-class>
     </listener>
 
     <listener>
         <listener-class>hu.laci.cms.backend.config.app.DaoRegistryListener</listener-class>
+    </listener>
+
+    <listener>
+        <listener-class>hu.laci.cms.backend.config.security.SecurityConfigListener</listener-class>
     </listener>
 
     <filter>

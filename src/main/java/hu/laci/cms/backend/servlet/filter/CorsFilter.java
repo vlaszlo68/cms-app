@@ -25,6 +25,7 @@ public class CorsFilter implements Filter {
     private static final String ALLOWED_ORIGINS_PARAM = "allowedOrigins";
     private static final String DEFAULT_ALLOWED_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
     private static final String DEFAULT_ALLOWED_HEADERS = "Content-Type, Authorization, X-CSRF-Token";
+    private static final String EXPOSED_HEADERS = "X-Captcha-Id";
     private static final String MAX_AGE_SECONDS = "3600";
 
     private Set<String> allowedOrigins = Set.of();
@@ -83,6 +84,7 @@ public class CorsFilter implements Filter {
         response.setHeader("Access-Control-Allow-Credentials", "true");
         response.setHeader("Access-Control-Allow-Methods", DEFAULT_ALLOWED_METHODS);
         response.setHeader("Access-Control-Allow-Headers", DEFAULT_ALLOWED_HEADERS);
+        response.setHeader("Access-Control-Expose-Headers", EXPOSED_HEADERS);
         response.setHeader("Access-Control-Max-Age", MAX_AGE_SECONDS);
         response.setHeader("Vary", "Origin");
     }

@@ -1,5 +1,7 @@
 package hu.laci.cms.backend.service.user;
 
+import hu.laci.cms.backend.config.security.PasswordPolicyConfig;
+import hu.laci.cms.backend.config.security.SecurityConfig;
 import hu.laci.cms.backend.config.database.DatabaseConfig;
 import hu.laci.cms.backend.config.database.migration.DatabaseMigrationRunner;
 import hu.laci.cms.backend.config.session.SessionContext;
@@ -9,9 +11,15 @@ import hu.laci.cms.backend.dao.user.UserDaoImpl;
 import hu.laci.cms.backend.dto.user.CreateUserRequest;
 import hu.laci.cms.backend.dto.user.UpdateUserRequest;
 import hu.laci.cms.backend.dto.user.UserResponse;
+import hu.laci.cms.backend.dto.auth.RegisterRequest;
 import hu.laci.cms.backend.model.user.RegistrationState;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.model.user.UserRole;
+import hu.laci.cms.backend.service.AuthService;
+import hu.laci.cms.backend.service.auth.CaptchaService;
+import hu.laci.cms.backend.service.auth.RegistrationService;
+import hu.laci.cms.backend.service.security.InMemoryRateLimiter;
+import hu.laci.cms.backend.service.security.PasswordPolicyValidator;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -24,6 +32,8 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.time.Duration;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -42,6 +52,7 @@ class UserServiceTest {
     @BeforeAll
     static void initializeDatabase() {
         DatabaseConfig.initialize(createEmptyServletContext());
+        SecurityConfig.initialize(createDevelopmentSecurityServletContext());
         DatabaseMigrationRunner.runMigrations();
         DaoRegistry.initialize();
     }
@@ -50,6 +61,7 @@ class UserServiceTest {
     static void shutdownDatabase() {
         DaoRegistry.shutdown();
         DatabaseConfig.shutdown();
+        SecurityConfig.reset();
     }
 
     @BeforeEach
@@ -167,6 +179,96 @@ class UserServiceTest {
         assertEquals(UserService.VALIDATION_ERROR, exception.getCode());
     }
 
+    @Test
+    void createRejectsPasswordPolicyViolations() {
+        UserService strictUserService = new UserService(userDao,
+                new PasswordPolicyValidator(PasswordPolicyConfig.defaults()));
+
+        UserServiceException exception = assertThrows(UserServiceException.class,
+                () -> strictUserService.create(createRequest("weak-password", "weak-password", "weak-password",
+                        "secret", UserRole.USER, true, RegistrationState.PENDING)));
+
+        assertEquals(UserService.VALIDATION_ERROR, exception.getCode());
+        assertTrue(exception.getValidationErrors().contains("MISSING_UPPERCASE"));
+        assertTrue(exception.getValidationErrors().contains("MISSING_DIGIT"));
+        assertTrue(exception.getValidationErrors().contains("MISSING_SPECIAL"));
+    }
+
+    @Test
+    void approveActivatesAndCompletesRegistration() {
+        UserResponse createdUser = userService.create(createRequest("approve", "approve", "approve",
+                "secret", UserRole.USER, false, RegistrationState.PENDING));
+
+        UserResponse approvedUser = userService.approve(createdUser.getId());
+
+        assertTrue(approvedUser.getActive());
+        assertEquals(RegistrationState.COMPLETED, approvedUser.getRegistrationStatus());
+    }
+
+    @Test
+    void rejectDeactivatesAndRejectsRegistration() {
+        UserResponse createdUser = userService.create(createRequest("reject", "reject", "reject",
+                "secret", UserRole.USER, true, RegistrationState.PENDING));
+
+        UserResponse rejectedUser = userService.reject(createdUser.getId());
+
+        assertFalse(rejectedUser.getActive());
+        assertEquals(RegistrationState.REJECTED, rejectedUser.getRegistrationStatus());
+    }
+
+    @Test
+    void registerCreatesInactivePendingUser() {
+        RegistrationService registrationService = new RegistrationService(
+                userDao,
+                new PasswordPolicyValidator(SecurityConfig.getCurrent().getPasswordPolicy()),
+                new CaptchaService()
+        );
+
+        UserResponse registeredUser = registrationService.register(
+                new RegisterRequest(TEST_PREFIX + "public_login", TEST_PREFIX + "public",
+                        TEST_PREFIX + "public@example.com", "secret", "captcha-1", "8"),
+                "captcha-1",
+                8
+        );
+
+        assertEquals(UserRole.USER, registeredUser.getRole());
+        assertFalse(registeredUser.getActive());
+        assertEquals(RegistrationState.PENDING, registeredUser.getRegistrationStatus());
+    }
+
+    @Test
+    void registerRejectsInvalidCaptchaAndConsumesNoUser() {
+        RegistrationService registrationService = new RegistrationService(
+                userDao,
+                new PasswordPolicyValidator(SecurityConfig.getCurrent().getPasswordPolicy()),
+                new CaptchaService()
+        );
+
+        UserServiceException exception = assertThrows(UserServiceException.class,
+                () -> registrationService.register(
+                        new RegisterRequest(TEST_PREFIX + "captcha_login", TEST_PREFIX + "captcha",
+                                TEST_PREFIX + "captcha@example.com", "secret", "captcha-1", "9"),
+                        "captcha-1",
+                        8
+                ));
+
+        assertEquals(RegistrationService.CAPTCHA_INVALID, exception.getCode());
+        assertTrue(userDao.findByLoginName(TEST_PREFIX + "captcha_login").isEmpty());
+    }
+
+    @Test
+    void loginRateLimiterLocksLoginNameAndIpAfterFailures() {
+        UserResponse createdUser = userService.create(createRequest("rate", "rate", "rate",
+                "secret", UserRole.USER, true, RegistrationState.COMPLETED));
+        AuthService authService = new AuthService(userDao,
+                new InMemoryRateLimiter(2, Duration.ofMinutes(15)));
+
+        assertTrue(authService.login(createdUser.getLoginName(), "bad", "127.0.0.1").isEmpty());
+        assertTrue(authService.login(createdUser.getLoginName(), "bad", "127.0.0.1").isEmpty());
+        assertTrue(authService.login(createdUser.getLoginName(), "secret", "127.0.0.1").isEmpty());
+        assertTrue(authService.login(createdUser.getLoginName(), "secret", "127.0.0.2").isPresent());
+    }
+
     private static CreateUserRequest createRequest(String userNameSuffix, String loginNameSuffix, String emailSuffix,
                                                    String password, UserRole role, Boolean active,
                                                    RegistrationState registrationState) {
@@ -207,12 +309,28 @@ class UserServiceTest {
     }
 
     private static ServletContext createEmptyServletContext() {
+        return createServletContext(Map.of());
+    }
+
+    private static ServletContext createDevelopmentSecurityServletContext() {
+        return createServletContext(Map.of(
+                "password.min.length", "2",
+                "password.require.uppercase", "false",
+                "password.require.lowercase", "false",
+                "password.require.digit", "false",
+                "password.require.special", "false",
+                "auth.max.failed.attempts", "5",
+                "auth.lock.minutes", "15"
+        ));
+    }
+
+    private static ServletContext createServletContext(Map<String, String> initParameters) {
         return (ServletContext) Proxy.newProxyInstance(
                 UserServiceTest.class.getClassLoader(),
                 new Class<?>[]{ServletContext.class},
                 (proxy, method, args) -> {
                     if ("getInitParameter".equals(method.getName())) {
-                        return null;
+                        return initParameters.get((String) args[0]);
                     }
                     if ("toString".equals(method.getName())) {
                         return "TestServletContext";

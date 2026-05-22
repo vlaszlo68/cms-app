@@ -2,6 +2,7 @@ package hu.laci.cms.backend.config.database;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import hu.laci.cms.backend.config.app.ServletContextParameters;
 
 import javax.servlet.ServletContext;
 import java.sql.Connection;
@@ -45,12 +46,14 @@ public final class DatabaseConfig {
                 return;
             }
 
-            String xmlJdbcUrl = getInitParameter(servletContext, "db.jdbcUrl");
+            String xmlJdbcUrl = ServletContextParameters.getString(servletContext, "db.jdbcUrl");
             String host = getEnvOrFallback("DB_HOST", extractJdbcUrlPart(xmlJdbcUrl, JdbcUrlPart.HOST), DEFAULT_DB_HOST);
             String port = getEnvOrFallback("DB_PORT", extractJdbcUrlPart(xmlJdbcUrl, JdbcUrlPart.PORT), DEFAULT_DB_PORT);
             String databaseName = getEnvOrFallback("DB_NAME", extractJdbcUrlPart(xmlJdbcUrl, JdbcUrlPart.DATABASE), DEFAULT_DB_NAME);
-            String username = getEnvOrFallback("DB_USER", getInitParameter(servletContext, "db.username"), DEFAULT_DB_USER);
-            String password = getEnvOrFallback("DB_PASSWORD", getInitParameter(servletContext, "db.password"), DEFAULT_DB_PASSWORD);
+            String username = getEnvOrFallback("DB_USER",
+                    ServletContextParameters.getString(servletContext, "db.username"), DEFAULT_DB_USER);
+            String password = getEnvOrFallback("DB_PASSWORD",
+                    ServletContextParameters.getString(servletContext, "db.password"), DEFAULT_DB_PASSWORD);
 
             HikariConfig config = new HikariConfig();
             config.setDriverClassName("org.postgresql.Driver");
@@ -73,10 +76,6 @@ public final class DatabaseConfig {
         }
 
         return defaultValue;
-    }
-
-    private static String getInitParameter(ServletContext servletContext, String name) {
-        return servletContext.getInitParameter(name);
     }
 
     private static String buildJdbcUrl(String host, String port, String databaseName) {

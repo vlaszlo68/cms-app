@@ -25,6 +25,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 
@@ -304,7 +305,7 @@ class UserDaoImplTest {
     void updateModifiesExistingUser() {
         User user = userDao.create(new User(null, TEST_PREFIX + "before", TEST_PREFIX + "before_login",
                 TEST_PREFIX + "before@example.com", TEST_PREFIX + "before_hash"));
-        var originalCreatedAt = user.getCreatedAt();
+        Timestamp originalCreatedAt = user.getCreatedAt();
         Long originalCreatedBy = user.getCreatedBy();
         SessionContext.setCurrentUserId(100L);
         user.setUserName(TEST_PREFIX + "after");

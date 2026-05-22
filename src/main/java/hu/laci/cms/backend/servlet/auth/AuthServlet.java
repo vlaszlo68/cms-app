@@ -1,6 +1,7 @@
 package hu.laci.cms.backend.servlet.auth;
 
 import com.google.gson.JsonSyntaxException;
+import hu.laci.cms.backend.config.security.SecurityConfig;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.user.UserDao;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
@@ -9,6 +10,7 @@ import hu.laci.cms.backend.dto.auth.LoginRequest;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.service.AuthService;
 import hu.laci.cms.backend.service.AuthServiceException;
+import hu.laci.cms.backend.service.security.InMemoryRateLimiter;
 import hu.laci.cms.backend.servlet.support.CsrfTokenSupport;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
@@ -17,7 +19,9 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -40,7 +44,13 @@ public class AuthServlet extends JsonServletSupport {
     @Override
     public void init() throws ServletException {
         UserDao userDao = DaoRegistry.getDao(User.class);
-        this.authService = new AuthService(userDao);
+        this.authService = new AuthService(
+                userDao,
+                new InMemoryRateLimiter(
+                        SecurityConfig.getCurrent().getMaxFailedAttempts(),
+                        Duration.ofMinutes(SecurityConfig.getCurrent().getLockMinutes())
+                )
+        );
     }
 
     /**
@@ -59,7 +69,7 @@ public class AuthServlet extends JsonServletSupport {
             String loginName = loginRequest.getLoginName().trim();
             String password = loginRequest.getPassword();
 
-            Optional<User> userOptional = authService.login(loginName, password);
+            Optional<User> userOptional = authService.login(loginName, password, clientIp(request));
             if (userOptional.isEmpty()) {
                 writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
                         "INVALID_CREDENTIALS", "Invalid credentials");
@@ -82,7 +92,7 @@ public class AuthServlet extends JsonServletSupport {
     }
 
     private LoginRequest parseLoginRequest(HttpServletRequest request) {
-        try (var reader = request.getReader()) {
+        try (BufferedReader reader = request.getReader()) {
             return gson.fromJson(reader, LoginRequest.class);
         } catch (IOException | JsonSyntaxException e) {
             throw new BadRequestException("Invalid JSON request body.", e);
@@ -114,6 +124,10 @@ public class AuthServlet extends JsonServletSupport {
         session.setAttribute("user", authenticatedUser);
         session.setAttribute(CsrfTokenSupport.SESSION_ATTRIBUTE, CsrfTokenSupport.createToken());
         return authenticatedUser;
+    }
+
+    private static String clientIp(HttpServletRequest request) {
+        return request.getRemoteAddr();
     }
 
     private static final class BadRequestException extends RuntimeException {

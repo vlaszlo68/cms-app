@@ -1,5 +1,6 @@
 package hu.laci.cms.backend.service.user;
 
+import hu.laci.cms.backend.config.security.SecurityConfig;
 import hu.laci.cms.backend.dao.user.UserDao;
 import hu.laci.cms.backend.dto.user.CreateUserRequest;
 import hu.laci.cms.backend.dto.user.UpdateUserRequest;
@@ -9,6 +10,7 @@ import hu.laci.cms.backend.model.user.RegistrationState;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.model.user.UserProperty;
 import hu.laci.cms.backend.model.user.UserRole;
+import hu.laci.cms.backend.service.security.PasswordPolicyValidator;
 import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,6 +38,7 @@ public class UserService {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
     private final UserDao userDao;
+    private final PasswordPolicyValidator passwordPolicyValidator;
 
     /**
      * Creates the service with the required DAO dependency.
@@ -43,7 +46,19 @@ public class UserService {
      * @param userDao user DAO
      */
     public UserService(UserDao userDao) {
+        this(userDao, new PasswordPolicyValidator(SecurityConfig.getCurrent().getPasswordPolicy()));
+    }
+
+    /**
+     * Creates the service with DAO and password validator dependencies.
+     *
+     * @param userDao user DAO
+     * @param passwordPolicyValidator password policy validator
+     */
+    public UserService(UserDao userDao, PasswordPolicyValidator passwordPolicyValidator) {
         this.userDao = Objects.requireNonNull(userDao, "userDao must not be null");
+        this.passwordPolicyValidator = Objects.requireNonNull(passwordPolicyValidator,
+                "passwordPolicyValidator must not be null");
     }
 
     /**
@@ -125,6 +140,7 @@ public class UserService {
                 : request.getRegistrationStatus());
 
         if (!isBlank(request.getPassword())) {
+            validatePasswordPolicy(request.getPassword());
             user.setPasswordHash(BCrypt.hashpw(request.getPassword(), BCrypt.gensalt()));
         }
 
@@ -147,6 +163,36 @@ public class UserService {
         return toResponse(updatedUser);
     }
 
+    /**
+     * Approves a pending registration and activates the user.
+     *
+     * @param id user id
+     * @return approved user response
+     */
+    public UserResponse approve(Long id) {
+        User user = loadUser(id);
+        user.setRegistrationState(RegistrationState.COMPLETED);
+        user.setActive(Boolean.TRUE);
+        User updatedUser = userDao.update(user);
+        LOGGER.info("Approved user id={}, loginName={}", updatedUser.getId(), updatedUser.getLoginName());
+        return toResponse(updatedUser);
+    }
+
+    /**
+     * Rejects a registration and keeps the user inactive.
+     *
+     * @param id user id
+     * @return rejected user response
+     */
+    public UserResponse reject(Long id) {
+        User user = loadUser(id);
+        user.setRegistrationState(RegistrationState.REJECTED);
+        user.setActive(Boolean.FALSE);
+        User updatedUser = userDao.update(user);
+        LOGGER.info("Rejected user id={}, loginName={}", updatedUser.getId(), updatedUser.getLoginName());
+        return toResponse(updatedUser);
+    }
+
     private User loadUser(Long id) {
         if (id == null) {
             throw new UserServiceException(VALIDATION_ERROR, "User id is required.");
@@ -166,6 +212,7 @@ public class UserService {
         if (isBlank(request.getPassword())) {
             throw new UserServiceException(VALIDATION_ERROR, "password is required.");
         }
+        validatePasswordPolicy(request.getPassword());
     }
 
     private void validateUpdateRequest(UpdateUserRequest request) {
@@ -210,6 +257,14 @@ public class UserService {
         Optional<User> existingUser = userDao.findByEmail(emailAddress);
         if (existingUser.isPresent() && !existingUser.get().getId().equals(currentUserId)) {
             throw new UserServiceException(DUPLICATE_EMAIL_ADDRESS, "emailAddress is already used.");
+        }
+    }
+
+    private void validatePasswordPolicy(String password) {
+        List<String> errors = passwordPolicyValidator.validate(password);
+        if (!errors.isEmpty()) {
+            throw new UserServiceException(VALIDATION_ERROR,
+                    "Password policy validation failed.", errors);
         }
     }
 
