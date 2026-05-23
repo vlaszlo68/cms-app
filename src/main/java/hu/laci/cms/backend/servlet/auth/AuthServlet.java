@@ -32,7 +32,7 @@ import java.util.Optional;
  * in the session, creates a CSRF token, and returns an {@link AuthUserResponse}
  * inside the common JSON response envelope.
  */
-@WebServlet(name = "/api/auth/login", loadOnStartup = 1)
+@WebServlet(urlPatterns = "/api/auth/login", loadOnStartup = 1)
 public class AuthServlet extends JsonServletSupport {
 
     private AuthService authService;

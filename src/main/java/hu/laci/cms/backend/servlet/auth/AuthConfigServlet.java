@@ -13,7 +13,7 @@ import java.io.IOException;
 /**
  * Public endpoint exposing authentication UI feature flags.
  */
-@WebServlet(name ="/api/auth/config", loadOnStartup = 1)
+@WebServlet(urlPatterns = "/api/auth/config", loadOnStartup = 1)
 public class AuthConfigServlet extends JsonServletSupport {
 
     @Override
