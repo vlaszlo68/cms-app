@@ -44,11 +44,11 @@ pipeline {
                 docker ps | grep cms-tomcat
 
                 echo "Cleaning old deployment..."
-                docker exec cms-tomcat rm -rf /usr/local/tomcat/webapps/cms-app || true
-                docker exec cms-tomcat rm -f /usr/local/tomcat/webapps/cms-app.war || true
+                docker exec cms-tomcat rm -rf /usr/local/tomcat/webapps/ROOT || true
+                docker exec cms-tomcat rm -f /usr/local/tomcat/webapps/ROOT.war || true
 
                 echo "Copying new WAR..."
-                docker cp target/cms-app.war cms-tomcat:/usr/local/tomcat/webapps/
+                docker cp target/cms-app.war cms-tomcat:/usr/local/tomcat/webapps/ROOT.war
 
                 echo "Restarting Tomcat..."
                 docker restart cms-tomcat
