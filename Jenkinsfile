@@ -9,12 +9,21 @@ pipeline {
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Backend') {
             steps {
                 //git 'https://github.com/vlaszlo68/cms-app'
                 checkout scm
             }
         }
+		
+		stage('Checkout Frontend') {
+		    steps {
+				dir('../frontend') {
+					git branch: 'main',
+						url: 'https://github.com/vlaszlo68/cms-frontend.git'
+				}
+			}
+		}
 
         stage('Build WAR') {
             steps {
@@ -57,6 +66,16 @@ pipeline {
                 '''
             }
         }
+		
+		stage('Rebuild Frontend') { 
+			steps { 
+				sh ''' 
+				set -e 
+				echo "=== Frontend rebuild started ===" 
+				docker compose up -d --build frontend-build nginx 
+				echo "=== Frontend rebuild finished ===" ''' 
+			} 
+		}
 
         stage('Health Check') {
             steps {
