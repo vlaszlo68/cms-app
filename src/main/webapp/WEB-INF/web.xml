@@ -77,7 +77,7 @@
         <listener-class>hu.laci.cms.backend.config.security.SecurityConfigListener</listener-class>
     </listener>
 
-    <!--filter>
+    <filter>
         <filter-name>requestLoggingFilter</filter-name>
         <filter-class>hu.laci.cms.backend.servlet.filter.RequestLoggingFilter</filter-class>
     </filter>
@@ -87,7 +87,7 @@
         <url-pattern>/*</url-pattern>
     </filter-mapping>
 
-    <filter>
+    <!--filter>
         <filter-name>exceptionHandlingFilter</filter-name>
         <filter-class>hu.laci.cms.backend.servlet.filter.ExceptionHandlingFilter</filter-class>
     </filter>
@@ -129,14 +129,14 @@
     <filter-mapping>
         <filter-name>characterEncodingFilter</filter-name>
         <url-pattern>/*</url-pattern>
-    </filter-mapping-->
+    </filter-mapping>
 
     <filter>
         <filter-name>authFilter</filter-name>
         <filter-class>hu.laci.cms.backend.servlet.filter.AuthFilter</filter-class>
     </filter>
 
-    <!--filter-mapping>
+    <filter-mapping>
         <filter-name>authFilter</filter-name>
         <url-pattern>/api/*</url-pattern>
     </filter-mapping>
