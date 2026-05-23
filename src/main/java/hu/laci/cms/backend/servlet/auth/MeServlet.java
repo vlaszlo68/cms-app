@@ -17,7 +17,7 @@ import java.io.IOException;
  * Returns the session user and a CSRF token when authentication is active,
  * otherwise returns {@code AUTH_REQUIRED}.
  */
-@WebServlet("/api/auth/me")
+@WebServlet(name ="/api/auth/me", loadOnStartup = 1)
 public class MeServlet extends JsonServletSupport {
 
     /**

@@ -27,7 +27,7 @@ import java.time.Duration;
 /**
  * Public registration endpoint for inactive USER accounts awaiting admin approval.
  */
-@WebServlet("/api/auth/register")
+@WebServlet(name ="/api/auth/register", loadOnStartup = 1)
 public class RegisterServlet extends JsonServletSupport {
 
     private static final int HTTP_TOO_MANY_REQUESTS = 429;

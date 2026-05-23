@@ -12,7 +12,7 @@ import java.util.Map;
 /**
  * Logout endpoint that invalidates the current HTTP session.
  */
-@WebServlet("/api/auth/logout")
+@WebServlet(name ="/api/auth/logout", loadOnStartup = 1)
 public class LogoutServlet extends JsonServletSupport {
 
     /**

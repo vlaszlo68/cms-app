@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import hu.laci.cms.backend.dto.common.ApiErrorResponse;
 import hu.laci.cms.backend.dto.common.ApiResponse;
 
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -26,9 +27,9 @@ public abstract class JsonServletSupport extends HttpServlet {
     /**
      * Reads a JSON request body into the target type.
      *
-     * @param reader request body reader
+     * @param reader     request body reader
      * @param targetType target DTO class
-     * @param <T> target DTO type
+     * @param <T>        target DTO type
      * @return parsed DTO
      */
     protected <T> T readJsonBody(InputStreamReader reader, Class<T> targetType) {
@@ -39,8 +40,8 @@ public abstract class JsonServletSupport extends HttpServlet {
      * Writes a successful JSON response wrapped in {@link ApiResponse}.
      *
      * @param response HTTP response
-     * @param status HTTP status code
-     * @param payload response payload
+     * @param status   HTTP status code
+     * @param payload  response payload
      * @throws IOException when writing fails
      */
     protected void writeJsonResponse(HttpServletResponse response, int status, Object payload)
@@ -52,9 +53,9 @@ public abstract class JsonServletSupport extends HttpServlet {
      * Writes an error JSON response wrapped in {@link ApiResponse}.
      *
      * @param response HTTP response
-     * @param status HTTP status code
-     * @param code stable API error code
-     * @param message human-readable error message
+     * @param status   HTTP status code
+     * @param code     stable API error code
+     * @param message  human-readable error message
      * @throws IOException when writing fails
      */
     protected void writeErrorResponse(HttpServletResponse response, int status, String code, String message)
@@ -65,10 +66,10 @@ public abstract class JsonServletSupport extends HttpServlet {
     /**
      * Writes an error JSON response with structured validation error codes.
      *
-     * @param response HTTP response
-     * @param status HTTP status code
-     * @param code stable API error code
-     * @param message human-readable error message
+     * @param response         HTTP response
+     * @param status           HTTP status code
+     * @param code             stable API error code
+     * @param message          human-readable error message
      * @param validationErrors stable validation error codes
      * @throws IOException when writing fails
      */
@@ -83,5 +84,11 @@ public abstract class JsonServletSupport extends HttpServlet {
         response.setCharacterEncoding("UTF-8");
         response.setStatus(status);
         response.getWriter().write(gson.toJson(payload));
+    }
+
+    @Override
+    public void init() throws ServletException {
+        super.init();
+        System.out.println(">>> Servlet initialized: " + getClass().getName());
     }
 }

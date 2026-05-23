@@ -16,7 +16,7 @@ import java.util.Locale;
 /**
  * Public SVG CAPTCHA endpoint for the registration flow.
  */
-@WebServlet("/api/auth/captcha")
+@WebServlet(name ="/api/auth/captcha", loadOnStartup = 1)
 public class CaptchaServlet extends HttpServlet {
 
     private static final int HTTP_TOO_MANY_REQUESTS = 429;
