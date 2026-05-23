@@ -1,5 +1,7 @@
 version: "3.9"
 
+name: cms
+
 services:
   postgres:
     image: postgres:15

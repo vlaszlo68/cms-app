@@ -72,7 +72,9 @@ pipeline {
 				sh ''' 
 				set -e 
 				echo "=== Frontend rebuild started ===" 
-				docker-compose up -d --build frontend-build nginx 
+				docker-compose build frontend-build
+				docker-compose run --rm frontend-build
+				docker-compose up -d nginx
 				echo "=== Frontend rebuild finished ===" ''' 
 			} 
 		}
