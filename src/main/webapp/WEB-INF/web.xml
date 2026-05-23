@@ -87,7 +87,7 @@
         <url-pattern>/*</url-pattern>
     </filter-mapping>
 
-    <!--filter>
+    <filter>
         <filter-name>exceptionHandlingFilter</filter-name>
         <filter-class>hu.laci.cms.backend.servlet.filter.ExceptionHandlingFilter</filter-class>
     </filter>
@@ -169,6 +169,6 @@
     <filter-mapping>
         <filter-name>transactionFilter</filter-name>
         <url-pattern>/*</url-pattern>
-    </filter-mapping-->
+    </filter-mapping>
 
 </web-app>
