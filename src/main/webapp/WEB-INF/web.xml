@@ -97,7 +97,7 @@
         <url-pattern>/*</url-pattern>
     </filter-mapping>
 
-    <filter>
+    <!--filter>
         <filter-name>corsFilter</filter-name>
         <filter-class>hu.laci.cms.backend.servlet.filter.CorsFilter</filter-class>
         <init-param>
@@ -109,7 +109,7 @@
     <filter-mapping>
         <filter-name>corsFilter</filter-name>
         <url-pattern>/*</url-pattern>
-    </filter-mapping>
+    </filter-mapping-->
 
     <filter>
         <filter-name>securityHeadersFilter</filter-name>
