@@ -19,7 +19,7 @@ pipeline {
 		stage('Checkout Frontend') {
 		    steps {
 				dir('../frontend') {
-					git branch: 'main',
+					git branch: 'master',
 						url: 'https://github.com/vlaszlo68/cms-frontend.git'
 				}
 			}
