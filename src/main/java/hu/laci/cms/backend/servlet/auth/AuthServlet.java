@@ -13,7 +13,7 @@ import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.service.AuthService;
 import hu.laci.cms.backend.service.AuthServiceException;
 import hu.laci.cms.backend.service.auth.CaptchaService;
-import hu.laci.cms.backend.service.security.InMemoryRateLimiter;
+import hu.laci.cms.backend.service.security.RateLimiterManager;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.ServletException;
@@ -49,7 +49,8 @@ public class AuthServlet extends JsonServletSupport {
         UserDao userDao = DaoRegistry.getDao(User.class);
         this.authService = new AuthService(
                 userDao,
-                new InMemoryRateLimiter(
+                RateLimiterManager.createAttemptLimiter(
+                        "login_failed_attempts",
                         SecurityConfig.getCurrent().getMaxFailedAttempts(),
                         Duration.ofMinutes(SecurityConfig.getCurrent().getLockMinutes())
                 )

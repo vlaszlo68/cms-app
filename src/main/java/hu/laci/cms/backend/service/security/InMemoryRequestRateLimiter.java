@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentMap;
  * This limiter is intended for short-lived request throttling, such as limiting
  * how many CAPTCHA images a client can generate in a brief time window.
  */
-public class InMemoryRequestRateLimiter {
+public class InMemoryRequestRateLimiter implements RequestRateLimiter {
 
     private final int maxRequests;
     private final Duration windowDuration;
@@ -49,6 +49,7 @@ public class InMemoryRequestRateLimiter {
      * @param key client-specific limiter key
      * @return true when the request is within the configured window limit
      */
+    @Override
     public boolean allowRequest(String key) {
         Instant now = Instant.now(clock);
         WindowState state = windows.computeIfAbsent(key, ignored -> new WindowState(now, 0));

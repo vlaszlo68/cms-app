@@ -4,7 +4,8 @@ import hu.laci.cms.backend.dao.common.DataAccessException;
 import hu.laci.cms.backend.dao.user.UserDao;
 import hu.laci.cms.backend.config.security.SecurityConfig;
 import hu.laci.cms.backend.model.user.User;
-import hu.laci.cms.backend.service.security.InMemoryRateLimiter;
+import hu.laci.cms.backend.service.security.AttemptRateLimiter;
+import hu.laci.cms.backend.service.security.RateLimiterManager;
 import org.mindrot.jbcrypt.BCrypt;
 
 import java.time.Duration;
@@ -21,7 +22,7 @@ import java.util.Optional;
 public class AuthService {
 
     private final UserDao userDao;
-    private final InMemoryRateLimiter loginAttemptLimiter;
+    private final AttemptRateLimiter loginAttemptLimiter;
 
     /**
      * Creates the service with the required user DAO.
@@ -29,7 +30,8 @@ public class AuthService {
      * @param userDao DAO used to load users by login name
      */
     public AuthService(UserDao userDao) {
-        this(userDao, new InMemoryRateLimiter(
+        this(userDao, RateLimiterManager.createAttemptLimiter(
+                "login_failed_attempts",
                 SecurityConfig.getCurrent().getMaxFailedAttempts(),
                 Duration.ofMinutes(SecurityConfig.getCurrent().getLockMinutes())
         ));
@@ -41,7 +43,7 @@ public class AuthService {
      * @param userDao DAO used to load users by login name
      * @param loginAttemptLimiter limiter used for failed login attempts
      */
-    public AuthService(UserDao userDao, InMemoryRateLimiter loginAttemptLimiter) {
+    public AuthService(UserDao userDao, AttemptRateLimiter loginAttemptLimiter) {
         this.userDao = Objects.requireNonNull(userDao, "userDao must not be null");
         this.loginAttemptLimiter = Objects.requireNonNull(loginAttemptLimiter, "loginAttemptLimiter must not be null");
     }

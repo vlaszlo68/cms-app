@@ -10,7 +10,8 @@ import hu.laci.cms.backend.dto.user.UserResponse;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.service.auth.CaptchaService;
 import hu.laci.cms.backend.service.auth.RegistrationService;
-import hu.laci.cms.backend.service.security.InMemoryRateLimiter;
+import hu.laci.cms.backend.service.security.AttemptRateLimiter;
+import hu.laci.cms.backend.service.security.RateLimiterManager;
 import hu.laci.cms.backend.service.security.PasswordPolicyValidator;
 import hu.laci.cms.backend.service.user.UserService;
 import hu.laci.cms.backend.service.user.UserServiceException;
@@ -35,7 +36,7 @@ public class RegisterServlet extends JsonServletSupport {
 
     private RegistrationService registrationService;
     private CaptchaService captchaService;
-    private InMemoryRateLimiter registrationRateLimiter;
+    private AttemptRateLimiter registrationRateLimiter;
     private boolean registrationCaptchaEnabled;
 
     @Override
@@ -47,7 +48,8 @@ public class RegisterServlet extends JsonServletSupport {
                 new PasswordPolicyValidator(SecurityConfig.getCurrent().getPasswordPolicy()),
                 captchaService
         );
-        this.registrationRateLimiter = new InMemoryRateLimiter(
+        this.registrationRateLimiter = RateLimiterManager.createAttemptLimiter(
+                "registration_attempts",
                 SecurityConfig.getCurrent().getMaxFailedAttempts(),
                 Duration.ofMinutes(SecurityConfig.getCurrent().getLockMinutes())
         );

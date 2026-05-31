@@ -67,6 +67,7 @@
 
     <context-param>
         <param-name>session.store.mode</param-name>
+        <!-- Current local/default session mode: Tomcat HttpSession -->
         <param-value>http</param-value>
     </context-param>
 
@@ -90,6 +91,12 @@
         <param-value>Lax</param-value>
     </context-param>
 
+    <context-param>
+        <param-name>rateLimiter.store.mode</param-name>
+        <!-- Current local/default rate limiter mode: process-local memory -->
+        <param-value>memory</param-value>
+    </context-param>
+
     <listener>
         <listener-class>hu.laci.cms.backend.config.database.DatabaseConfigListener</listener-class>
     </listener>
@@ -104,6 +111,10 @@
 
     <listener>
         <listener-class>hu.laci.cms.backend.config.session.AppSessionConfigListener</listener-class>
+    </listener>
+
+    <listener>
+        <listener-class>hu.laci.cms.backend.service.security.RateLimiterConfigListener</listener-class>
     </listener>
 
     <filter>
@@ -171,12 +182,12 @@
     </filter-mapping>
 
     <filter>
-        <filter-name>httpSessionContextFilter</filter-name>
-        <filter-class>hu.laci.cms.backend.servlet.filter.HttpSessionContextFilter</filter-class>
+        <filter-name>appSessionContextFilter</filter-name>
+        <filter-class>hu.laci.cms.backend.servlet.filter.AppSessionContextFilter</filter-class>
     </filter>
 
     <filter-mapping>
-        <filter-name>httpSessionContextFilter</filter-name>
+        <filter-name>appSessionContextFilter</filter-name>
         <url-pattern>/*</url-pattern>
     </filter-mapping>
 

@@ -66,7 +66,7 @@ Thread-local request context a sessionből származó adatokhoz. Jelenleg az akt
 
 Kapcsolatok:
 
-- tölti: `HttpSessionContextFilter`
+- tölti: `AppSessionContextFilter`
 - használja: `BaseDao` audit mezőkhöz
 
 ### `hu.laci.cms.backend.config.session.AppSessionConfig`
@@ -92,7 +92,7 @@ Store-független session facade a servlet és filter réteg számára. A HTTP be
 Kapcsolatok:
 
 - használja: `AppSessionStore`
-- használják: auth servlet osztályok, `AuthFilter`, `CsrfFilter`, `HttpSessionContextFilter`, `RequestLoggingFilter`, `UserServlet`
+- használják: auth servlet osztályok, `AuthFilter`, `CsrfFilter`, `AppSessionContextFilter`, `RequestLoggingFilter`, `UserServlet`
 
 ### `hu.laci.cms.backend.config.session.AppSession`
 
@@ -168,7 +168,7 @@ Kapcsolatok:
 - `AppSessionManager` segítségével keresi az `AuthenticatedUser` snapshotot
 - JSON válaszhoz használja: `ApiResponse`
 
-### `HttpSessionContextFilter`
+### `AppSessionContextFilter`
 
 Az `AppSessionManager` által elért sessionből átmásolja a bejelentkezett user id-t a `SessionContext` thread-local tárolóba, majd request végén törli. Így a DAO audit mezőkitöltésnek nem kell servlet API-t vagy session store-t ismernie.
 
@@ -221,7 +221,7 @@ Kapcsolatok:
 Kapcsolatok:
 
 - használja: `CaptchaService`
-- generálási limithez használja: `InMemoryRequestRateLimiter`
+- generálási limithez használja: `RequestRateLimiter`, amelyet a `RateLimiterManager` hoz létre
 - session attribútum: `captcha` / `CAPTCHA_STATE`, JSON payloadban id, válasz, purpose, createdAt, attempts
 
 ### `AuthServlet`
@@ -233,7 +233,7 @@ Kapcsolatok:
 - DAO beszerzése: `DaoRegistry.getDao(User.class)`
 - service: `AuthService`
 - CAPTCHA: `CaptchaService`
-- rate limiter: `InMemoryRateLimiter`
+- rate limiter: `AttemptRateLimiter`, amelyet a `RateLimiterManager` hoz létre
 - session user DTO: `AuthenticatedUser`
 
 ### `MeServlet`
@@ -254,7 +254,7 @@ Kapcsolatok:
 - service: `RegistrationService`
 - password policy: `PasswordPolicyValidator`
 - CAPTCHA: `CaptchaService`
-- regisztrációs limiter: `InMemoryRateLimiter`
+- regisztrációs limiter: `AttemptRateLimiter`, amelyet a `RateLimiterManager` hoz létre
 
 ### `UserServlet`
 
@@ -319,6 +319,18 @@ User API válasz DTO. Nem tartalmaz password hash-t, viszont tartalmazza az id-t
 
 Közös API envelope sikeres és hibás válaszokhoz. Siker esetén `success=true` és `data`, hiba esetén `success=false` és `error`.
 
+## 8. Cluster JDBC fennmarado teendok
+
+A session es rate limiter mar store-moge van kiszervezve, de cluster szempontbol meg van nehany nyitott pont:
+
+- tobb Tomcat replika vegigtesztelese login/me/logout/CSRF/CAPTCHA flow-val
+- ugyanazon session parhuzamos frissitesenek szabalyai
+- lejart session es rate limit rekordok takaritasi strategiaja
+- `AuthenticatedUser` snapshot frissessege admin modositaskor
+- DB load, indexeles es tuning
+
+A reszletes lista a `cluster-jdbc-todo.md` fajlban van.
+
 ### `ApiErrorResponse`
 
 Közös hiba DTO. Tartalmazza a hibakódot, üzenetet, opcionális validációs hibakód listát.
@@ -332,7 +344,7 @@ Login üzleti logika. Login név alapján betölti a usert, BCrypttel ellenőrzi
 Kapcsolatok:
 
 - DAO: `UserDao`
-- limiter: `InMemoryRateLimiter`
+- limiter: `AttemptRateLimiter`
 - kivétel wrapper: `AuthServiceException`
 
 ### `AuthServiceException`
@@ -386,11 +398,57 @@ Jelszó policy ellenőrző. A `PasswordPolicyConfig` alapján listázza a megsé
 
 ### `InMemoryRateLimiter`
 
-Sikertelen próbálkozásokra épülő lockout limiter. Login és regisztrációs próbálkozás limiteléshez használatos.
+Sikertelen próbálkozásokra épülő process-local lockout limiter. A `AttemptRateLimiter` interfészt valósítja meg, és `rateLimiter.store.mode=memory` esetén használatos.
 
 ### `InMemoryRequestRateLimiter`
 
-Fix időablakos request limiter. CAPTCHA generálásnál használatos, ahol rövid idő alatt túl sok challenge kérését kell megfogni.
+Fix időablakos process-local request limiter. A `RequestRateLimiter` interfészt valósítja meg, és `rateLimiter.store.mode=memory` esetén használatos.
+
+### `AttemptRateLimiter`
+
+Sikertelen próbálkozásokra épülő lockout limiter interfész. Login és regisztrációs próbálkozásoknál használatos.
+
+### `RequestRateLimiter`
+
+Fix időablakos request limiter interfész. CAPTCHA generálásnál használatos.
+
+### `RateLimiterConfig`
+
+Environment-first rate limiter store konfiguráció. Először a `RATE_LIMITER_STORE_MODE` környezeti változót olvassa, utána a `web.xml` `rateLimiter.store.mode` értékét, végül `memory` defaultot használ.
+
+### `RateLimiterConfigListener`
+
+Servlet context listener. Alkalmazásinduláskor inicializálja a `RateLimiterConfig` és `RateLimiterManager` állapotot.
+
+### `RateLimiterManager`
+
+Factory facade, amely a konfigurált store alapján hoz létre `AttemptRateLimiter` és `RequestRateLimiter` példányokat.
+
+Támogatott módok:
+
+- `memory`
+- `jdbc`
+
+Tervezett, de még nem implementált mód:
+
+- `redis`
+
+### `JdbcAttemptRateLimiter`
+
+PostgreSQL-backed failed-attempt lockout limiter. A `rate_limits` táblában tárolja a failure count és lock expiry állapotot.
+
+Használt namespace-ek:
+
+- `login_failed_attempts`
+- `registration_attempts`
+
+### `JdbcRequestRateLimiter`
+
+PostgreSQL-backed fixed-window request limiter. A `rate_limits` táblában tárolja az ablak kezdési idejét és a request count értékét.
+
+Használt namespace:
+
+- `captcha_generation`
 
 ## 7. DAO réteg és persistence infrastruktúra
 

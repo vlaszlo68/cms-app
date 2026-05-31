@@ -50,11 +50,11 @@ Az uj session store-nak ezt a felosztast kovetnie kell. A servlet/filter reteg k
 4. `securityHeadersFilter`
 5. `characterEncodingFilter`
 6. `authFilter`
-7. `httpSessionContextFilter`
+7. `appSessionContextFilter`
 8. `csrfFilter`
 9. `transactionFilter`
 
-Fontos kovetkezmeny: jelenleg az `AuthFilter`, `HttpSessionContextFilter` es `CsrfFilter` a `TransactionFilter` elott fut. Ez `jdbc` session store eseten problema lehet, mert a session betoltes/mentes adatbazist igenyelne, de a request-scoped tranzakcio meg nincs megnyitva.
+Fontos kovetkezmeny: jelenleg az `AuthFilter`, `AppSessionContextFilter` es `CsrfFilter` a `TransactionFilter` elott fut. Ez `jdbc` session store eseten problema lehetne, ha a session store a request-scoped tranzakciot akarna hasznalni.
 
 Ezert a session store bevezetesenel kulon dontes kell:
 
@@ -86,7 +86,7 @@ Ezeket jelenleg kozvetlenul olvassak/irjak:
 - `UserServlet`
 - `AuthFilter`
 - `CsrfFilter`
-- `HttpSessionContextFilter`
+- `AppSessionContextFilter`
 - `RequestLoggingFilter`
 - `CsrfTokenSupport`
 
@@ -461,7 +461,7 @@ Nem modosulhat Redis miatt:
 - `UserServlet`
 - `AuthFilter`
 - `CsrfFilter`
-- `HttpSessionContextFilter`
+- `AppSessionContextFilter`
 - `RequestLoggingFilter`
 - frontend API szerzodes
 
@@ -801,7 +801,7 @@ Elfogadasi feltetelek:
 - ha egyik sincs megadva, `http` mod indul, vagyis a hagyomanyos jelenlegi `HttpSession` mukodes marad
 - hibas explicit mode ertek eseten startup fail legyen, mert cluster konfiguracios hiba ne maradjon rejtve
 - a mode enum/factory szerkezete bovitheto legyen kesobbi `redis` aggal anelkul, hogy a sessiont hasznalo servlet/filter kod valtozna
-- Redis store hozzaadasakor az `AuthServlet`, `MeServlet`, `LogoutServlet`, `CaptchaServlet`, `RegisterServlet`, `UserServlet`, `AuthFilter`, `CsrfFilter`, `HttpSessionContextFilter` es `RequestLoggingFilter` nem modosulhat Redis-specifikus okbol
+- Redis store hozzaadasakor az `AuthServlet`, `MeServlet`, `LogoutServlet`, `CaptchaServlet`, `RegisterServlet`, `UserServlet`, `AuthFilter`, `CsrfFilter`, `AppSessionContextFilter` es `RequestLoggingFilter` nem modosulhat Redis-specifikus okbol
 
 Megjegyzes: a fallback `http` csak hianyzo konfiguraciora vonatkozik. Ha valaki explicit hibas erteket ad meg environmentben vagy `web.xml`-ben, az ne essen vissza csendben `http` modra.
 
@@ -830,7 +830,7 @@ Atalakitando:
 
 - `AuthFilter`
 - `CsrfFilter`
-- `HttpSessionContextFilter`
+- `AppSessionContextFilter`
 - `RequestLoggingFilter`
 
 Cel:
@@ -1022,26 +1022,44 @@ Hasznos diagnosztika:
 - request logging tartalmazza a usert
 - session store mod logolodjon startupkor
 
-## Rate limiter kulon feladat
+## Rate limiter store allapot
 
-A session store megoldasa utan marad egy cluster-szintu biztonsagi res:
+A session store mellett a rate limiter store absztrakcio elso kore is megvalosult.
 
-- login rate limiter: `InMemoryRateLimiter`
-- registration rate limiter: `InMemoryRateLimiter`
-- captcha generation limiter: `InMemoryRequestRateLimiter`
+Megvalositott elemek:
 
-Ezek jelenleg replikankent kulon memoriaban vannak, tehat 3 backend replika mellett a valos limit nagyjabol haromszorozodhat, es a request eloszlastol fugg.
+- `AttemptRateLimiter`
+- `RequestRateLimiter`
+- `RateLimiterConfig`
+- `RateLimiterConfigListener`
+- `RateLimiterManager`
+- `JdbcAttemptRateLimiter`
+- `JdbcRequestRateLimiter`
+- `V6__rate_limits.sql`
 
-Ez nem blokkolja a session konzisztenciat, de production-cluster szempontbol kesobb javitando.
+Store modok:
 
-Javasolt kesobbi terv:
+- `memory`: hagyomanyos process-local mukodes
+- `jdbc`: PostgreSQL-backed cluster-kompatibilis mukodes
+- `redis`: tervezett, de meg nem implementalt
 
 - `rateLimiter.store.mode=memory|jdbc|redis`
-- `RateLimiterStore` interfesz
-- DB tabla kulcs, counter, window/lock expiry mezokkel
-- kesobb Redis implementacio TTL-es counterekkel
+- env megfeleloje: `RATE_LIMITER_STORE_MODE`
+- fallback: `memory`
 
-Elso session fejlesztesbe ezt nem erdemes belekeverni, mert kulon biztonsagi es concurrency terulet.
+JDBC tabla:
+
+- `rate_limits`
+- primary key: `(limiter_name, limiter_key)`
+- mezok: failure count, request count, window start, lock expiry, updated time
+
+Hasznalt namespace-ek:
+
+- `login_failed_attempts`
+- `registration_attempts`
+- `captcha_generation`
+
+Redis tovabbra is a hosszu tavu termeszetes store a rovid eletu counterekhez, de meg nincs implementalva.
 
 ## Biztonsagi megfontolasok
 
@@ -1223,7 +1241,7 @@ Elso korben lazy cleanup eleg. Kesobb lehet:
 9. Swarm compose environment frissites `SESSION_STORE_MODE=jdbc` ertekkel.
 10. Swarm teszt 3 backend + 2 frontend replikaval.
 11. Kesobbi, kulon feladatkent `RedisAppSessionStore` hozzaadasa ugyanazon interfesz moge, servlet/filter atiras nelkul.
-12. Kulon kovetkezo feladatkent rate limiter store absztrakcio.
+12. Rate limiter store absztrakcio es JDBC store elso kore megvalosult.
 
 ## Nem cel ebben a korben
 
@@ -1233,7 +1251,7 @@ Elso korben lazy cleanup eleg. Kesobb lehet:
 - Redis miatt servlet/filter/auth reteg ujboli atirasa
 - Nginx sticky sessionre epulo cluster mukodes; a vegleges irany a backend session allapot kulso store-ba vitele
 - teljes user auth allapot minden request alatti DB-frissitese
-- in-memory rate limiterek azonnali clusteresitese
+- Redis rate limiter store implementalasa
 - frontend API szerzodes modositasa
 
 ## Varhato eredmeny
@@ -1252,3 +1270,15 @@ Elso korben lazy cleanup eleg. Kesobb lehet:
 Kesobbi `session.store.mode=redis` mellett ugyanezt az alkalmazasi viselkedest kell kapni, de Redis TTL-alapu tarolassal. Ennek bevezetese nem igenyelhet ujabb session-hozzaferesi atvezetesi munkat a servlet/filter/auth osztalyokban.
 
 Hosszu tavon a Redis store tekintheto a session es rovid eletu security/workflow allapot leginkabb cluster-termeszetes tarolasanak. A JDBC store az elso, kevesebb infrastruktura-komponenst igenylo cluster-kompatibilis lepes; a sticky session nem vegallapot, mert a state tovabbra is egy-egy Tomcat peldany memoriaban maradna.
+
+## Nyitott JDBC cluster todo
+
+A mai allapot szerint a session és a rate limiter mar JDBC-backed store-on van, de a vegleges cluster elfogadas elott meg ellenorizni kell:
+
+- tobb Tomcat replika valodi end-to-end tesztjeit
+- ugyanazon session parhuzamos frissitesenek viselkedeset
+- lejart session es limiter rekordok cleanup strategiajat
+- user snapshot frissesseget admin modositaskor
+- DB terheles es indexeles tovabbi finomhangolasat
+
+A reszletes, sorrendezett lista a `cluster-jdbc-todo.md` fajlban van.

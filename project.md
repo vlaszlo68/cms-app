@@ -97,7 +97,7 @@ Current request lifecycle for `/api/*` requests:
 4. `SecurityHeadersFilter` adds no-store and browser security headers.
 5. `CharacterEncodingFilter` sets UTF-8 request/response encoding.
 6. `AuthFilter` validates session authentication except public auth endpoints.
-7. `HttpSessionContextFilter` copies selected `HttpSession` data into request-local `SessionContext`.
+7. `AppSessionContextFilter` copies selected application session data into request-local `SessionContext`.
 8. `CsrfFilter` validates `X-CSRF-Token` for state-changing API requests.
 9. `TransactionFilter` opens, commits, rolls back, and closes request-scoped DB transactions.
 
@@ -411,8 +411,8 @@ Specialized future conversions, such as JSON columns, should be added deliberate
 
 Session-derived request context:
 
-- `HttpSessionContextFilter` populates `SessionContext` for the current request.
-- `SessionContext` is a thread-local holder for data derived from the HTTP session.
+- `AppSessionContextFilter` populates `SessionContext` for the current request.
+- `SessionContext` is a thread-local holder for data derived from the active application session.
 - It currently exposes the current authenticated user id for audit field population.
 - The context is cleared at the end of every request.
 
@@ -587,7 +587,7 @@ Package conventions:
   - `hu.laci.cms.backend.dto.common.ApiErrorResponse`
   - `hu.laci.cms.backend.servlet.support.JsonServletSupport`
   - `hu.laci.cms.backend.servlet.filter.AuthFilter`
-  - `hu.laci.cms.backend.servlet.filter.HttpSessionContextFilter`
+  - `hu.laci.cms.backend.servlet.filter.AppSessionContextFilter`
   - `hu.laci.cms.backend.servlet.filter.ExceptionHandlingFilter`
   - `hu.laci.cms.backend.servlet.filter.RequestLoggingFilter`
   - `hu.laci.cms.backend.servlet.filter.CorsFilter`
@@ -631,7 +631,7 @@ Current filter order in `web.xml`:
 4. `securityHeadersFilter`
 5. `characterEncodingFilter`
 6. `authFilter`
-7. `httpSessionContextFilter`
+7. `appSessionContextFilter`
 8. `csrfFilter`
 9. `transactionFilter`
 
@@ -771,7 +771,7 @@ Current filter responsibilities:
 | `SecurityHeadersFilter` | `/*` | Adds no-store cache and browser hardening headers. |
 | `CharacterEncodingFilter` | `/*` | Sets UTF-8 request and response encoding. |
 | `AuthFilter` | `/api/*` | Requires authenticated session except public auth paths. |
-| `HttpSessionContextFilter` | `/*` | Copies selected HTTP session data into request-local `SessionContext`. |
+| `AppSessionContextFilter` | `/*` | Copies selected application session data into request-local `SessionContext`. |
 | `CsrfFilter` | `/api/*` | Requires CSRF token for state-changing API requests. |
 | `TransactionFilter` | `/*` | Wraps request processing in DB transaction scope. |
 
@@ -784,6 +784,22 @@ Session store configuration:
 | `session.timeout.minutes` / `SESSION_TIMEOUT_MINUTES` | env, then `web.xml`, then built-in | `30` | Used for external session expiry. |
 | `session.cookie.secure` / `SESSION_COOKIE_SECURE` | env, then `web.xml`, then built-in | `false` | Should be `true` under HTTPS production deployments. |
 | `session.cookie.sameSite` / `SESSION_COOKIE_SAMESITE` | env, then `web.xml`, then built-in | `Lax` | Suitable for same-origin/reverse-proxy deployment. |
+
+Rate limiter store configuration:
+
+| Setting | Source priority | Default | Notes |
+| --- | --- | --- | --- |
+| `rateLimiter.store.mode` / `RATE_LIMITER_STORE_MODE` | env, then `web.xml`, then built-in | `memory` | `memory` and `jdbc` are implemented; `redis` is planned. |
+
+Rate limiter details:
+
+- login failed-attempt limiter uses namespace `login_failed_attempts`
+- registration attempt limiter uses namespace `registration_attempts`
+- CAPTCHA generation limiter uses namespace `captcha_generation`
+- `memory` mode preserves the previous process-local behavior
+- `jdbc` mode stores shared limiter state in the `rate_limits` table created by `V6__rate_limits.sql`
+- swarm test configuration sets `RATE_LIMITER_STORE_MODE=jdbc`
+- Redis remains the planned long-term store for short-lived limiter counters, but is not implemented yet
 
 Security headers currently set:
 
@@ -862,6 +878,18 @@ Jenkins note:
 Runtime URLs:
 
 - local standalone Tomcat app context: `http://localhost:8081/cms-app`
+
+Current cluster JDBC notes:
+
+- the session store and rate limiter store are already externalized to PostgreSQL-backed implementations
+- the remaining open points are operational and consistency related, not basic state externalization
+- the canonical shortlist lives in `cluster-jdbc-todo.md`
+- the main remaining risks are:
+  - same-session concurrent writes
+  - cleanup of expired session and limiter rows
+  - multi-node end-to-end verification
+  - user snapshot freshness after admin changes
+  - DB load and index tuning
 - Docker Tomcat root context: `http://localhost:8081`
 - health endpoint when deployed under `/cms-app`: `http://localhost:8081/cms-app/hello`
 - health endpoint in Docker root context: `http://localhost:8081/hello`

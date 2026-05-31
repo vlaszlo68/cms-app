@@ -37,11 +37,14 @@ services:
       DB_NAME: cms_db
       DB_USER: cms_user
       DB_PASSWORD: cms_pw
+      # Explicit cluster test mode: backend session state in PostgreSQL
       SESSION_STORE_MODE: "jdbc"
       SESSION_COOKIE_NAME: "CMS_SESSION_ID"
       SESSION_TIMEOUT_MINUTES: "30"
       SESSION_COOKIE_SECURE: "false"
       SESSION_COOKIE_SAMESITE: "Lax"
+      # Explicit cluster test mode: rate limiter state in PostgreSQL
+      RATE_LIMITER_STORE_MODE: "jdbc"
 
     networks:
       - cms-network

@@ -4,8 +4,10 @@ import hu.laci.cms.backend.config.session.AppSession;
 import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.service.auth.CaptchaChallenge;
 import hu.laci.cms.backend.service.auth.CaptchaService;
-import hu.laci.cms.backend.service.security.InMemoryRequestRateLimiter;
+import hu.laci.cms.backend.service.security.RateLimiterManager;
+import hu.laci.cms.backend.service.security.RequestRateLimiter;
 
+import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
@@ -25,8 +27,15 @@ public class CaptchaServlet extends HttpServlet {
     private static final Duration GENERATION_LOCK_DURATION = Duration.ofMinutes(1);
 
     private final CaptchaService captchaService = new CaptchaService();
-    private final InMemoryRequestRateLimiter generationRateLimiter =
-            new InMemoryRequestRateLimiter(MAX_GENERATION_ATTEMPTS, GENERATION_LOCK_DURATION);
+    private RequestRateLimiter generationRateLimiter;
+
+    @Override
+    public void init() throws ServletException {
+        this.generationRateLimiter = RateLimiterManager.createRequestLimiter(
+                "captcha_generation",
+                MAX_GENERATION_ATTEMPTS,
+                GENERATION_LOCK_DURATION);
+    }
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {

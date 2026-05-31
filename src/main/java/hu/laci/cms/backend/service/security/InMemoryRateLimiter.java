@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentMap;
  * The limiter is intentionally process-local and should be replaced with a
  * shared store if the application is scaled across multiple JVMs.
  */
-public class InMemoryRateLimiter {
+public class InMemoryRateLimiter implements AttemptRateLimiter {
 
     private final int maxFailures;
     private final Duration lockDuration;
@@ -30,6 +30,7 @@ public class InMemoryRateLimiter {
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
     }
 
+    @Override
     public boolean isLocked(String key) {
         AttemptState state = attempts.get(key);
         if (state == null) {
@@ -48,6 +49,7 @@ public class InMemoryRateLimiter {
         }
     }
 
+    @Override
     public void recordFailure(String key) {
         AttemptState state = attempts.computeIfAbsent(key, ignored -> new AttemptState());
         synchronized (state) {
@@ -58,6 +60,7 @@ public class InMemoryRateLimiter {
         }
     }
 
+    @Override
     public void recordSuccess(String key) {
         attempts.remove(key);
     }
