@@ -1,5 +1,6 @@
 package hu.laci.cms.backend.servlet.filter;
 
+import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +12,6 @@ import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 import java.io.IOException;
 
 /**
@@ -71,11 +71,8 @@ public class RequestLoggingFilter implements Filter {
     }
 
     private String getUser(HttpServletRequest request) {
-        HttpSession session = request.getSession(false);
-        if (session == null || !(session.getAttribute("user") instanceof AuthenticatedUser user)) {
-            return "-";
-        }
-
-        return user.getId() + ":" + user.getLoginName();
+        return AppSessionManager.getAuthenticatedUser(request, null)
+                .map(user -> user.getId() + ":" + user.getLoginName())
+                .orElse("-");
     }
 }

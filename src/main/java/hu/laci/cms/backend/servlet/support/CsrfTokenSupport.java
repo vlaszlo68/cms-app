@@ -1,6 +1,5 @@
 package hu.laci.cms.backend.servlet.support;
 
-import javax.servlet.http.HttpSession;
 import java.security.SecureRandom;
 import java.util.Base64;
 
@@ -35,20 +34,4 @@ public final class CsrfTokenSupport {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
     }
 
-    /**
-     * Returns the session's existing CSRF token or creates and stores a new one.
-     *
-     * @param session authenticated HTTP session
-     * @return existing or newly created CSRF token
-     */
-    public static String ensureToken(HttpSession session) {
-        Object existingToken = session.getAttribute(SESSION_ATTRIBUTE);
-        if (existingToken instanceof String token && !token.isBlank()) {
-            return token;
-        }
-
-        String token = createToken();
-        session.setAttribute(SESSION_ATTRIBUTE, token);
-        return token;
-    }
 }

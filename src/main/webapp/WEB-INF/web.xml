@@ -65,6 +65,31 @@
         <param-value>true</param-value>
     </context-param>
 
+    <context-param>
+        <param-name>session.store.mode</param-name>
+        <param-value>http</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>session.cookie.name</param-name>
+        <param-value>CMS_SESSION_ID</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>session.timeout.minutes</param-name>
+        <param-value>30</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>session.cookie.secure</param-name>
+        <param-value>false</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>session.cookie.sameSite</param-name>
+        <param-value>Lax</param-value>
+    </context-param>
+
     <listener>
         <listener-class>hu.laci.cms.backend.config.database.DatabaseConfigListener</listener-class>
     </listener>
@@ -75,6 +100,10 @@
 
     <listener>
         <listener-class>hu.laci.cms.backend.config.security.SecurityConfigListener</listener-class>
+    </listener>
+
+    <listener>
+        <listener-class>hu.laci.cms.backend.config.session.AppSessionConfigListener</listener-class>
     </listener>
 
     <filter>

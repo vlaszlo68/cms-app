@@ -36,6 +36,7 @@ build/
 
 ### Local Session Notes ###
 /SESSION_CONTEXT.md
+/cluster-frontend-plan.md
 
 ### Local HTTP client artifacts ###
 /curl-cookies.txt

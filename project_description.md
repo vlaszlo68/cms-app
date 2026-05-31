@@ -69,6 +69,72 @@ Kapcsolatok:
 - tölti: `HttpSessionContextFilter`
 - használja: `BaseDao` audit mezőkhöz
 
+### `hu.laci.cms.backend.config.session.AppSessionConfig`
+
+Environment-first alkalmazás-session konfiguráció. Először a `SESSION_*` környezeti változókat olvassa, utána a `web.xml` context-param értékeket, végül beépített defaultokra esik vissza. A session store mód fallbackje `http`, vagyis a hagyományos Tomcat `HttpSession` működés.
+
+Fő beállítások:
+
+- `SESSION_STORE_MODE` / `session.store.mode`
+- `SESSION_COOKIE_NAME` / `session.cookie.name`
+- `SESSION_TIMEOUT_MINUTES` / `session.timeout.minutes`
+- `SESSION_COOKIE_SECURE` / `session.cookie.secure`
+- `SESSION_COOKIE_SAMESITE` / `session.cookie.sameSite`
+
+### `hu.laci.cms.backend.config.session.AppSessionConfigListener`
+
+Servlet context listener. Alkalmazásinduláskor inicializálja az `AppSessionConfig` és `AppSessionManager` állapotot. Leálláskor reseteli őket.
+
+### `hu.laci.cms.backend.config.session.AppSessionManager`
+
+Store-független session facade a servlet és filter réteg számára. A HTTP belépési pontok ezen keresztül olvassák a bejelentkezett usert, CSRF tokent és CAPTCHA állapotot, így nem kell tudniuk, hogy a háttérben Tomcat `HttpSession` vagy PostgreSQL-backed session store működik.
+
+Kapcsolatok:
+
+- használja: `AppSessionStore`
+- használják: auth servlet osztályok, `AuthFilter`, `CsrfFilter`, `HttpSessionContextFilter`, `RequestLoggingFilter`, `UserServlet`
+
+### `hu.laci.cms.backend.config.session.AppSession`
+
+Store-semleges alkalmazás-session modell. Tartalmazza a session id-t, opcionális `AuthenticatedUser` snapshotot, CSRF tokent, lejárati/időbélyeg mezőket és typed session attribútumokat.
+
+### `hu.laci.cms.backend.config.session.AppSessionAttribute`
+
+Összetett vagy workflow-specifikus session adat typed JSON payloadként. Az első konkrét használat a CAPTCHA állapot:
+
+- `attributeName = captcha`
+- `attributeType = CAPTCHA_STATE`
+
+### `hu.laci.cms.backend.config.session.AppSessionStore`
+
+Session store interfész. Implementációi:
+
+- `HttpSessionAppSessionStore`
+- `JdbcAppSessionStore`
+
+A `RedisAppSessionStore` tervezett későbbi bővítési pont, de jelenleg nincs implementálva.
+
+### `hu.laci.cms.backend.config.session.HttpSessionAppSessionStore`
+
+A hagyományos Tomcat `HttpSession` alapú működést tartja meg az új `AppSessionStore` interfész mögött. Ez a `web.xml` explicit default működése.
+
+### `hu.laci.cms.backend.config.session.JdbcAppSessionStore`
+
+PostgreSQL-backed session store. Saját rövid JDBC kapcsolatokat használ, nem függ a request üzleti tranzakciójától. A böngésző felé `CMS_SESSION_ID` cookie-t használ, a DB-ben pedig a session id SHA-256 hashét tárolja.
+
+Kapcsolódó táblák:
+
+- `app_sessions`
+- `app_session_attributes`
+
+### `hu.laci.cms.backend.config.session.SessionCookieSupport`
+
+Közös cookie olvasó/író segéd az external session store-okhoz. Kezeli a cookie nevet, `HttpOnly`, `Secure`, `SameSite` és törlési headereket.
+
+### `hu.laci.cms.backend.config.session.SessionIdGenerator`
+
+Nagy entrópiájú, URL-safe session id generátor external session store-okhoz.
+
 ## 2. HTTP request életút és filterek
 
 A filter sorrendet a `web.xml` határozza meg. A kérés a servlet előtt több keresztmetszeti ellenőrzésen megy át.
@@ -99,12 +165,12 @@ Az `/api/*` útvonalakon ellenőrzi, hogy van-e bejelentkezett session user. Kiv
 
 Kapcsolatok:
 
-- sessionben ezt keresi: `AuthenticatedUser`
+- `AppSessionManager` segítségével keresi az `AuthenticatedUser` snapshotot
 - JSON válaszhoz használja: `ApiResponse`
 
 ### `HttpSessionContextFilter`
 
-A HTTP sessionből átmásolja a bejelentkezett user id-t a `SessionContext` thread-local tárolóba, majd request végén törli. Így a DAO audit mezőkitöltésnek nem kell servlet API-t ismernie.
+Az `AppSessionManager` által elért sessionből átmásolja a bejelentkezett user id-t a `SessionContext` thread-local tárolóba, majd request végén törli. Így a DAO audit mezőkitöltésnek nem kell servlet API-t vagy session store-t ismernie.
 
 ### `CsrfFilter`
 
@@ -112,7 +178,7 @@ A HTTP sessionből átmásolja a bejelentkezett user id-t a `SessionContext` thr
 
 Kapcsolatok:
 
-- token session attribútum: `CsrfTokenSupport.SESSION_ATTRIBUTE`
+- token forrás: `AppSessionManager` által kezelt application session
 
 ### `TransactionFilter`
 
@@ -131,7 +197,7 @@ Kapcsolatok:
 
 ### `CsrfTokenSupport`
 
-CSRF token létrehozó és sessionben tároló segéd. Login és `me` válaszoknál biztosítja, hogy a frontend kapjon tokent.
+CSRF token létrehozó segéd. A token tárolását az `AppSessionManager` és az aktuális session store végzi.
 
 ## 4. Public és auth servlet réteg
 
@@ -150,17 +216,17 @@ Kapcsolatok:
 
 ### `CaptchaServlet`
 
-`GET /api/auth/captcha` endpoint. SVG CAPTCHA-t generál, a CAPTCHA id-t a `X-Captcha-Id` headerbe teszi, a megoldást és metaadatokat sessionben tárolja.
+`GET /api/auth/captcha` endpoint. SVG CAPTCHA-t generál, a CAPTCHA id-t a `X-Captcha-Id` headerbe teszi, a megoldást és metaadatokat `CAPTCHA_STATE` typed session attribútumként tárolja az `AppSessionManager` segítségével.
 
 Kapcsolatok:
 
 - használja: `CaptchaService`
 - generálási limithez használja: `InMemoryRequestRateLimiter`
-- session attribútumok: CAPTCHA id, válasz, purpose, createdAt, attempts
+- session attribútum: `captcha` / `CAPTCHA_STATE`, JSON payloadban id, válasz, purpose, createdAt, attempts
 
 ### `AuthServlet`
 
-`POST /api/auth/login` endpoint. JSON bodyból `LoginRequest` DTO-t olvas, opcionálisan CAPTCHA-t validál, majd az `AuthService` segítségével hitelesít. Sikeres login esetén session id-t rotál, sessionbe teszi az `AuthenticatedUser` objektumot, CSRF tokent hoz létre, majd `AuthUserResponse` választ ír.
+`POST /api/auth/login` endpoint. JSON bodyból `LoginRequest` DTO-t olvas, opcionálisan CAPTCHA-t validál, majd az `AuthService` segítségével hitelesít. Sikeres login esetén friss authenticated application sessiont hoz létre az `AppSessionManager` segítségével, eltárolja az `AuthenticatedUser` snapshotot, CSRF tokent hoz létre, majd `AuthUserResponse` választ ír.
 
 Kapcsolatok:
 
@@ -172,11 +238,11 @@ Kapcsolatok:
 
 ### `MeServlet`
 
-`GET /api/auth/me` endpoint. A sessionben tárolt `AuthenticatedUser` alapján visszaadja az aktuális felhasználót és egy CSRF tokent. Ha nincs user, `AUTH_REQUIRED` hibát ad.
+`GET /api/auth/me` endpoint. Az `AppSessionManager` által elért `AuthenticatedUser` alapján visszaadja az aktuális felhasználót és egy CSRF tokent. Ha nincs user, `AUTH_REQUIRED` hibát ad.
 
 ### `LogoutServlet`
 
-`POST /api/auth/logout` endpoint. Ha van session, invalidálja, majd sikeres logout választ ír. Bejelentkezett állapotban CSRF védelem vonatkozik rá.
+`POST /api/auth/logout` endpoint. Az aktuális application sessiont invalidálja az `AppSessionManager` segítségével, majd sikeres logout választ ír. Bejelentkezett állapotban CSRF védelem vonatkozik rá.
 
 ### `RegisterServlet`
 
@@ -450,9 +516,9 @@ Rendezési irány enum. Értékei tipikusan `ASC` és `DESC`.
 2. `CsrfFilter` kihagyja a login POST-ot.
 3. `TransactionFilter` tranzakciót nyit.
 4. `AuthServlet` beolvassa a `LoginRequest` DTO-t.
-5. Ha aktív, `CaptchaService` validálja a sessionben tárolt CAPTCHA-t.
+5. Ha aktív, `CaptchaService` validálja az application session `CAPTCHA_STATE` attribútumában tárolt CAPTCHA-t.
 6. `AuthService` a `UserDao` segítségével betölti a usert és BCrypttel ellenőrzi a jelszót.
-7. Siker esetén `AuthServlet` sessiont rotál, `AuthenticatedUser` objektumot és CSRF tokent tárol, majd `AuthUserResponse` választ ad.
+7. Siker esetén `AuthServlet` friss authenticated application sessiont hoz létre, `AuthenticatedUser` snapshotot és CSRF tokent tárol, majd `AuthUserResponse` választ ad.
 
 ### Public regisztráció
 

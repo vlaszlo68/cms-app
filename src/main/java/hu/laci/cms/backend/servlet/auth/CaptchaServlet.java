@@ -1,5 +1,7 @@
 package hu.laci.cms.backend.servlet.auth;
 
+import hu.laci.cms.backend.config.session.AppSession;
+import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.service.auth.CaptchaChallenge;
 import hu.laci.cms.backend.service.auth.CaptchaService;
 import hu.laci.cms.backend.service.security.InMemoryRequestRateLimiter;
@@ -8,7 +10,6 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Locale;
@@ -29,7 +30,7 @@ public class CaptchaServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        HttpSession session = request.getSession(true);
+        AppSession session = AppSessionManager.ensureSession(request, response);
         String limiterKey = request.getRemoteAddr() + ":" + session.getId();
         if (!generationRateLimiter.allowRequest(limiterKey)) {
             response.setStatus(HTTP_TOO_MANY_REQUESTS);
@@ -41,11 +42,12 @@ public class CaptchaServlet extends HttpServlet {
 
         String purpose = resolvePurpose(request);
         CaptchaChallenge challenge = captchaService.createChallenge();
-        session.setAttribute(CaptchaService.SESSION_ID_ATTRIBUTE, challenge.getId());
-        session.setAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE, challenge.getExpectedAnswer());
-        session.setAttribute(CaptchaService.SESSION_PURPOSE_ATTRIBUTE, purpose);
-        session.setAttribute(CaptchaService.SESSION_CREATED_AT_ATTRIBUTE, captchaService.currentTimeMillis());
-        session.setAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE, 0);
+        AppSessionManager.storeCaptcha(request, response, new AppSessionManager.CaptchaState(
+                challenge.getId(),
+                challenge.getExpectedAnswer(),
+                purpose,
+                captchaService.currentTimeMillis(),
+                0));
 
         response.setContentType("image/svg+xml");
         response.setCharacterEncoding("UTF-8");

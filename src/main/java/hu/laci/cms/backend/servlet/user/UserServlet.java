@@ -1,6 +1,7 @@
 package hu.laci.cms.backend.servlet.user;
 
 import com.google.gson.JsonSyntaxException;
+import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.user.UserDao;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
@@ -16,9 +17,9 @@ import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.util.Optional;
 
 /**
  * JSON servlet exposing administrator-only user CRUD endpoints.
@@ -160,14 +161,14 @@ public class UserServlet extends JsonServletSupport {
     }
 
     private boolean requireAdmin(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        HttpSession session = request.getSession(false);
-        if (session == null || !(session.getAttribute("user") instanceof AuthenticatedUser authenticatedUser)) {
+        Optional<AuthenticatedUser> authenticatedUser = AppSessionManager.getAuthenticatedUser(request, response);
+        if (authenticatedUser.isEmpty()) {
             writeErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
                     "AUTH_REQUIRED", "Authentication required");
             return false;
         }
 
-        if (authenticatedUser.getRole() != UserRole.ADMIN) {
+        if (authenticatedUser.get().getRole() != UserRole.ADMIN) {
             writeErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
                     "FORBIDDEN", "Administrator role is required.");
             return false;

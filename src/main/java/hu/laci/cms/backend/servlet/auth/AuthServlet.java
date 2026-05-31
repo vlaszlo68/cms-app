@@ -2,6 +2,8 @@ package hu.laci.cms.backend.servlet.auth;
 
 import com.google.gson.JsonSyntaxException;
 import hu.laci.cms.backend.config.security.SecurityConfig;
+import hu.laci.cms.backend.config.session.AppSession;
+import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.user.UserDao;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
@@ -12,14 +14,12 @@ import hu.laci.cms.backend.service.AuthService;
 import hu.laci.cms.backend.service.AuthServiceException;
 import hu.laci.cms.backend.service.auth.CaptchaService;
 import hu.laci.cms.backend.service.security.InMemoryRateLimiter;
-import hu.laci.cms.backend.servlet.support.CsrfTokenSupport;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.time.Duration;
@@ -70,7 +70,7 @@ public class AuthServlet extends JsonServletSupport {
         try {
             LoginRequest loginRequest = parseLoginRequest(request);
             validateLoginRequest(loginRequest);
-            if (loginCaptchaEnabled && !validateCaptcha(request, loginRequest)) {
+            if (loginCaptchaEnabled && !validateCaptcha(request, response, loginRequest)) {
                 writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST,
                         "CAPTCHA_INVALID", "Captcha validation failed.");
                 return;
@@ -87,8 +87,9 @@ public class AuthServlet extends JsonServletSupport {
             }
 
             User user = userOptional.get();
-            AuthenticatedUser authenticatedUser = createSession(request, user);
-            String csrfToken = CsrfTokenSupport.ensureToken(request.getSession(false));
+            AppSession session = createSession(request, response, user);
+            AuthenticatedUser authenticatedUser = session.getAuthenticatedUser().orElseThrow();
+            String csrfToken = AppSessionManager.ensureCsrfToken(request, response, session);
             writeJsonResponse(response, HttpServletResponse.SC_OK, new AuthUserResponse(authenticatedUser, csrfToken));
         } catch (BadRequestException e) {
             writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
@@ -124,66 +125,31 @@ public class AuthServlet extends JsonServletSupport {
         return value == null || value.trim().isEmpty();
     }
 
-    private AuthenticatedUser createSession(HttpServletRequest request, User user) {
-        HttpSession session = request.getSession(true);
-        request.changeSessionId();
-
+    private AppSession createSession(HttpServletRequest request, HttpServletResponse response, User user) {
         AuthenticatedUser authenticatedUser = new AuthenticatedUser(
                 user.getId(),
                 user.getLoginName(),
                 user.getEmailAddress(),
                 user.getRole()
         );
-        session.setAttribute("user", authenticatedUser);
-        session.setAttribute(CsrfTokenSupport.SESSION_ATTRIBUTE, CsrfTokenSupport.createToken());
-        return authenticatedUser;
+        return AppSessionManager.createAuthenticatedSession(request, response, authenticatedUser);
     }
 
-    private boolean validateCaptcha(HttpServletRequest request, LoginRequest loginRequest) {
-        HttpSession session = request.getSession(false);
-        String expectedCaptchaId = session == null
-                ? null
-                : (String) session.getAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
-        Integer expectedCaptchaAnswer = session == null
-                ? null
-                : (Integer) session.getAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
-        String expectedCaptchaPurpose = session == null
-                ? null
-                : (String) session.getAttribute(CaptchaService.SESSION_PURPOSE_ATTRIBUTE);
-        Long createdAt = session == null
-                ? null
-                : (Long) session.getAttribute(CaptchaService.SESSION_CREATED_AT_ATTRIBUTE);
-        Integer attempts = session == null
-                ? null
-                : (Integer) session.getAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE);
+    private boolean validateCaptcha(HttpServletRequest request, HttpServletResponse response,
+                                    LoginRequest loginRequest) {
+        Optional<AppSessionManager.CaptchaState> captchaState =
+                AppSessionManager.findCaptcha(request, response);
+        String expectedCaptchaId = captchaState.map(AppSessionManager.CaptchaState::id).orElse(null);
+        Integer expectedCaptchaAnswer = captchaState.map(AppSessionManager.CaptchaState::answer).orElse(null);
+        String expectedCaptchaPurpose = captchaState.map(AppSessionManager.CaptchaState::purpose).orElse(null);
+        Long createdAt = captchaState.map(AppSessionManager.CaptchaState::createdAt).orElse(null);
+        Integer attempts = captchaState.map(AppSessionManager.CaptchaState::attempts).orElse(null);
 
         CaptchaService.CaptchaValidationResult result = captchaService.validateChallenge(expectedCaptchaId,
                 expectedCaptchaAnswer, expectedCaptchaPurpose, createdAt, attempts, loginRequest.getCaptchaId(),
                 loginRequest.getCaptchaAnswer(), CaptchaService.PURPOSE_LOGIN);
-        updateCaptchaState(session, result);
+        AppSessionManager.updateCaptchaAfterValidation(request, response, result);
         return result.valid();
-    }
-
-    private void clearCaptcha(HttpSession session) {
-        if (session == null) {
-            return;
-        }
-        session.removeAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
-        session.removeAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
-        session.removeAttribute(CaptchaService.SESSION_PURPOSE_ATTRIBUTE);
-        session.removeAttribute(CaptchaService.SESSION_CREATED_AT_ATTRIBUTE);
-        session.removeAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE);
-    }
-
-    private void updateCaptchaState(HttpSession session, CaptchaService.CaptchaValidationResult result) {
-        if (session == null) {
-            return;
-        }
-        if (result.challengeConsumed()) {
-            clearCaptcha(session);
-            return;
-        }
-        session.setAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE, result.attemptsUsed());
     }
 
     private static String clientIp(HttpServletRequest request) {

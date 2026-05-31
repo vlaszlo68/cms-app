@@ -216,13 +216,47 @@ Implemented auth error examples:
 
 Session details:
 
-- session attribute for authenticated user: `user`
-- stored object: `hu.laci.cms.backend.dto.auth.AuthenticatedUser`
+- servlet/filter code accesses session state through `hu.laci.cms.backend.config.session.AppSessionManager`
+- the backing store is selected by `session.store.mode`
+- supported store modes:
+  - `http`: current Tomcat `HttpSession` backed behavior
+  - `jdbc`: PostgreSQL-backed application session store
+  - `redis`: planned future store mode, not implemented yet
+- configuration priority:
+  1. `SESSION_STORE_MODE` environment variable
+  2. `web.xml` `session.store.mode` context parameter
+  3. built-in fallback `http`
+- explicit invalid store mode values fail startup/configuration instead of silently falling back
+- `web.xml` explicitly defaults to `session.store.mode=http`
+- swarm test configuration sets `SESSION_STORE_MODE=jdbc`
+- authenticated user snapshot: `hu.laci.cms.backend.dto.auth.AuthenticatedUser`
 - full persistence `User` is not stored in session
 - `AuthenticatedUser` currently contains `id`, `loginName`, `email`, and `role`
-- successful login calls `request.changeSessionId()`
-- session attribute for CSRF token: `csrfToken`
+- successful login creates a fresh authenticated application session
+- in `http` mode the current Tomcat `HttpSession` behavior is preserved
+- in `jdbc` mode the browser receives `CMS_SESSION_ID` and state is stored in PostgreSQL
+- CSRF token is stored in the application session and returned to the frontend from login and `/api/auth/me`
 - CSRF token header: `X-CSRF-Token`
+
+JDBC session store schema:
+
+- `app_sessions`
+  - stores session lifecycle, authenticated user snapshot, CSRF token, and invalidation state
+  - primary key is `id_hash`, a SHA-256 hash of the browser session id
+- `app_session_attributes`
+  - stores structured session attributes as typed JSON payloads
+  - references `app_sessions(id_hash)` through `session_id_hash`
+  - uses `ON DELETE CASCADE`
+  - unique key: `(session_id_hash, attribute_name)`
+- current structured attribute:
+  - `attribute_name = captcha`
+  - `attribute_type = CAPTCHA_STATE`
+
+Redis design note:
+
+- Redis is not implemented yet.
+- The current session abstraction, cookie handling, session id generation, and typed attribute model are intentionally store-neutral so `RedisAppSessionStore` can be added later without servlet/filter/auth rewrites.
+- Long-term cluster direction is external session state (`jdbc` first, Redis later), not Nginx sticky sessions.
 
 Public auth endpoints:
 
@@ -247,7 +281,7 @@ Registration and login hardening:
 - `GET /api/auth/config` exposes whether CAPTCHA is enabled for login and registration screens.
 - `POST /api/auth/register` creates `USER`, `active=false`, `registrationStatus=PENDING` accounts.
 - login accepts `captchaId` and `captchaAnswer` when `captcha.login.enabled=true`.
-- registration requires `captchaId` and `captchaAnswer`; CAPTCHA values are stored in the HTTP session with purpose, created time, and attempt count.
+- registration requires `captchaId` and `captchaAnswer`; CAPTCHA values are stored as `CAPTCHA_STATE` in the active application session with purpose, created time, and attempt count.
 - CAPTCHA validation enforces 3-minute TTL, 1-second minimum solve time, and 2 attempts per challenge.
 - CAPTCHA generation is rate limited by `request.getRemoteAddr() + sessionId`.
 - CAPTCHA is purpose-bound: a login challenge cannot be used for registration, and a registration challenge cannot be used for login.
@@ -562,15 +596,29 @@ Package conventions:
   - `hu.laci.cms.backend.servlet.filter.CsrfFilter`
   - `hu.laci.cms.backend.servlet.health.HelloServlet`
   - `hu.laci.cms.backend.servlet.support.CsrfTokenSupport`
+  - `hu.laci.cms.backend.config.session.AppSession`
+  - `hu.laci.cms.backend.config.session.AppSessionAttribute`
+  - `hu.laci.cms.backend.config.session.AppSessionAttributeType`
+  - `hu.laci.cms.backend.config.session.AppSessionConfig`
+  - `hu.laci.cms.backend.config.session.AppSessionConfigListener`
+  - `hu.laci.cms.backend.config.session.AppSessionManager`
+  - `hu.laci.cms.backend.config.session.AppSessionStore`
+  - `hu.laci.cms.backend.config.session.AppSessionStoreMode`
+  - `hu.laci.cms.backend.config.session.HttpSessionAppSessionStore`
+  - `hu.laci.cms.backend.config.session.JdbcAppSessionStore`
+  - `hu.laci.cms.backend.config.session.SessionCookieSupport`
+  - `hu.laci.cms.backend.config.session.SessionIdGenerator`
 - JSON request/response handling currently uses Gson
 - successful JSON API responses are wrapped as `success/data`
 - JSON API errors are wrapped as `success/error.code/error.message`
 - validation errors can include `success/error.validationErrors`
-- session-based authentication is active through `HttpSession`
-- successful login rotates the session id before storing auth state
-- the session stores `AuthenticatedUser`, not the full persistence `User`
+- session-based authentication is active through `AppSessionManager`
+- `http` mode preserves the Tomcat `HttpSession` backed behavior
+- `jdbc` mode stores session state in PostgreSQL tables created by `V5__app_sessions.sql`
+- successful login creates a fresh authenticated application session
+- the session stores an `AuthenticatedUser` snapshot, not the full persistence `User`
 - `AuthenticatedUser` and auth responses include the user `role`
-- successful login creates a session CSRF token
+- successful login creates a session CSRF token through the application session abstraction
 - `POST /api/auth/login` and `GET /api/auth/me` return `csrfToken`
 - `AuthFilter` uses `request.getServletPath()`, so public auth endpoints work both under root context and `/cms-app`
 - old frontend handoff and bootstrap planning documents were copied to the separate frontend repo and removed from this backend repo
@@ -726,6 +774,16 @@ Current filter responsibilities:
 | `HttpSessionContextFilter` | `/*` | Copies selected HTTP session data into request-local `SessionContext`. |
 | `CsrfFilter` | `/api/*` | Requires CSRF token for state-changing API requests. |
 | `TransactionFilter` | `/*` | Wraps request processing in DB transaction scope. |
+
+Session store configuration:
+
+| Setting | Source priority | Default | Notes |
+| --- | --- | --- | --- |
+| `session.store.mode` / `SESSION_STORE_MODE` | env, then `web.xml`, then built-in | `http` | `http` and `jdbc` are implemented; `redis` is planned. |
+| `session.cookie.name` / `SESSION_COOKIE_NAME` | env, then `web.xml`, then built-in | `CMS_SESSION_ID` | Used by external stores such as `jdbc`; `http` mode still uses Tomcat session handling. |
+| `session.timeout.minutes` / `SESSION_TIMEOUT_MINUTES` | env, then `web.xml`, then built-in | `30` | Used for external session expiry. |
+| `session.cookie.secure` / `SESSION_COOKIE_SECURE` | env, then `web.xml`, then built-in | `false` | Should be `true` under HTTPS production deployments. |
+| `session.cookie.sameSite` / `SESSION_COOKIE_SAMESITE` | env, then `web.xml`, then built-in | `Lax` | Suitable for same-origin/reverse-proxy deployment. |
 
 Security headers currently set:
 

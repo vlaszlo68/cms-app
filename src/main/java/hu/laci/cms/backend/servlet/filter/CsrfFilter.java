@@ -1,6 +1,8 @@
 package hu.laci.cms.backend.servlet.filter;
 
 import com.google.gson.Gson;
+import hu.laci.cms.backend.config.session.AppSession;
+import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.dto.common.ApiErrorResponse;
 import hu.laci.cms.backend.dto.common.ApiResponse;
@@ -13,8 +15,8 @@ import javax.servlet.ServletRequest;
 import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -52,16 +54,16 @@ public class CsrfFilter implements Filter {
             return;
         }
 
-        HttpSession session = httpRequest.getSession(false);
-        if (session == null || !(session.getAttribute("user") instanceof AuthenticatedUser)) {
+        Optional<AppSession> session = AppSessionManager.findSession(httpRequest, httpResponse);
+        if (session.isEmpty() || session.get().getAuthenticatedUser().isEmpty()) {
             writeError(httpResponse, HttpServletResponse.SC_UNAUTHORIZED,
                     "AUTH_REQUIRED", "Authentication required");
             return;
         }
 
-        Object sessionToken = session.getAttribute(CsrfTokenSupport.SESSION_ATTRIBUTE);
+        String sessionToken = session.get().getCsrfToken();
         String requestToken = httpRequest.getHeader(CsrfTokenSupport.HEADER_NAME);
-        if (!(sessionToken instanceof String token) || token.isBlank() || !token.equals(requestToken)) {
+        if (sessionToken == null || sessionToken.isBlank() || !sessionToken.equals(requestToken)) {
             writeError(httpResponse, HttpServletResponse.SC_FORBIDDEN,
                     "CSRF_INVALID", "Invalid CSRF token");
             return;

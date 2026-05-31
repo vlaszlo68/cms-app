@@ -2,6 +2,7 @@ package hu.laci.cms.backend.servlet.auth;
 
 import com.google.gson.JsonSyntaxException;
 import hu.laci.cms.backend.config.security.SecurityConfig;
+import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.user.UserDao;
 import hu.laci.cms.backend.dto.auth.RegisterRequest;
@@ -19,10 +20,10 @@ import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Optional;
 
 /**
  * Public registration endpoint for inactive USER accounts awaiting admin approval.
@@ -64,8 +65,7 @@ public class RegisterServlet extends JsonServletSupport {
 
         try {
             RegisterRequest registerRequest = parseJson(request);
-            HttpSession session = request.getSession(false);
-            if (registrationCaptchaEnabled && !validateCaptcha(session, registerRequest)) {
+            if (registrationCaptchaEnabled && !validateCaptcha(request, response, registerRequest)) {
                 registrationRateLimiter.recordFailure(limiterKey);
                 writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST,
                         RegistrationService.CAPTCHA_INVALID, "Captcha validation failed.");
@@ -83,29 +83,21 @@ public class RegisterServlet extends JsonServletSupport {
         }
     }
 
-    private boolean validateCaptcha(HttpSession session, RegisterRequest registerRequest) {
-        String expectedCaptchaId = session == null
-                ? null
-                : (String) session.getAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
-        Integer expectedCaptchaAnswer = session == null
-                ? null
-                : (Integer) session.getAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
-        String expectedCaptchaPurpose = session == null
-                ? null
-                : (String) session.getAttribute(CaptchaService.SESSION_PURPOSE_ATTRIBUTE);
-        Long createdAt = session == null
-                ? null
-                : (Long) session.getAttribute(CaptchaService.SESSION_CREATED_AT_ATTRIBUTE);
-        Integer attempts = session == null
-                ? null
-                : (Integer) session.getAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE);
+    private boolean validateCaptcha(HttpServletRequest request, HttpServletResponse response,
+                                    RegisterRequest registerRequest) {
+        Optional<AppSessionManager.CaptchaState> captchaState = AppSessionManager.findCaptcha(request, response);
+        String expectedCaptchaId = captchaState.map(AppSessionManager.CaptchaState::id).orElse(null);
+        Integer expectedCaptchaAnswer = captchaState.map(AppSessionManager.CaptchaState::answer).orElse(null);
+        String expectedCaptchaPurpose = captchaState.map(AppSessionManager.CaptchaState::purpose).orElse(null);
+        Long createdAt = captchaState.map(AppSessionManager.CaptchaState::createdAt).orElse(null);
+        Integer attempts = captchaState.map(AppSessionManager.CaptchaState::attempts).orElse(null);
 
         CaptchaService.CaptchaValidationResult result = captchaService.validateChallenge(expectedCaptchaId,
                 expectedCaptchaAnswer, expectedCaptchaPurpose, createdAt, attempts,
                 registerRequest == null ? null : registerRequest.getCaptchaId(),
                 registerRequest == null ? null : registerRequest.getCaptchaAnswer(),
                 CaptchaService.PURPOSE_REGISTRATION);
-        updateCaptchaState(session, result);
+        AppSessionManager.updateCaptchaAfterValidation(request, response, result);
         return result.valid();
     }
 
@@ -115,28 +107,6 @@ public class RegisterServlet extends JsonServletSupport {
         } catch (IOException | JsonSyntaxException e) {
             throw new BadRequestException("Invalid JSON request body.", e);
         }
-    }
-
-    private void clearCaptcha(HttpSession session) {
-        if (session == null) {
-            return;
-        }
-        session.removeAttribute(CaptchaService.SESSION_ID_ATTRIBUTE);
-        session.removeAttribute(CaptchaService.SESSION_ANSWER_ATTRIBUTE);
-        session.removeAttribute(CaptchaService.SESSION_PURPOSE_ATTRIBUTE);
-        session.removeAttribute(CaptchaService.SESSION_CREATED_AT_ATTRIBUTE);
-        session.removeAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE);
-    }
-
-    private void updateCaptchaState(HttpSession session, CaptchaService.CaptchaValidationResult result) {
-        if (session == null) {
-            return;
-        }
-        if (result.challengeConsumed()) {
-            clearCaptcha(session);
-            return;
-        }
-        session.setAttribute(CaptchaService.SESSION_ATTEMPTS_ATTRIBUTE, result.attemptsUsed());
     }
 
     private void writeServiceError(HttpServletResponse response, UserServiceException e) throws IOException {
