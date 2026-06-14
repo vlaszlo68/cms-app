@@ -166,6 +166,27 @@ class BaseDaoBooleanMappingTest {
     }
 
     @Test
+    void findAllIncludesJoinClauseWhenFilteringByJoinedEntity() throws SQLException {
+        ChildEntityDao childDao = new ChildEntityDao();
+        long grandParentId = insertJoinGrandParent("grand-parent-alpha");
+        long matchingParentId = insertJoinParent(grandParentId, "matching-parent");
+        long otherParentId = insertJoinParent(grandParentId, "other-parent");
+        long matchingChildId = insertJoinChild(matchingParentId, "matching-child");
+        insertJoinChild(otherParentId, "other-child");
+
+        List<ChildEntity> children = childDao.findAll(QuerySpec.<ChildProperty>create()
+                .leftJoin(ParentEntity.class, ChildProperty.PARENT, ParentProperty.ID, ChildProperty.PARENT,
+                        "filtered_parent")
+                .where(ParentProperty.NAME.withAlias("filtered_parent")).equalsTo("matching-parent"));
+
+        assertEquals(1, children.size());
+        assertEquals(matchingChildId, children.get(0).getId());
+        assertEquals("matching-child", children.get(0).getName());
+        assertEquals(matchingParentId, children.get(0).getParent().getId());
+        assertEquals("matching-parent", children.get(0).getParent().getName());
+    }
+
+    @Test
     void findAllRejectsDuplicateJoinAlias() throws SQLException {
         ChildEntityDao childDao = new ChildEntityDao();
 

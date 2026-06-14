@@ -416,6 +416,33 @@ class UserDaoImplTest {
     }
 
     @Test
+    void staticDeleteEntityDelegatesToRegisteredDao() {
+        User user = userDao.create(new User(null, TEST_PREFIX + "static-delete",
+                TEST_PREFIX + "static_delete_login", TEST_PREFIX + "static-delete@example.com",
+                TEST_PREFIX + "static_delete_hash"));
+
+        boolean deleted = BaseDao.deleteEntity(user);
+
+        assertTrue(deleted);
+        assertFalse(userDao.findById(user.getId()).isPresent());
+    }
+
+    @Test
+    void staticDeleteEntityRejectsNullEntity() {
+        assertThrows(IllegalArgumentException.class, () -> BaseDao.deleteEntity(null));
+    }
+
+    @Test
+    void staticDeleteEntityRejectsEntityWithoutId() {
+        User user = new User(null, TEST_PREFIX + "static-delete-missing-id",
+                TEST_PREFIX + "static_delete_missing_id_login",
+                TEST_PREFIX + "static-delete-missing-id@example.com",
+                TEST_PREFIX + "static_delete_missing_id_hash");
+
+        assertThrows(IllegalArgumentException.class, () -> BaseDao.deleteEntity(user));
+    }
+
+    @Test
     void deleteByIdDeletesExistingUser() {
         User user = userDao.create(new User(null, TEST_PREFIX + "delete", TEST_PREFIX + "delete_login",
                 TEST_PREFIX + "delete@example.com", TEST_PREFIX + "delete_hash"));
@@ -424,6 +451,31 @@ class UserDaoImplTest {
 
         assertTrue(deleted);
         assertFalse(userDao.findById(user.getId()).isPresent());
+    }
+
+    @Test
+    void deleteDeletesExistingUserByEntityId() {
+        User user = userDao.create(new User(null, TEST_PREFIX + "delete-entity",
+                TEST_PREFIX + "delete_entity_login", TEST_PREFIX + "delete-entity@example.com",
+                TEST_PREFIX + "delete_entity_hash"));
+
+        boolean deleted = userDao.delete(user);
+
+        assertTrue(deleted);
+        assertFalse(userDao.findById(user.getId()).isPresent());
+    }
+
+    @Test
+    void deleteRejectsNullEntity() {
+        assertThrows(IllegalArgumentException.class, () -> userDao.delete(null));
+    }
+
+    @Test
+    void deleteRejectsEntityWithoutId() {
+        User user = new User(null, TEST_PREFIX + "delete-missing-id", TEST_PREFIX + "delete_missing_id_login",
+                TEST_PREFIX + "delete-missing-id@example.com", TEST_PREFIX + "delete_missing_id_hash");
+
+        assertThrows(IllegalArgumentException.class, () -> userDao.delete(user));
     }
 
     @Test

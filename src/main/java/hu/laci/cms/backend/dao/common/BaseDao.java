@@ -119,6 +119,24 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     }
 
     /**
+     * Deletes the passed entity from the database using the DAO registered for
+     * the entity runtime class.
+     *
+     * @param entity entity with non-null id
+     * @param <E> concrete entity type
+     * @return {@code true} when a row was deleted
+     * @throws IllegalArgumentException when the entity or its id is {@code null}
+     * @throws IllegalStateException when no DAO is registered for the entity class
+     */
+    @SuppressWarnings("unchecked")
+    public static <E extends BaseEntity> boolean deleteEntity(E entity) {
+        requireEntityId(entity);
+
+        CrudDao<E, ? extends BaseProperty> dao = DaoRegistry.getDao(entity.getClass());
+        return dao.delete(entity);
+    }
+
+    /**
      * Reloads the passed entity from the database and overwrites its properties.
      * <p>
      * The entity must already have an id. The matching DAO is resolved through
@@ -290,6 +308,19 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     }
 
     /**
+     * Deletes an entity by its primary key.
+     *
+     * @param entity entity with non-null id
+     * @return {@code true} when a row was deleted, otherwise {@code false}
+     * @throws IllegalArgumentException when the entity or its id is {@code null}
+     */
+    @Override
+    public boolean delete(T entity) {
+        requireEntityId(entity);
+        return deleteById(entity.getId());
+    }
+
+    /**
      * Returns the entity class handled by this DAO.
      *
      * @return entity class
@@ -314,20 +345,23 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
      * @return select SQL with aliased entity columns
      */
     private static String buildBaseSelectSql(Class<? extends BaseEntity> entityClass) {
-        return buildSelectSql(entityClass, List.of());
+        return buildSelectSql(entityClass, List.of(), List.of());
     }
 
     /**
      * Builds {@code SELECT} SQL for the root entity and joined entities.
      * <p>
      * Joined entity columns are selected using table-name/alias based result
-     * aliases so result mapping can distinguish columns safely.
+     * aliases so result mapping can distinguish columns safely. Join clauses are
+     * appended together with their extra ON-clause parameters.
      *
      * @param entityClass root entity class
-     * @param joins joins whose entity columns should be selected
-     * @return select SQL without join clauses, filters, or ordering
+     * @param joins joins whose entity columns and SQL clauses should be selected
+     * @param parameters mutable parameter list receiving extra join-condition values
+     * @return select SQL without filters or ordering
      */
-    private static String buildSelectSql(Class<? extends BaseEntity> entityClass, List<JoinSpec> joins) {
+    private static String buildSelectSql(Class<? extends BaseEntity> entityClass, List<JoinSpec> joins,
+                                         List<Object> parameters) {
         EntityMetadata entityMetadata = getEntityMetadata(entityClass);
         List<String> selectExpressions = new ArrayList<>(entityMetadata.selectExpressions());
         if (joins != null) {
@@ -339,10 +373,12 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
             }
         }
 
-        return "SELECT " + String.join(", ", selectExpressions)
+        StringBuilder sqlBuilder = new StringBuilder("SELECT " + String.join(", ", selectExpressions)
                 + System.lineSeparator()
                 + "FROM " + entityMetadata.tableName()
-                + System.lineSeparator();
+                + System.lineSeparator());
+        appendJoins(sqlBuilder, parameters, entityClass, joins);
+        return sqlBuilder.toString();
     }
 
     /**
@@ -419,8 +455,8 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
      * @param entityClass root entity class
      * @param joins join definitions
      */
-    private void appendJoins(StringBuilder sqlBuilder, List<Object> parameters,
-                               Class<? extends BaseEntity> entityClass, List<JoinSpec> joins) {
+    private static void appendJoins(StringBuilder sqlBuilder, List<Object> parameters,
+                                    Class<? extends BaseEntity> entityClass, List<JoinSpec> joins) {
         if (joins == null || joins.isEmpty()) {
             return;
         }
@@ -576,10 +612,11 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     private List<T> findAll(QuerySpec<P> querySpec, String errorMessage) {
         List<JoinSpec> joins = querySpec == null ? List.of() : querySpec.getJoins();
         validateQuerySpec(entityClass, querySpec);
-        StringBuilder sqlBuilder = new StringBuilder(joins.isEmpty() ? baseSelectSql : buildSelectSql(entityClass, joins));
         List<Object> parameters = new ArrayList<>();
+        StringBuilder sqlBuilder = new StringBuilder(joins.isEmpty()
+                ? baseSelectSql
+                : buildSelectSql(entityClass, joins, parameters));
 
-        appendJoins(sqlBuilder, parameters, entityClass, joins);
         appendQueryFilters(sqlBuilder, parameters, entityClass, querySpec);
         appendOrder(sqlBuilder, entityClass, querySpec == null ? null : querySpec.getSortOrders(), joins);
 
@@ -1116,8 +1153,11 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     }
 
     private static void requireEntityId(BaseEntity entity) {
+        if (entity == null) {
+            throw new IllegalArgumentException("Entity must not be null.");
+        }
         if (entity.getId() == null) {
-            throw new IllegalArgumentException("Entity id must not be null for update.");
+            throw new IllegalArgumentException("Entity id must not be null.");
         }
     }
 

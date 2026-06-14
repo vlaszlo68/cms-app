@@ -83,4 +83,12 @@ public interface CrudDao<T extends BaseEntity, P extends BaseProperty> {
      * @return {@code true} when a row was deleted
      */
     boolean deleteById(Long id);
+
+    /**
+     * Deletes an entity by its primary key.
+     *
+     * @param entity entity with non-null id
+     * @return {@code true} when a row was deleted
+     */
+    boolean delete(T entity);
 }
