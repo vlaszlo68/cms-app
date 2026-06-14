@@ -21,6 +21,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -35,6 +36,7 @@ class PageDaoImplTest {
     private static final String TEST_PREFIX = "page_dao_test_";
 
     private PageDao pageDao;
+    private List<String> suspendedHomepageSlugs = List.of();
 
     @BeforeAll
     static void initializeDatabase() {
@@ -54,11 +56,13 @@ class PageDaoImplTest {
         SessionContext.clear();
         pageDao = new PageDaoImpl();
         deleteTestPages();
+        suspendedHomepageSlugs = suspendExternalHomepages();
     }
 
     @AfterEach
     void tearDown() throws SQLException {
         SessionContext.clear();
+        restoreExternalHomepages(suspendedHomepageSlugs);
         deleteTestPages();
     }
 
@@ -160,6 +164,7 @@ class PageDaoImplTest {
         Page second = pageDao.create(createPage("alpha", PageStatus.PUBLISHED, false, true));
 
         List<Page> pages = pageDao.findAll(QuerySpec.<PageProperty>create()
+                .where(PageProperty.SLUG).like(TEST_PREFIX)
                 .where(PageProperty.STATUS).equalsTo(PageStatus.PUBLISHED)
                 .orderBy(PageProperty.TITLE.asc()));
 
@@ -229,6 +234,47 @@ class PageDaoImplTest {
             statement.setString(1, TEST_PREFIX + "%");
             statement.setString(2, TEST_PREFIX + "%");
             statement.executeUpdate();
+        }
+    }
+
+    private static List<String> suspendExternalHomepages() throws SQLException {
+        List<String> slugs = new ArrayList<>();
+        try (Connection connection = DatabaseConfig.getConnection();
+             PreparedStatement selectStatement = connection.prepareStatement(
+                     "SELECT slug FROM pages WHERE homepage = 'T' AND slug NOT LIKE ?")) {
+            selectStatement.setString(1, TEST_PREFIX + "%");
+            try (ResultSet resultSet = selectStatement.executeQuery()) {
+                while (resultSet.next()) {
+                    slugs.add(resultSet.getString("slug"));
+                }
+            }
+        }
+
+        if (!slugs.isEmpty()) {
+            try (Connection connection = DatabaseConfig.getConnection();
+                 PreparedStatement updateStatement = connection.prepareStatement(
+                         "UPDATE pages SET homepage = 'F' WHERE homepage = 'T' AND slug NOT LIKE ?")) {
+                updateStatement.setString(1, TEST_PREFIX + "%");
+                updateStatement.executeUpdate();
+            }
+        }
+
+        return slugs;
+    }
+
+    private static void restoreExternalHomepages(List<String> slugs) throws SQLException {
+        if (slugs == null || slugs.isEmpty()) {
+            return;
+        }
+
+        try (Connection connection = DatabaseConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "UPDATE pages SET homepage = 'T' WHERE slug = ?")) {
+            for (String slug : slugs) {
+                statement.setString(1, slug);
+                statement.addBatch();
+            }
+            statement.executeBatch();
         }
     }
 

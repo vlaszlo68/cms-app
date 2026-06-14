@@ -145,7 +145,9 @@ class PageServiceTest {
         pageService.createPage(createRequest("bravo", PageStatus.DRAFT, false, true));
         pageService.createPage(createRequest("alpha", PageStatus.DRAFT, false, true));
 
-        List<PageResponse> pages = pageService.listPages();
+        List<PageResponse> pages = pageService.listPages().stream()
+                .filter(page -> page.getSlug().startsWith(TEST_PREFIX))
+                .toList();
 
         assertEquals(TEST_PREFIX + "alpha", pages.get(0).getTitle());
         assertEquals(TEST_PREFIX + "bravo", pages.get(1).getTitle());
