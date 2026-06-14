@@ -2,6 +2,7 @@ package hu.laci.cms.backend.config.session;
 
 import com.google.gson.Gson;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
+import hu.laci.cms.backend.service.auth.CaptchaService;
 import hu.laci.cms.backend.servlet.support.CsrfTokenSupport;
 
 import javax.servlet.http.HttpServletRequest;
@@ -167,6 +168,24 @@ public final class AppSessionManager {
         return findSession(request, response)
                 .flatMap(session -> session.getAttribute(CAPTCHA_ATTRIBUTE_NAME))
                 .map(AppSessionManager::fromCaptchaAttribute);
+    }
+
+    public static boolean validateCaptcha(HttpServletRequest request, HttpServletResponse response,
+                                          CaptchaService captchaService, String submittedCaptchaId,
+                                          String submittedCaptchaAnswer, String requiredPurpose) {
+        Optional<CaptchaState> captchaState = findCaptcha(request, response);
+        CaptchaService.CaptchaValidationResult result = captchaService.validateChallenge(
+                captchaState.map(CaptchaState::id).orElse(null),
+                captchaState.map(CaptchaState::answer).orElse(null),
+                captchaState.map(CaptchaState::purpose).orElse(null),
+                captchaState.map(CaptchaState::createdAt).orElse(null),
+                captchaState.map(CaptchaState::attempts).orElse(null),
+                submittedCaptchaId,
+                submittedCaptchaAnswer,
+                requiredPurpose
+        );
+        updateCaptchaAfterValidation(request, response, result);
+        return result.valid();
     }
 
     /**

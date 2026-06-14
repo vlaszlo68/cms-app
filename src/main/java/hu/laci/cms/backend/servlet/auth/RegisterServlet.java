@@ -24,7 +24,6 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Optional;
 
 /**
  * Public registration endpoint for inactive USER accounts awaiting admin approval.
@@ -67,7 +66,11 @@ public class RegisterServlet extends JsonServletSupport {
 
         try {
             RegisterRequest registerRequest = parseJson(request);
-            if (registrationCaptchaEnabled && !validateCaptcha(request, response, registerRequest)) {
+            if (registrationCaptchaEnabled && !AppSessionManager.validateCaptcha(request, response,
+                    captchaService,
+                    registerRequest == null ? null : registerRequest.getCaptchaId(),
+                    registerRequest == null ? null : registerRequest.getCaptchaAnswer(),
+                    CaptchaService.PURPOSE_REGISTRATION)) {
                 registrationRateLimiter.recordFailure(limiterKey);
                 writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST,
                         RegistrationService.CAPTCHA_INVALID, "Captcha validation failed.");
@@ -83,24 +86,6 @@ public class RegisterServlet extends JsonServletSupport {
             registrationRateLimiter.recordFailure(limiterKey);
             writeServiceError(response, e);
         }
-    }
-
-    private boolean validateCaptcha(HttpServletRequest request, HttpServletResponse response,
-                                    RegisterRequest registerRequest) {
-        Optional<AppSessionManager.CaptchaState> captchaState = AppSessionManager.findCaptcha(request, response);
-        String expectedCaptchaId = captchaState.map(AppSessionManager.CaptchaState::id).orElse(null);
-        Integer expectedCaptchaAnswer = captchaState.map(AppSessionManager.CaptchaState::answer).orElse(null);
-        String expectedCaptchaPurpose = captchaState.map(AppSessionManager.CaptchaState::purpose).orElse(null);
-        Long createdAt = captchaState.map(AppSessionManager.CaptchaState::createdAt).orElse(null);
-        Integer attempts = captchaState.map(AppSessionManager.CaptchaState::attempts).orElse(null);
-
-        CaptchaService.CaptchaValidationResult result = captchaService.validateChallenge(expectedCaptchaId,
-                expectedCaptchaAnswer, expectedCaptchaPurpose, createdAt, attempts,
-                registerRequest == null ? null : registerRequest.getCaptchaId(),
-                registerRequest == null ? null : registerRequest.getCaptchaAnswer(),
-                CaptchaService.PURPOSE_REGISTRATION);
-        AppSessionManager.updateCaptchaAfterValidation(request, response, result);
-        return result.valid();
     }
 
     private RegisterRequest parseJson(HttpServletRequest request) {

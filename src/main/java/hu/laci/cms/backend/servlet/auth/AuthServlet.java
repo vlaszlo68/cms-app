@@ -71,7 +71,9 @@ public class AuthServlet extends JsonServletSupport {
         try {
             LoginRequest loginRequest = parseLoginRequest(request);
             validateLoginRequest(loginRequest);
-            if (loginCaptchaEnabled && !validateCaptcha(request, response, loginRequest)) {
+            if (loginCaptchaEnabled && !AppSessionManager.validateCaptcha(request, response,
+                    captchaService, loginRequest.getCaptchaId(), loginRequest.getCaptchaAnswer(),
+                    CaptchaService.PURPOSE_LOGIN)) {
                 writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST,
                         "CAPTCHA_INVALID", "Captcha validation failed.");
                 return;
@@ -134,23 +136,6 @@ public class AuthServlet extends JsonServletSupport {
                 user.getRole()
         );
         return AppSessionManager.createAuthenticatedSession(request, response, authenticatedUser);
-    }
-
-    private boolean validateCaptcha(HttpServletRequest request, HttpServletResponse response,
-                                    LoginRequest loginRequest) {
-        Optional<AppSessionManager.CaptchaState> captchaState =
-                AppSessionManager.findCaptcha(request, response);
-        String expectedCaptchaId = captchaState.map(AppSessionManager.CaptchaState::id).orElse(null);
-        Integer expectedCaptchaAnswer = captchaState.map(AppSessionManager.CaptchaState::answer).orElse(null);
-        String expectedCaptchaPurpose = captchaState.map(AppSessionManager.CaptchaState::purpose).orElse(null);
-        Long createdAt = captchaState.map(AppSessionManager.CaptchaState::createdAt).orElse(null);
-        Integer attempts = captchaState.map(AppSessionManager.CaptchaState::attempts).orElse(null);
-
-        CaptchaService.CaptchaValidationResult result = captchaService.validateChallenge(expectedCaptchaId,
-                expectedCaptchaAnswer, expectedCaptchaPurpose, createdAt, attempts, loginRequest.getCaptchaId(),
-                loginRequest.getCaptchaAnswer(), CaptchaService.PURPOSE_LOGIN);
-        AppSessionManager.updateCaptchaAfterValidation(request, response, result);
-        return result.valid();
     }
 
     private static String clientIp(HttpServletRequest request) {

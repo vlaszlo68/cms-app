@@ -1,155 +1,138 @@
 # Projektleírás
 
-Ez a dokumentum a backend projekt osztályait logikai sorrendben mutatja be. A rendszer egy framework-light Java 21 servlet/JDBC alapú CMS backend, Tomcat 9 futtatási környezettel, PostgreSQL adatbázissal, Gson JSON feldolgozással és session alapú autentikációval.
+Ez a dokumentum a `cms-app` backend aktuális állapotát foglalja össze. A projekt egy framework-light Java 21 alapú, Mavennel épülő WAR alkalmazás Tomcat 9 futtatási környezethez. A backend servlet/JDBC architektúrát használ, PostgreSQL adatbázissal, HikariCP connection poollal, Gson JSON feldolgozással, BCrypt jelszókezeléssel, session alapú autentikációval és opcionális JDBC-backed session/rate limiter tárolással.
 
-## 1. Alkalmazásindítás és globális konfiguráció
+## 1. Technológiai áttekintés
+
+- Java 21
+- Maven WAR build, végleges artifact név: `cms-app.war`
+- Servlet API 4.0.1, Tomcat 9 futtatási környezet
+- PostgreSQL JDBC driver 42.7.3
+- HikariCP 5.1.0
+- Gson 2.13.2
+- jBCrypt 0.4
+- Logback 1.2.13
+- JUnit Jupiter 5.11.4, Surefire 3.5.4
+
+Fő belépési pontok:
+
+- `/hello`: egyszerű health endpoint
+- `/api/auth/config`: auth és password policy konfiguráció
+- `/api/auth/captcha`: SVG CAPTCHA generálás
+- `/api/auth/login`: bejelentkezés
+- `/api/auth/me`: aktuális user és CSRF token
+- `/api/auth/logout`: kijelentkezés
+- `/api/auth/register`: public regisztráció
+- `/api/users`, `/api/users/*`: admin-only user management
+
+## 2. Indítás és globális konfiguráció
 
 ### `hu.laci.cms.Main`
 
-Egyszerű belépési pont osztály. A WAR/Tomcat alapú futásban nem ez indítja az alkalmazást, inkább minimális Java entry pointként van jelen.
+Minimális Java entry point. A normál futás WAR/Tomcat alapú, ezért az alkalmazás életciklusát nem ez az osztály vezérli.
 
-### `hu.laci.cms.backend.config.database.DatabaseConfigListener`
+### `DatabaseConfigListener`
 
-Servlet context listener. Alkalmazásinduláskor inicializálja az adatbázis kapcsolatkezelést a `DatabaseConfig` segítségével, majd lefuttatja a migrációkat a `DatabaseMigrationRunner` osztályon keresztül. Leálláskor lezárja az adatbázis erőforrásokat.
+Servlet context listener. Induláskor inicializálja a `DatabaseConfig` állapotát, majd lefuttatja az adatbázis migrációkat a `DatabaseMigrationRunner` segítségével. Leálláskor lezárja a HikariCP pool erőforrásait.
 
-### `hu.laci.cms.backend.config.database.DatabaseConfig`
+### `DatabaseConfig`
 
-Központi adatbázis konfiguráció és connection pool kezelő. A DB beállításokat először környezeti változókból, majd `web.xml` context-param értékekből, végül beépített defaultokból olvassa. HikariCP poolon keresztül ad `Connection` példányokat.
+Központi adatbázis-konfiguráció és connection pool kezelő. A beállításokat environment-first sorrendben olvassa:
 
-Kapcsolatok:
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+- `web.xml` context-param értékek: `db.jdbcUrl`, `db.username`, `db.password`
+- beépített lokális defaultok: `localhost:5432/cms_db`, `cms_user`, `cms_pw`
 
-- használja: `ServletContextParameters`
-- használják: DAO-k, `TransactionContext`, migrációs runner
-- inicializálja: `DatabaseConfigListener`
+### `DatabaseMigrationRunner`
 
-### `hu.laci.cms.backend.config.database.migration.DatabaseMigrationRunner`
+Verziózott SQL migrációkat futtat a `src/main/resources/db/migration` könyvtárból. A lefutott migrációkat a `schema_migrations` táblában tartja nyilván, checksumot ellenőriz, és PostgreSQL advisory lockkal védi a párhuzamos indulást.
 
-Az adatbázis séma verziózott migrációit futtatja a `src/main/resources/db/migration` könyvtárból. Nyilvántartja a lefutott migrációkat a `schema_migrations` táblában, checksumot ellenőriz, és PostgreSQL advisory lockkal védi a párhuzamos futást.
+Aktuális migrációk:
 
-### `hu.laci.cms.backend.config.database.TransactionContext`
+- `V1__initial_schema.sql`
+- `V2__user_role_and_active.sql`
+- `V3__user_audit_columns.sql`
+- `V4__user_registration_state.sql`
+- `V5__app_sessions.sql`
+- `V6__rate_limits.sql`
 
-Request-szintű tranzakciós állapotot tart thread-local alapon. A `TransactionFilter` nyitja és zárja a tranzakciót, a DAO réteg pedig ezen keresztül kapja meg az aktuális request connectionjét.
+### `TransactionContext`
 
-Kapcsolatok:
+Thread-local request tranzakciós állapot. A `TransactionFilter` nyitja és zárja, a DAO réteg pedig ezen keresztül használja az aktuális request connectiont.
 
-- használja: `DatabaseConfig`
-- használják: `BaseDao`, `TransactionFilter`
+### `DaoRegistryListener` és `DaoRegistry`
 
-### `hu.laci.cms.backend.config.app.DaoRegistryListener`
+Induláskor regisztrálja a DAO-kat. Jelenleg a `User.class -> UserDaoImpl` mapping aktív. A servlet és service réteg ezen keresztül jut a user DAO-hoz.
 
-Servlet context listener. Alkalmazásinduláskor inicializálja a `DaoRegistry` statikus DAO nyilvántartását, leálláskor törli azt.
+### `SecurityConfigListener`, `SecurityConfig`, `PasswordPolicyConfig`
 
-### `hu.laci.cms.backend.config.app.ServletContextParameters`
+Induláskor betölti az auth, CAPTCHA és password policy beállításokat. A `web.xml` aktuális defaultjai fejlesztői környezethez lazák:
 
-Kis segédosztály `ServletContext` init paraméterek olvasásához és típuskonverziójához. A konfigurációs osztályok ezen keresztül olvasnak string, int és boolean értékeket.
+- `password.min.length=2`
+- uppercase/lowercase/digit/special követelmények: `false`
+- `auth.max.failed.attempts=5`
+- `auth.lock.minutes=15`
+- login és regisztrációs CAPTCHA: `true`
 
-### `hu.laci.cms.backend.config.security.SecurityConfigListener`
+### `AppSessionConfigListener`, `AppSessionConfig`, `AppSessionManager`
 
-Servlet context listener. Alkalmazásinduláskor betölti az auth, password policy és CAPTCHA feature flag beállításokat a `SecurityConfig` statikus állapotába. Leálláskor reseteli a konfigurációt.
+Az alkalmazás saját session absztrakcióját inicializálja. A servlet/filter réteg az `AppSessionManager` facade-on keresztül dolgozik, ezért a mögöttes tároló lehet Tomcat `HttpSession` vagy PostgreSQL-backed JDBC store.
 
-### `hu.laci.cms.backend.config.security.SecurityConfig`
+Konfigurációs sorrend:
 
-Központi biztonsági konfiguráció. Tartalmazza a login lockout limitet, lock időt, CAPTCHA kapcsolókat és a `PasswordPolicyConfig` értékeit.
+- `SESSION_STORE_MODE`, `SESSION_COOKIE_NAME`, `SESSION_TIMEOUT_MINUTES`, `SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE`
+- `web.xml` context-param értékek
+- beépített defaultok
 
-Kapcsolatok:
+Aktuális lokális/default mód:
 
-- használja: `ServletContextParameters`, `PasswordPolicyConfig`
-- használják: `AuthServlet`, `RegisterServlet`, `AuthConfigServlet`, `AuthService`, `UserService`
+- `session.store.mode=http`
+- `session.cookie.name=CMS_SESSION_ID`
+- `session.timeout.minutes=30`
+- `session.cookie.secure=false`
+- `session.cookie.sameSite=Lax`
 
-### `hu.laci.cms.backend.config.security.PasswordPolicyConfig`
-
-Immutable password policy értékobjektum. Beállításai: minimum hossz, nagybetű/kisbetű/szám/speciális karakter követelmények.
-
-### `hu.laci.cms.backend.config.session.SessionContext`
-
-Thread-local request context a sessionből származó adatokhoz. Jelenleg az aktuális bejelentkezett user id-t tárolja, amit az audit mezők kitöltése használ.
-
-Kapcsolatok:
-
-- tölti: `AppSessionContextFilter`
-- használja: `BaseDao` audit mezőkhöz
-
-### `hu.laci.cms.backend.config.session.AppSessionConfig`
-
-Environment-first alkalmazás-session konfiguráció. Először a `SESSION_*` környezeti változókat olvassa, utána a `web.xml` context-param értékeket, végül beépített defaultokra esik vissza. A session store mód fallbackje `http`, vagyis a hagyományos Tomcat `HttpSession` működés.
-
-Fő beállítások:
-
-- `SESSION_STORE_MODE` / `session.store.mode`
-- `SESSION_COOKIE_NAME` / `session.cookie.name`
-- `SESSION_TIMEOUT_MINUTES` / `session.timeout.minutes`
-- `SESSION_COOKIE_SECURE` / `session.cookie.secure`
-- `SESSION_COOKIE_SAMESITE` / `session.cookie.sameSite`
-
-### `hu.laci.cms.backend.config.session.AppSessionConfigListener`
-
-Servlet context listener. Alkalmazásinduláskor inicializálja az `AppSessionConfig` és `AppSessionManager` állapotot. Leálláskor reseteli őket.
-
-### `hu.laci.cms.backend.config.session.AppSessionManager`
-
-Store-független session facade a servlet és filter réteg számára. A HTTP belépési pontok ezen keresztül olvassák a bejelentkezett usert, CSRF tokent és CAPTCHA állapotot, így nem kell tudniuk, hogy a háttérben Tomcat `HttpSession` vagy PostgreSQL-backed session store működik.
-
-Kapcsolatok:
-
-- használja: `AppSessionStore`
-- használják: auth servlet osztályok, `AuthFilter`, `CsrfFilter`, `AppSessionContextFilter`, `RequestLoggingFilter`, `UserServlet`
-
-### `hu.laci.cms.backend.config.session.AppSession`
-
-Store-semleges alkalmazás-session modell. Tartalmazza a session id-t, opcionális `AuthenticatedUser` snapshotot, CSRF tokent, lejárati/időbélyeg mezőket és typed session attribútumokat.
-
-### `hu.laci.cms.backend.config.session.AppSessionAttribute`
-
-Összetett vagy workflow-specifikus session adat typed JSON payloadként. Az első konkrét használat a CAPTCHA állapot:
-
-- `attributeName = captcha`
-- `attributeType = CAPTCHA_STATE`
-
-### `hu.laci.cms.backend.config.session.AppSessionStore`
-
-Session store interfész. Implementációi:
+Támogatott session store-ok:
 
 - `HttpSessionAppSessionStore`
 - `JdbcAppSessionStore`
 
-A `RedisAppSessionStore` tervezett későbbi bővítési pont, de jelenleg nincs implementálva.
+### `RateLimiterConfigListener`, `RateLimiterConfig`, `RateLimiterManager`
 
-### `hu.laci.cms.backend.config.session.HttpSessionAppSessionStore`
+Az auth és CAPTCHA limiterek store-független inicializálását végzi. A default lokális mód továbbra is process-local memória:
 
-A hagyományos Tomcat `HttpSession` alapú működést tartja meg az új `AppSessionStore` interfész mögött. Ez a `web.xml` explicit default működése.
+- `rateLimiter.store.mode=memory`
 
-### `hu.laci.cms.backend.config.session.JdbcAppSessionStore`
+Environment változóval cluster teszthez átállítható:
 
-PostgreSQL-backed session store. Saját rövid JDBC kapcsolatokat használ, nem függ a request üzleti tranzakciójától. A böngésző felé `CMS_SESSION_ID` cookie-t használ, a DB-ben pedig a session id SHA-256 hashét tárolja.
+- `RATE_LIMITER_STORE_MODE=jdbc`
 
-Kapcsolódó táblák:
+Támogatott limiter store-ok:
 
-- `app_sessions`
-- `app_session_attributes`
+- `memory`
+- `jdbc`
 
-### `hu.laci.cms.backend.config.session.SessionCookieSupport`
+## 3. HTTP request életút és filterek
 
-Közös cookie olvasó/író segéd az external session store-okhoz. Kezeli a cookie nevet, `HttpOnly`, `Secure`, `SameSite` és törlési headereket.
-
-### `hu.laci.cms.backend.config.session.SessionIdGenerator`
-
-Nagy entrópiájú, URL-safe session id generátor external session store-okhoz.
-
-## 2. HTTP request életút és filterek
-
-A filter sorrendet a `web.xml` határozza meg. A kérés a servlet előtt több keresztmetszeti ellenőrzésen megy át.
+A filter sorrendet a `src/main/webapp/WEB-INF/web.xml` határozza meg.
 
 ### `RequestLoggingFilter`
 
-Méri és naplózza a request végleges státuszát, futási idejét, metódusát, URI-ját, távoli címet és user információt.
+Naplózza a request metódusát, URI-ját, státuszát, futási idejét, remote címet és user információt.
 
 ### `ExceptionHandlingFilter`
 
-Elkapja a nem kezelt kivételeket, és API request esetén egységes JSON hibaválaszt ír `ApiResponse.error` formában.
+Elkapja a nem kezelt kivételeket. API request esetén egységes JSON hibaválaszt ír `ApiResponse.error` formában.
 
 ### `CorsFilter`
 
-Beállítja a CORS headereket a helyi frontend fejlesztési originjeihez. Credentialös kéréseket enged, és expose-olja a `X-Captcha-Id` headert.
+Credentialös lokális frontend kéréseket enged. Az aktuális `web.xml` allowed origin listája:
+
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
+- `http://192.168.97.181:8083`
+
+Expose-olja a `X-Captcha-Id` headert.
 
 ### `SecurityHeadersFilter`
 
@@ -161,106 +144,142 @@ UTF-8 karakterkódolást állít be requestre és response-ra.
 
 ### `AuthFilter`
 
-Az `/api/*` útvonalakon ellenőrzi, hogy van-e bejelentkezett session user. Kivételt képeznek a public auth endpointok: login, logout, config, captcha, register. Sikertelen ellenőrzéskor `AUTH_REQUIRED` hibát ír.
+Az `/api/*` útvonalakon ellenőrzi a bejelentkezett application session usert. Public kivételek:
 
-Kapcsolatok:
-
-- `AppSessionManager` segítségével keresi az `AuthenticatedUser` snapshotot
-- JSON válaszhoz használja: `ApiResponse`
+- `/api/auth/login`
+- `/api/auth/logout`
+- `/api/auth/config`
+- `/api/auth/captcha`
+- `/api/auth/register`
 
 ### `AppSessionContextFilter`
 
-Az `AppSessionManager` által elért sessionből átmásolja a bejelentkezett user id-t a `SessionContext` thread-local tárolóba, majd request végén törli. Így a DAO audit mezőkitöltésnek nem kell servlet API-t vagy session store-t ismernie.
+Az application sessionből átmásolja a bejelentkezett user id-t a `SessionContext` thread-local tárolóba. Ezt a DAO audit mezőkitöltése használja.
 
 ### `CsrfFilter`
 
-Állapotmódosító `/api/*` kéréseknél ellenőrzi az `X-CSRF-Token` headert. Kihagyja a safe metódusokat, valamint a public login és register POST endpointokat.
-
-Kapcsolatok:
-
-- token forrás: `AppSessionManager` által kezelt application session
+State-changing `/api/*` kéréseknél ellenőrzi az `X-CSRF-Token` headert. A safe HTTP metódusokat, valamint a public login és register POST endpointokat kihagyja.
 
 ### `TransactionFilter`
 
-Requestenként tranzakciót nyit a `TransactionContext` segítségével. Normál lefutásnál commitol, hiba vagy rollback-only állapot esetén rollbackel.
+Requestenként tranzakciót nyit. Siker esetén commitol, hiba vagy rollback-only állapot esetén rollbackel.
 
-## 3. Servlet support osztályok
+## 4. Session réteg
+
+### `AppSession`
+
+Store-semleges session modell. Tartalmazza a session id-t, opcionális `AuthenticatedUser` snapshotot, CSRF tokent, időbélyegeket, lejárati időt és typed attribútumokat.
+
+### `AuthenticatedUser`
+
+Sessionben tárolt user snapshot. Tartalma: id, loginName, email, role.
+
+### `AppSessionAttribute` és `AppSessionAttributeType`
+
+Typed JSON session attribútum modell. A jelenlegi konkrét használat a CAPTCHA állapot:
+
+- `attributeName=captcha`
+- `attributeType=CAPTCHA_STATE`
+
+### `HttpSessionAppSessionStore`
+
+A Tomcat `HttpSession` működést csomagolja az `AppSessionStore` interfész mögé. Ez az aktuális lokális/default session mód.
+
+### `JdbcAppSessionStore`
+
+PostgreSQL-backed session store cluster tesztekhez. Saját rövid JDBC kapcsolatokat használ, nem függ a request üzleti tranzakciójától. A böngésző felé `CMS_SESSION_ID` cookie-t használ, az adatbázisban pedig a session id SHA-256 hashét tárolja.
+
+Kapcsolódó táblák:
+
+- `app_sessions`
+- `app_session_attributes`
+
+### `SessionCookieSupport` és `SessionIdGenerator`
+
+Közös cookie-kezelő és nagy entrópiájú, URL-safe session id generátor external session store-okhoz.
+
+## 5. Rate limiter réteg
+
+### `AttemptRateLimiter`
+
+Sikertelen próbálkozásokra épülő lockout limiter interfész. Login és regisztrációs próbálkozások használják.
+
+### `RequestRateLimiter`
+
+Fix időablakos request limiter interfész. CAPTCHA generálásnál aktív.
+
+### `InMemoryRateLimiter` és `InMemoryRequestRateLimiter`
+
+Process-local memória alapú implementációk. Ez az aktuális lokális/default limiter mód.
+
+### `JdbcAttemptRateLimiter`
+
+PostgreSQL-backed failed-attempt lockout limiter. A `rate_limits` táblát használja.
+
+Aktív namespace-ek:
+
+- `login_failed_attempts`
+- `registration_attempts`
+
+### `JdbcRequestRateLimiter`
+
+PostgreSQL-backed fixed-window request limiter. A `rate_limits` táblát használja.
+
+Aktív namespace:
+
+- `captcha_generation`
+
+## 6. Servlet support és API envelope
 
 ### `JsonServletSupport`
 
-Közös servlet ősosztály JSON API végpontokhoz. Tartalmazza a közös Gson példányt, sikeres JSON válasz írását, és egységes error envelope írását.
-
-Kapcsolatok:
-
-- használja: `ApiResponse`, `ApiErrorResponse`
-- leszármazottai: auth servlet osztályok és `UserServlet`
+Közös servlet ősosztály JSON endpointokhoz. Egységes Gson példányt, JSON response írást és hiba envelope kezelést ad.
 
 ### `CsrfTokenSupport`
 
-CSRF token létrehozó segéd. A token tárolását az `AppSessionManager` és az aktuális session store végzi.
+CSRF token generáló segéd. A token tárolását az `AppSessionManager` és az aktuális session store végzi.
 
-## 4. Public és auth servlet réteg
+### `ApiResponse<T>` és `ApiErrorResponse`
+
+Egységes API válaszmodell. Sikeres válasznál `success=true` és `data`, hibánál `success=false` és `error` mező kerül ki.
+
+## 7. Auth és public endpointok
 
 ### `HelloServlet`
 
-Egyszerű health endpoint a `/hello` útvonalon. JSON választ ad, amivel ellenőrizhető, hogy az alkalmazás fut.
+`GET /hello`. Egyszerű JSON health endpoint.
 
 ### `AuthConfigServlet`
 
-`GET /api/auth/config` endpoint. Visszaadja, hogy loginhoz és regisztrációhoz aktív-e a CAPTCHA, valamint a jelszó policy frontend számára releváns szabályait.
-
-Kapcsolatok:
-
-- használja: `SecurityConfig`
-- válasz DTO: `AuthConfigResponse`, `PasswordPolicyResponse`
+`GET /api/auth/config`. Visszaadja a login és regisztrációs CAPTCHA kapcsolókat, valamint a frontend számára releváns jelszó policyt.
 
 ### `CaptchaServlet`
 
-`GET /api/auth/captcha` endpoint. SVG CAPTCHA-t generál, a CAPTCHA id-t a `X-Captcha-Id` headerbe teszi, a megoldást és metaadatokat `CAPTCHA_STATE` typed session attribútumként tárolja az `AppSessionManager` segítségével.
-
-Kapcsolatok:
-
-- használja: `CaptchaService`
-- generálási limithez használja: `RequestRateLimiter`, amelyet a `RateLimiterManager` hoz létre
-- session attribútum: `captcha` / `CAPTCHA_STATE`, JSON payloadban id, válasz, purpose, createdAt, attempts
+`GET /api/auth/captcha`. SVG CAPTCHA-t generál, a CAPTCHA id-t `X-Captcha-Id` headerben küldi vissza, a megoldást és metaadatokat pedig az application sessionben tárolja typed attribútumként.
 
 ### `AuthServlet`
 
-`POST /api/auth/login` endpoint. JSON bodyból `LoginRequest` DTO-t olvas, opcionálisan CAPTCHA-t validál, majd az `AuthService` segítségével hitelesít. Sikeres login esetén friss authenticated application sessiont hoz létre az `AppSessionManager` segítségével, eltárolja az `AuthenticatedUser` snapshotot, CSRF tokent hoz létre, majd `AuthUserResponse` választ ír.
-
-Kapcsolatok:
-
-- DAO beszerzése: `DaoRegistry.getDao(User.class)`
-- service: `AuthService`
-- CAPTCHA: `CaptchaService`
-- rate limiter: `AttemptRateLimiter`, amelyet a `RateLimiterManager` hoz létre
-- session user DTO: `AuthenticatedUser`
+`POST /api/auth/login`. JSON bodyból `LoginRequest` DTO-t olvas, opcionálisan CAPTCHA-t validál, majd `AuthService` segítségével hitelesít. Siker esetén authenticated application sessiont hoz létre, `AuthenticatedUser` snapshotot és CSRF tokent tárol, majd `AuthUserResponse` választ ad.
 
 ### `MeServlet`
 
-`GET /api/auth/me` endpoint. Az `AppSessionManager` által elért `AuthenticatedUser` alapján visszaadja az aktuális felhasználót és egy CSRF tokent. Ha nincs user, `AUTH_REQUIRED` hibát ad.
+`GET /api/auth/me`. Az aktuális session usert és CSRF tokent adja vissza. Bejelentkezés nélkül `AUTH_REQUIRED` hibát ad.
 
 ### `LogoutServlet`
 
-`POST /api/auth/logout` endpoint. Az aktuális application sessiont invalidálja az `AppSessionManager` segítségével, majd sikeres logout választ ír. Bejelentkezett állapotban CSRF védelem vonatkozik rá.
+`POST /api/auth/logout`. Invalidálja az aktuális application sessiont.
 
 ### `RegisterServlet`
 
-`POST /api/auth/register` endpoint. Public regisztrációt kezel. Rate limiteli a regisztrációs próbálkozásokat, CAPTCHA-t validál, majd a `RegistrationService` segítségével pending, inactive `USER` fiókot hoz létre.
+`POST /api/auth/register`. Public regisztrációt kezel. Rate limiteli a próbálkozásokat, CAPTCHA-t validál, password policyt ellenőriz, majd inactive, pending `USER` fiókot hoz létre.
 
-Kapcsolatok:
-
-- DAO beszerzése: `DaoRegistry.getDao(User.class)`
-- service: `RegistrationService`
-- password policy: `PasswordPolicyValidator`
-- CAPTCHA: `CaptchaService`
-- regisztrációs limiter: `AttemptRateLimiter`, amelyet a `RateLimiterManager` hoz létre
+## 8. Admin user endpointok
 
 ### `UserServlet`
 
-Admin-only user CRUD endpointok a `/api/users` és `/api/users/*` útvonalakon.
+Admin-only user management a `/api/users` és `/api/users/*` útvonalakon.
 
-Fő műveletek:
+Aktuális műveletek:
 
 - `GET /api/users`: felhasználók listázása
 - `GET /api/users/{id}`: egy felhasználó lekérése
@@ -270,303 +289,106 @@ Fő műveletek:
 - `POST /api/users/{id}/approve`: regisztráció jóváhagyása
 - `POST /api/users/{id}/reject`: regisztráció elutasítása
 
-Kapcsolatok:
+Az admin jogosultságot a servlet külön ellenőrzi az `AuthenticatedUser.role == ADMIN` feltétellel.
 
-- admin ellenőrzéshez olvassa: `AuthenticatedUser`
-- service: `UserService`
-- request DTO-k: `CreateUserRequest`, `UpdateUserRequest`
-- response DTO: `UserResponse`
+## 9. DTO-k
 
-## 5. Auth és user DTO-k
+Auth DTO-k:
 
-### `LoginRequest`
+- `LoginRequest`: loginName, password, captchaId, captchaAnswer, captchaHoneypot
+- `RegisterRequest`: loginName, userName, emailAddress, password, captchaId, captchaAnswer, captchaHoneypot
+- `AuthenticatedUser`: session user snapshot
+- `AuthUserResponse`: user adatok és CSRF token
+- `AuthConfigResponse`: CAPTCHA és password policy config
+- `PasswordPolicyResponse`: frontendnek küldött password policy
 
-Login JSON request DTO. Mezői: loginName, password, captchaId, captchaAnswer, captchaHoneypot.
+User DTO-k:
 
-### `RegisterRequest`
+- `CreateUserRequest`: admin user létrehozási request
+- `UpdateUserRequest`: admin user módosítási request
+- `UserResponse`: password hash nélküli user válasz
 
-Public regisztráció JSON request DTO. Mezői: loginName, userName, emailAddress, password, captchaId, captchaAnswer, captchaHoneypot.
-
-### `AuthenticatedUser`
-
-Sessionben tárolt, serializable user DTO. Csak a session/auth szempontból szükséges adatokat tartalmazza: id, loginName, email, role.
-
-### `AuthUserResponse`
-
-Login és `me` válasz DTO. Az `AuthenticatedUser` adatai mellett CSRF tokent is tartalmaz.
-
-### `AuthConfigResponse`
-
-Auth konfigurációs válasz DTO. Login/registration CAPTCHA kapcsolókat és password policy választ tartalmaz.
-
-### `PasswordPolicyResponse`
-
-Frontendnek küldött password policy DTO. A minimum hosszt és karakterkövetelményeket írja le.
-
-### `CreateUserRequest`
-
-Admin user létrehozási request DTO. Tartalmazza a login, név, email, jelszó, role, active és registrationStatus mezőket.
-
-### `UpdateUserRequest`
-
-Admin user módosítási request DTO. A create requesthez hasonló, de üres jelszó esetén a meglévő hash megmarad.
-
-### `UserResponse`
-
-User API válasz DTO. Nem tartalmaz password hash-t, viszont tartalmazza az id-t, login/user/email adatokat, role-t, active állapotot, registrationStatus-t és audit timestamp mezőket.
-
-### `ApiResponse<T>`
-
-Közös API envelope sikeres és hibás válaszokhoz. Siker esetén `success=true` és `data`, hiba esetén `success=false` és `error`.
-
-## 8. Cluster JDBC fennmarado teendok
-
-A session es rate limiter mar store-moge van kiszervezve, de cluster szempontbol meg van nehany nyitott pont:
-
-- tobb Tomcat replika vegigtesztelese login/me/logout/CSRF/CAPTCHA flow-val
-- ugyanazon session parhuzamos frissitesenek szabalyai
-- lejart session es rate limit rekordok takaritasi strategiaja
-- `AuthenticatedUser` snapshot frissessege admin modositaskor
-- DB load, indexeles es tuning
-
-A reszletes lista a `cluster-jdbc-todo.md` fajlban van.
-
-### `ApiErrorResponse`
-
-Közös hiba DTO. Tartalmazza a hibakódot, üzenetet, opcionális validációs hibakód listát.
-
-## 6. Service réteg
+## 10. Service réteg
 
 ### `AuthService`
 
-Login üzleti logika. Login név alapján betölti a usert, BCrypttel ellenőrzi a jelszót, figyeli az active állapotot, és sikertelen próbálkozásokat lockout limiterrel kezeli.
-
-Kapcsolatok:
-
-- DAO: `UserDao`
-- limiter: `AttemptRateLimiter`
-- kivétel wrapper: `AuthServiceException`
-
-### `AuthServiceException`
-
-Auth service infrastruktúra vagy váratlan hiba RuntimeException típusa.
+Login üzleti logika. Login név alapján betölti a usert, BCrypttel ellenőrzi a jelszót, figyeli az active állapotot, és sikertelen próbálkozásokat lockout limiterrel kezel.
 
 ### `RegistrationService`
 
-Public regisztráció üzleti logika. Validálja a requestet, CAPTCHA-t, email formátumot, duplicate login/email állapotot, password policyt, majd inactive, pending `USER` fiókot hoz létre BCrypt hash-sel.
-
-Kapcsolatok:
-
-- DAO: `UserDao`
-- password policy: `PasswordPolicyValidator`
-- CAPTCHA validálás: `CaptchaService`
-- hibákhoz használja: `UserServiceException`
+Public regisztráció üzleti logika. Validálja az inputot, CAPTCHA-t, email formátumot, duplicate login/email állapotot és password policyt, majd inactive, pending `USER` fiókot hoz létre BCrypt hash-sel.
 
 ### `CaptchaService`
 
-Matematikai SVG CAPTCHA generálás és validáció. Kezeli a 3 perces TTL-t, 2 próbálkozást, 1 másodperces minimum megoldási időt, és a login/registration purpose kötést. Több feladatvariánst és SVG zajt generál.
-
-Kapcsolatok:
-
-- visszaadja: `CaptchaChallenge`
-- validációs eredmény: `CaptchaValidationResult`
-- session attribútum neveket konstansként biztosítja servlet rétegnek
-
-### `CaptchaChallenge`
-
-CAPTCHA generálás eredménye: id, expectedAnswer, SVG string.
+Matematikai SVG CAPTCHA generálás és validáció. Kezeli a TTL-t, próbálkozásszámot, minimum megoldási időt és purpose kötést.
 
 ### `UserService`
 
-Admin user management üzleti logika. Listáz, lekér, létrehoz, módosít, deaktivál, regisztrációt jóváhagy vagy elutasít. Ellenőrzi a kötelező mezőket, email formátumot, duplicate login/email állapotot és password policyt. BCrypt hash-t állít elő.
-
-Kapcsolatok:
-
-- DAO: `UserDao`
-- password policy: `PasswordPolicyValidator`
-- request DTO-k: `CreateUserRequest`, `UpdateUserRequest`
-- response DTO: `UserResponse`
-- model: `User`, `UserRole`, `RegistrationState`
-
-### `UserServiceException`
-
-User és regisztrációs service hibák RuntimeException típusa. Hibakódot és opcionális validációs hibalistát hordoz, amit a servlet réteg HTTP státuszra és JSON hibára fordít.
+Admin user management üzleti logika. Listáz, lekér, létrehoz, módosít, deaktivál, regisztrációt jóváhagy vagy elutasít. Ellenőrzi a kötelező mezőket, email formátumot, duplicate login/email állapotot és password policyt.
 
 ### `PasswordPolicyValidator`
 
-Jelszó policy ellenőrző. A `PasswordPolicyConfig` alapján listázza a megsértett szabályokat, például `TOO_SHORT`, `MISSING_UPPERCASE`, `MISSING_DIGIT`.
+A `PasswordPolicyConfig` alapján listázza a megsértett jelszó szabályokat, például `TOO_SHORT`, `MISSING_UPPERCASE`, `MISSING_DIGIT`.
 
-### `InMemoryRateLimiter`
+### Service exceptionök
 
-Sikertelen próbálkozásokra épülő process-local lockout limiter. A `AttemptRateLimiter` interfészt valósítja meg, és `rateLimiter.store.mode=memory` esetén használatos.
+- `AuthServiceException`
+- `UserServiceException`
 
-### `InMemoryRequestRateLimiter`
+A servlet réteg ezeket HTTP státuszra és egységes JSON hibára fordítja.
 
-Fix időablakos process-local request limiter. A `RequestRateLimiter` interfészt valósítja meg, és `rateLimiter.store.mode=memory` esetén használatos.
-
-### `AttemptRateLimiter`
-
-Sikertelen próbálkozásokra épülő lockout limiter interfész. Login és regisztrációs próbálkozásoknál használatos.
-
-### `RequestRateLimiter`
-
-Fix időablakos request limiter interfész. CAPTCHA generálásnál használatos.
-
-### `RateLimiterConfig`
-
-Environment-first rate limiter store konfiguráció. Először a `RATE_LIMITER_STORE_MODE` környezeti változót olvassa, utána a `web.xml` `rateLimiter.store.mode` értékét, végül `memory` defaultot használ.
-
-### `RateLimiterConfigListener`
-
-Servlet context listener. Alkalmazásinduláskor inicializálja a `RateLimiterConfig` és `RateLimiterManager` állapotot.
-
-### `RateLimiterManager`
-
-Factory facade, amely a konfigurált store alapján hoz létre `AttemptRateLimiter` és `RequestRateLimiter` példányokat.
-
-Támogatott módok:
-
-- `memory`
-- `jdbc`
-
-Tervezett, de még nem implementált mód:
-
-- `redis`
-
-### `JdbcAttemptRateLimiter`
-
-PostgreSQL-backed failed-attempt lockout limiter. A `rate_limits` táblában tárolja a failure count és lock expiry állapotot.
-
-Használt namespace-ek:
-
-- `login_failed_attempts`
-- `registration_attempts`
-
-### `JdbcRequestRateLimiter`
-
-PostgreSQL-backed fixed-window request limiter. A `rate_limits` táblában tárolja az ablak kezdési idejét és a request count értékét.
-
-Használt namespace:
-
-- `captcha_generation`
-
-## 7. DAO réteg és persistence infrastruktúra
-
-### `DaoRegistry`
-
-Statikus registry, amely entity class alapján visszaadja a hozzá tartozó DAO-t. Jelenleg `User.class -> UserDaoImpl` regisztrációt tartalmaz.
-
-Kapcsolatok:
-
-- inicializálja: `DaoRegistryListener`
-- használják: servlet osztályok, `BaseDao` statikus helper metódusai
+## 11. DAO és persistence infrastruktúra
 
 ### `CrudDao<T, P>`
 
-Generikus CRUD DAO interfész. Alap műveletek: findAll, findById, save, create, update, deleteById.
+Generikus CRUD interfész. Alap műveletek: `findAll`, `findById`, `save`, `create`, `update`, `deleteById`.
 
 ### `BaseDao<T, P>`
 
-Generikus JDBC DAO alapimplementáció. Reflection és annotation alapján épít SQL-t, kezeli a CRUD műveleteket, filterezést, rendezést, joinokat, custom SQL helperöket, audit mezőkitöltést és típuskonverziókat.
+Generikus JDBC DAO alapimplementáció. Reflection és annotáció alapján épít SQL-t, kezeli a CRUD műveleteket, filterezést, rendezést, joinokat, custom SQL helperöket, audit mezőkitöltést és típuskonverziókat.
 
-Kapcsolatok:
+### `UserDao` és `UserDaoImpl`
 
-- használja: `TransactionContext`
-- entity metadata: `DbTable`, `DbColumn`
-- query API: `QuerySpec`, `JoinSpec`, `SortOrder`, `FilterOperation`
-- audit user: `SessionContext`
+User-specifikus DAO interfész és JDBC implementáció. A generikus CRUD műveletek mellett login név és email alapú keresést ad.
 
-### `RowMapper<T>`
+### DAO annotációk
 
-ResultSet sorból objektumot előállító funkcionális interfész. DAO custom query-k és belső mapping használja.
+- `DbTable`: entity osztályhoz tartozó adatbázis tábla neve
+- `DbColumn`: entity mezőhöz tartozó oszlopnév, insert/update flags
 
-### `DataAccessException`
+### DAO segédosztályok
 
-DAO réteg RuntimeException típusa. SQL és adat-hozzáférési hibákat csomagol.
+- `RowMapper<T>`
+- `DataAccessException`
 
-### `UserDao`
+## 12. Modell és query osztályok
 
-User-specifikus DAO interfész. A generikus `CrudDao<User, UserProperty>` mellé login név és email alapú keresést definiál.
+### Entity modellek
 
-### `UserDaoImpl`
+- `BaseEntity`: közös `id`
+- `AuditableEntity`: `createdAt`, `updatedAt`, `createdBy`, `updatedBy`
+- `User`: `users` táblára mappelt user entity
 
-User DAO JDBC implementáció. A `BaseDao<User, UserProperty>` funkcióira épül, és megvalósítja a `findByLoginName` és `findByEmail` metódusokat.
+### User enumok és propertyk
 
-## 8. DAO annotációk
+- `UserRole`: `ADMIN`, `USER`
+- `RegistrationState`: `PENDING`, `EMAIL_VERIFICATION_REQUIRED`, `COMPLETED`, `REJECTED`
+- `UserProperty`: user query property konstansok
 
-### `DbTable`
+### Query modell
 
-Entity osztály annotáció. Megadja az adatbázis tábla nevét, amelyből a `BaseDao` SQL-t generál.
+- `BaseProperty`
+- `QuerySpec<P>`
+- `JoinSpec`
+- `JoinType`
+- `FilterOperation`
+- `LikeFilterPosition`
+- `SortOrder<P>`
+- `SortDirection`
 
-### `DbColumn`
+Ezeket a `BaseDao` használja típusosabb filter/sort/join SQL generáláshoz.
 
-Entity mező annotáció. Megadja az oszlopnevet, valamint hogy a mező insertelhető és/vagy updatelhető-e.
-
-## 9. Modell és query osztályok
-
-### `BaseEntity`
-
-Minden persistált entity őse. Az `id` mezőt tartalmazza.
-
-### `AuditableEntity`
-
-Auditálható entity ős. A `BaseEntity` mezői mellé `createdAt`, `updatedAt`, `createdBy`, `updatedBy` mezőket ad.
-
-### `User`
-
-Felhasználó persistence entity. `AuditableEntity` leszármazott, `users` táblára mappel. Tartalmazza a userName, loginName, emailAddress, passwordHash, role, active és registrationState mezőket.
-
-Kapcsolatok:
-
-- DAO: `UserDaoImpl`
-- service: `AuthService`, `UserService`, `RegistrationService`
-- API-ba közvetlenül nem kerül ki; `UserResponse` és `AuthenticatedUser` DTO-kra mappelődik
-
-### `UserRole`
-
-Felhasználói szerepkör enum. Értékei: `ADMIN`, `USER`.
-
-### `RegistrationState`
-
-Regisztrációs életciklus enum. Értékei: `PENDING`, `EMAIL_VERIFICATION_REQUIRED`, `COMPLETED`, `REJECTED`.
-
-### `UserProperty`
-
-User query property konstansok gyűjtője. A `QuerySpec` és `BaseDao` típusbiztosabb filter/sort/join felületéhez ad property objektumokat.
-
-### `BaseProperty`
-
-Query property alapmodell. Tartalmazza a Java property nevet, és helper metódusokat filter, sort, like, join jellegű query elemek felépítéséhez.
-
-### `QuerySpec<P>`
-
-Generikus query leíró. Tartalmazhat filtereket, sortokat és joinokat. A DAO réteg ebből épít SQL WHERE, ORDER BY és JOIN részeket.
-
-### `JoinSpec`
-
-Join leíró objektum. Meghatározza a join típusát, forrás/target entityt, összekötő propertyket, cél mapping propertyt, SQL aliast és opcionális extra feltételeket.
-
-### `JoinType`
-
-Join típus enum. Például `INNER` és `LEFT`.
-
-### `FilterOperation`
-
-Filter műveletek enumja. Támogatott műveletek például `EQUALS`, `LIKE`, `LESS`, `GREATER`, `IN`, `BETWEEN`.
-
-### `LikeFilterPosition`
-
-LIKE filter wildcard pozíció enum. Meghatározza, hogy a `%` prefixként, suffixként vagy mindkét oldalon kerüljön a paraméterhez.
-
-### `SortOrder<P>`
-
-Egy rendezési mező és irány értékobjektuma. A `QuerySpec` használja.
-
-### `SortDirection`
-
-Rendezési irány enum. Értékei tipikusan `ASC` és `DESC`.
-
-## 10. Tipikus request folyamatok
+## 13. Tipikus request flow-k
 
 ### Login
 
@@ -574,23 +396,23 @@ Rendezési irány enum. Értékei tipikusan `ASC` és `DESC`.
 2. `CsrfFilter` kihagyja a login POST-ot.
 3. `TransactionFilter` tranzakciót nyit.
 4. `AuthServlet` beolvassa a `LoginRequest` DTO-t.
-5. Ha aktív, `CaptchaService` validálja az application session `CAPTCHA_STATE` attribútumában tárolt CAPTCHA-t.
+5. Ha aktív, `CaptchaService` validálja a sessionben tárolt CAPTCHA állapotot.
 6. `AuthService` a `UserDao` segítségével betölti a usert és BCrypttel ellenőrzi a jelszót.
-7. Siker esetén `AuthServlet` friss authenticated application sessiont hoz létre, `AuthenticatedUser` snapshotot és CSRF tokent tárol, majd `AuthUserResponse` választ ad.
+7. Siker esetén új authenticated application session jön létre, user snapshot és CSRF token tárolódik.
 
 ### Public regisztráció
 
 1. `RegisterServlet` beolvassa a `RegisterRequest` DTO-t.
-2. `CaptchaService` ellenőrzi a CAPTCHA id-t, választ, TTL-t, próbálkozásszámot és purpose-t.
-3. `RegistrationService` validálja az inputot, duplicate állapotot és password policyt.
-4. `UserDaoImpl` létrehozza az inactive, pending `USER` rekordot.
-5. A response `UserResponse`, password hash nélkül.
+2. A regisztrációs limiter ellenőrzi a próbálkozásokat.
+3. `CaptchaService` validálja a CAPTCHA-t.
+4. `RegistrationService` validálja az inputot, duplicate állapotot és password policyt.
+5. `UserDaoImpl` létrehozza az inactive, pending `USER` rekordot.
 
 ### Admin user kezelés
 
 1. `AuthFilter` bejelentkezett sessiont kér.
 2. `CsrfFilter` state-changing metódusoknál CSRF tokent kér.
-3. `UserServlet` külön ellenőrzi, hogy az `AuthenticatedUser.role == ADMIN`.
+3. `UserServlet` ellenőrzi az admin szerepkört.
 4. `UserService` végrehajtja a validációt és üzleti műveletet.
 5. `UserDaoImpl` a `BaseDao` generikus SQL műveletein keresztül olvas/ír.
 
@@ -599,4 +421,82 @@ Rendezési irány enum. Értékei tipikusan `ASC` és `DESC`.
 1. `TransactionFilter` `TransactionContext.begin()` hívással request connectiont nyit.
 2. Service DAO-t hív.
 3. `BaseDao` a `TransactionContext` aktuális connectionjét használja.
-4. Sikeres request végén commit, hiba esetén rollback történik.
+4. Siker esetén commit, hiba esetén rollback történik.
+
+## 14. Tesztek
+
+Aktuális JUnit tesztek:
+
+- `UserServiceTest`
+- `UserDaoImplTest`
+- `CaptchaServiceTest`
+- `SecurityConfigTest`
+- `RateLimiterConfigTest`
+- `InMemoryRequestRateLimiterTest`
+- `BaseDaoBooleanMappingTest`
+- `AppSessionConfigTest`
+
+A teszt logolási konfiguráció: `src/test/resources/logback-test.xml`.
+
+## 15. Docker, CI és futtatási környezet
+
+### `docker-compose.yml`
+
+Lokális compose stack:
+
+- PostgreSQL 15, host port `5433`
+- Tomcat backend, host port `8081`
+- frontend build konténer a szomszédos `../frontend` projektből
+- Nginx reverse/static kiszolgáló, host port `8083`
+- Jenkins, host port `8082`
+
+### `Jenkinsfile`
+
+CI/deploy pipeline:
+
+- backend checkout
+- frontend checkout `../frontend` könyvtárba
+- Maven build `maven:3.9.9-eclipse-temurin-21` konténerben
+- WAR deploy a `cms-tomcat` konténerbe `ROOT.war` néven
+- frontend rebuild
+- health check a `/hello` endpointon
+
+### `docker-compose-swarm-test.yml`
+
+Cluster teszt stack. A Tomcat service környezeti változókkal explicit JDBC módra áll:
+
+- `SESSION_STORE_MODE=jdbc`
+- `RATE_LIMITER_STORE_MODE=jdbc`
+
+A swarm fájl jelenleg `cms-swarm-tomcat` esetén 1 replikát állít be, az Nginx service esetén 2 replikát.
+
+## 16. Cluster/JDBC aktuális állapot
+
+Implementált:
+
+- store-független application session facade
+- Tomcat `HttpSession` session store
+- PostgreSQL-backed session store
+- process-local memória rate limiterek
+- PostgreSQL-backed rate limiterek
+- session és rate limiter táblák migrációi
+- swarm teszt konfiguráció JDBC session/rate limiter móddal
+
+Lokális/default működés:
+
+- session: `http`
+- rate limiter: `memory`
+
+Cluster teszthez elérhető működés:
+
+- session: `jdbc`
+- rate limiter: `jdbc`
+
+Nyitott cluster validációs pontok a `cluster-jdbc-todo.md` alapján:
+
+- több Tomcat replika végigtesztelése login/me/logout/CSRF/CAPTCHA flow-val
+- ugyanazon session párhuzamos frissítésének szabályai
+- lejárt session és rate limit rekordok takarítási stratégiája
+- `AuthenticatedUser` snapshot frissessége admin módosításkor
+- DB load, indexelés és tuning ellenőrzése
+- későbbi Redis bővítés API freeze pontjai
