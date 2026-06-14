@@ -2,6 +2,7 @@ package hu.laci.cms.backend.service.page;
 
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
+import hu.laci.cms.backend.dto.page.PageListResponse;
 import hu.laci.cms.backend.dto.page.PageResponse;
 import hu.laci.cms.backend.dto.page.UpdatePageRequest;
 import hu.laci.cms.backend.model.common.QuerySpec;
@@ -33,10 +34,10 @@ public class PageService {
         this.pageDao = Objects.requireNonNull(pageDao, "pageDao must not be null");
     }
 
-    public List<PageResponse> listPages() {
+    public List<PageListResponse> listPages() {
         return pageDao.findAll(QuerySpec.<PageProperty>create().orderBy(PageProperty.TITLE.asc()))
                 .stream()
-                .map(this::toResponse)
+                .map(this::toListResponse)
                 .toList();
     }
 
@@ -182,6 +183,21 @@ public class PageService {
                 page.getTitle(),
                 page.getSlug(),
                 page.getContent(),
+                page.getStatus(),
+                page.getMetaTitle(),
+                page.getMetaDescription(),
+                page.getHomepage(),
+                page.getMenuVisible(),
+                toIsoString(page.getCreatedAt()),
+                toIsoString(page.getUpdatedAt())
+        );
+    }
+
+    private PageListResponse toListResponse(Page page) {
+        return new PageListResponse(
+                page.getId(),
+                page.getTitle(),
+                page.getSlug(),
                 page.getStatus(),
                 page.getMetaTitle(),
                 page.getMetaDescription(),

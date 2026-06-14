@@ -7,6 +7,7 @@ import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.page.PageDaoImpl;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
+import hu.laci.cms.backend.dto.page.PageListResponse;
 import hu.laci.cms.backend.dto.page.PageResponse;
 import hu.laci.cms.backend.dto.page.UpdatePageRequest;
 import hu.laci.cms.backend.model.page.Page;
@@ -145,7 +146,7 @@ class PageServiceTest {
         pageService.createPage(createRequest("bravo", PageStatus.DRAFT, false, true));
         pageService.createPage(createRequest("alpha", PageStatus.DRAFT, false, true));
 
-        List<PageResponse> pages = pageService.listPages().stream()
+        List<PageListResponse> pages = pageService.listPages().stream()
                 .filter(page -> page.getSlug().startsWith(TEST_PREFIX))
                 .toList();
 
