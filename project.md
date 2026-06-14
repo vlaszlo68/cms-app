@@ -282,6 +282,7 @@ Registration and login hardening:
 - `POST /api/auth/register` creates `USER`, `active=false`, `registrationStatus=PENDING` accounts.
 - login accepts `captchaId` and `captchaAnswer` when `captcha.login.enabled=true`.
 - registration requires `captchaId` and `captchaAnswer`; CAPTCHA values are stored as `CAPTCHA_STATE` in the active application session with purpose, created time, and attempt count.
+- login and registration use `AppSessionManager.validateCaptcha(...)` for session-backed CAPTCHA lookup, validation result persistence, and challenge cleanup; `CaptchaService` still owns the domain validation rules.
 - CAPTCHA validation enforces 3-minute TTL, 1-second minimum solve time, and 2 attempts per challenge.
 - CAPTCHA generation is rate limited by `request.getRemoteAddr() + sessionId`.
 - CAPTCHA is purpose-bound: a login challenge cannot be used for registration, and a registration challenge cannot be used for login.
@@ -370,10 +371,12 @@ DAO responsibilities and behavior:
 - `update` requires non-null id and fails if no row exists.
 - `update` automatically refreshes `updatedAt` and `updatedBy` for `AuditableEntity` instances.
 - `deleteById` returns whether a row was deleted.
+- `delete(entity)` requires a non-null entity and id, then delegates to `deleteById(entity.getId())`.
 - `findAll(querySpec)` defaults to `ORDER BY id ASC`.
 - Query sort input is a list of `SortOrder<P>`, so multi-column order is supported.
 - Query filters are built from `QuerySpec` criteria.
 - Query joins are built from `JoinSpec`; joined entity mapping requires an explicit target property and is never inferred automatically.
+- Join-aware select SQL is assembled with both joined table columns and the corresponding SQL `JOIN` clauses in the same select builder path.
 - Join chains are supported when each joined entity is explicitly mapped before it is used as the owner of a nested join target.
 - Joining the same entity type more than once requires explicit SQL aliases.
 - Join `ON` clauses can include extra filter conditions in addition to the key equality.
@@ -397,6 +400,7 @@ Custom SQL support:
 Static DAO convenience helpers:
 
 - `BaseDao.saveEntity(entity)` resolves the matching DAO from `DaoRegistry` and calls its non-static `save`
+- `BaseDao.deleteEntity(entity)` requires a non-null id, resolves the matching DAO from `DaoRegistry`, and calls its non-static `delete`
 - `BaseDao.loadEntity(entity)` requires a non-null id, loads the current DB row through the matching DAO, and copies DB values into the passed entity instance
 
 Supported common type conversions:
@@ -419,6 +423,7 @@ Session-derived request context:
 Audit behavior:
 
 - `AuditableEntity` adds `createdAt`, `updatedAt`, `createdBy`, and `updatedBy`.
+- `AuditableProperty` provides common property descriptors for audit fields; auditable entity-specific property classes can extend it.
 - `createdAt` and `createdBy` are insert-only in generated DAO SQL.
 - `updatedAt` and `updatedBy` are refreshed by `BaseDao.update`.
 - `createdBy` and `updatedBy` are nullable; no foreign key is currently defined.
@@ -568,7 +573,7 @@ Package conventions:
 - `User` currently has `role`, `active`, and `registrationState` fields in addition to identity and credential fields
 - user enum models currently include `UserRole` and `RegistrationState`
 - generic DAO CRUD, `QuerySpec` filtering/sorting/join support, and custom SQL helpers are implemented in `BaseDao`
-- DAO integration tests currently cover user DAO behavior, CRUD, transaction commit/rollback, boolean mapping, filtering, sorting, relational filters, `IN` / `NOT_IN` / `BETWEEN`, joins, duplicate join alias validation, repeated joined entity aliases, nested join mapping, extra join conditions, static DAO convenience helpers, and custom SQL helpers
+- DAO integration tests currently cover user DAO behavior, CRUD, transaction commit/rollback, boolean mapping, filtering, sorting, relational filters, `IN` / `NOT_IN` / `BETWEEN`, joins, joined-entity filtering, duplicate join alias validation, repeated joined entity aliases, nested join mapping, extra join conditions, static DAO convenience helpers, and custom SQL helpers
 - application startup/shutdown listeners initialize and close shared infrastructure:
   - `hu.laci.cms.backend.config.database.DatabaseConfigListener`
   - `hu.laci.cms.backend.config.app.DaoRegistryListener`
@@ -613,6 +618,7 @@ Package conventions:
 - JSON API errors are wrapped as `success/error.code/error.message`
 - validation errors can include `success/error.validationErrors`
 - session-based authentication is active through `AppSessionManager`
+- session-backed CAPTCHA validation state is read and updated through `AppSessionManager`
 - `http` mode preserves the Tomcat `HttpSession` backed behavior
 - `jdbc` mode stores session state in PostgreSQL tables created by `V5__app_sessions.sql`
 - successful login creates a fresh authenticated application session

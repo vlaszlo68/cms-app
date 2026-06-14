@@ -304,6 +304,7 @@ Auth DTO-k:
 
 User DTO-k:
 
+- `UserRequestBase`: admin create/update user requestek kozos mezoinek alap DTO-ja
 - `CreateUserRequest`: admin user létrehozási request
 - `UpdateUserRequest`: admin user módosítási request
 - `UserResponse`: password hash nélküli user válasz
@@ -341,11 +342,11 @@ A servlet réteg ezeket HTTP státuszra és egységes JSON hibára fordítja.
 
 ### `CrudDao<T, P>`
 
-Generikus CRUD interfész. Alap műveletek: `findAll`, `findById`, `save`, `create`, `update`, `deleteById`.
+Generikus CRUD interfész. Alap műveletek: `findAll`, `findById`, `save`, `create`, `update`, `deleteById`, `delete`.
 
 ### `BaseDao<T, P>`
 
-Generikus JDBC DAO alapimplementáció. Reflection és annotáció alapján épít SQL-t, kezeli a CRUD műveleteket, filterezést, rendezést, joinokat, custom SQL helperöket, audit mezőkitöltést és típuskonverziókat.
+Generikus JDBC DAO alapimplementáció. Reflection és annotáció alapján épít SQL-t, kezeli a CRUD műveleteket, filterezést, rendezést, joinokat, custom SQL helperöket, audit mezőkitöltést és típuskonverziókat. A joinos select SQL ugyanabban a builder útvonalban építi a joinolt táblák mezőit és a tényleges SQL `JOIN` clause-okat. A `delete(entity)` az entity id-je alapján delegál `deleteById`-re, a `deleteEntity(entity)` pedig a `DaoRegistry` alapján statikus segédként használható.
 
 ### `UserDao` és `UserDaoImpl`
 
@@ -374,10 +375,12 @@ User-specifikus DAO interfész és JDBC implementáció. A generikus CRUD művel
 - `UserRole`: `ADMIN`, `USER`
 - `RegistrationState`: `PENDING`, `EMAIL_VERIFICATION_REQUIRED`, `COMPLETED`, `REJECTED`
 - `UserProperty`: user query property konstansok
+- `AuditableProperty`: közös audit property konstansok auditálható entity-khez
 
 ### Query modell
 
 - `BaseProperty`
+- `AuditableProperty`
 - `QuerySpec<P>`
 - `JoinSpec`
 - `JoinType`
@@ -396,7 +399,7 @@ Ezeket a `BaseDao` használja típusosabb filter/sort/join SQL generáláshoz.
 2. `CsrfFilter` kihagyja a login POST-ot.
 3. `TransactionFilter` tranzakciót nyit.
 4. `AuthServlet` beolvassa a `LoginRequest` DTO-t.
-5. Ha aktív, `CaptchaService` validálja a sessionben tárolt CAPTCHA állapotot.
+5. Ha aktív, az `AppSessionManager.validateCaptcha(...)` validálja és frissíti a sessionben tárolt CAPTCHA állapotot a `CaptchaService` szabályai alapján.
 6. `AuthService` a `UserDao` segítségével betölti a usert és BCrypttel ellenőrzi a jelszót.
 7. Siker esetén új authenticated application session jön létre, user snapshot és CSRF token tárolódik.
 
@@ -404,7 +407,7 @@ Ezeket a `BaseDao` használja típusosabb filter/sort/join SQL generáláshoz.
 
 1. `RegisterServlet` beolvassa a `RegisterRequest` DTO-t.
 2. A regisztrációs limiter ellenőrzi a próbálkozásokat.
-3. `CaptchaService` validálja a CAPTCHA-t.
+3. Az `AppSessionManager.validateCaptcha(...)` validálja és frissíti a sessionben tárolt CAPTCHA állapotot a `CaptchaService` szabályai alapján.
 4. `RegistrationService` validálja az inputot, duplicate állapotot és password policyt.
 5. `UserDaoImpl` létrehozza az inactive, pending `USER` rekordot.
 
