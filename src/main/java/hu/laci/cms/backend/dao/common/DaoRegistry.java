@@ -1,8 +1,10 @@
 package hu.laci.cms.backend.dao.common;
 
 import hu.laci.cms.backend.dao.user.UserDaoImpl;
+import hu.laci.cms.backend.dao.page.PageDaoImpl;
 import hu.laci.cms.backend.model.common.BaseEntity;
 import hu.laci.cms.backend.model.common.BaseProperty;
+import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.user.User;
 
 import java.util.HashMap;
@@ -31,6 +33,7 @@ public final class DaoRegistry {
     public static synchronized void initialize() {
         DAOS.clear();
         register(User.class, new UserDaoImpl());
+        register(Page.class, new PageDaoImpl());
     }
 
     /**
