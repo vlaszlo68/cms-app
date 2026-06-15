@@ -97,6 +97,16 @@
         <param-value>memory</param-value>
     </context-param>
 
+    <context-param>
+        <param-name>media.storage.type</param-name>
+        <param-value>DATABASE</param-value>
+    </context-param>
+
+    <context-param>
+        <param-name>media.filesystem.path</param-name>
+        <param-value>media-storage</param-value>
+    </context-param>
+
     <listener>
         <listener-class>hu.laci.cms.backend.config.database.DatabaseConfigListener</listener-class>
     </listener>
@@ -111,6 +121,10 @@
 
     <listener>
         <listener-class>hu.laci.cms.backend.config.session.AppSessionConfigListener</listener-class>
+    </listener>
+
+    <listener>
+        <listener-class>hu.laci.cms.backend.config.media.MediaStorageConfigListener</listener-class>
     </listener>
 
     <listener>
