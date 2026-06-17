@@ -126,6 +126,11 @@ Examples:
 - `POST /api/pages`
 - `PUT /api/pages/{id}`
 - `DELETE /api/pages/{id}`
+- `GET /api/media`
+- `GET /api/media/{id}`
+- `GET /api/media/{id}/content`
+- `POST /api/media`
+- `DELETE /api/media/{id}`
 
 The common response envelope is mandatory for API endpoints:
 
@@ -160,12 +165,12 @@ Current implementation note:
 - auth endpoints now use the common API response envelope
 - successful auth responses include a CSRF token in `data.csrfToken`
 - local standalone Tomcat deploy path in current development is:
-  - `http://localhost:8081/cms-app/api/auth/login`
-  - `http://localhost:8081/cms-app/api/auth/config`
-  - `http://localhost:8081/cms-app/api/auth/captcha`
-  - `http://localhost:8081/cms-app/api/auth/register`
-  - `http://localhost:8081/cms-app/api/auth/logout`
-  - `http://localhost:8081/cms-app/api/auth/me`
+  - `http://localhost:8080/cms-app/api/auth/login`
+  - `http://localhost:8080/cms-app/api/auth/config`
+  - `http://localhost:8080/cms-app/api/auth/captcha`
+  - `http://localhost:8080/cms-app/api/auth/register`
+  - `http://localhost:8080/cms-app/api/auth/logout`
+  - `http://localhost:8080/cms-app/api/auth/me`
 - Docker Tomcat deploy path in current development is:
   - `http://localhost:8081/api/auth/login`
   - `http://localhost:8081/api/auth/config`
@@ -767,6 +772,18 @@ Admin-only endpoint. Requires CSRF. Sets `registrationStatus=COMPLETED` and `act
 
 Admin-only endpoint. Requires CSRF. Sets `registrationStatus=REJECTED` and `active=false`.
 
+### Media endpoints
+
+Admin-only media library endpoints live under `/api/media`.
+
+- `GET /api/media`: returns media metadata list. By default only active records are returned; `activeOnly=false` includes inactive records.
+- `GET /api/media/{id}`: returns one media metadata record as JSON.
+- `GET /api/media/{id}/content`: returns the stored media content as a binary response, without the common JSON envelope. The response uses the stored MIME type as `Content-Type`, sets `Content-Length`, and uses `Content-Disposition: inline` so browsers can preview supported file types.
+- `POST /api/media`: accepts multipart form upload with required `file` part and optional `description`.
+- `DELETE /api/media/{id}`: hard-deletes the media storage content and metadata row.
+
+The current local storage mode is configured through `media.storage.type`. `DATABASE` stores binary content in `media_contents`; `FILESYSTEM` stores files under `media.filesystem.path`. `MINIO` and `S3` are declared storage types but are not implemented yet.
+
 Current filter responsibilities:
 
 | Filter | Scope | Responsibility |
@@ -883,7 +900,7 @@ Jenkins note:
 
 Runtime URLs:
 
-- local standalone Tomcat app context: `http://localhost:8081/cms-app`
+- local standalone Tomcat app context: `http://localhost:8080/cms-app`
 
 Current cluster JDBC notes:
 
@@ -897,12 +914,12 @@ Current cluster JDBC notes:
   - user snapshot freshness after admin changes
   - DB load and index tuning
 - Docker Tomcat root context: `http://localhost:8081`
-- health endpoint when deployed under `/cms-app`: `http://localhost:8081/cms-app/hello`
+- health endpoint when deployed under `/cms-app`: `http://localhost:8080/cms-app/hello`
 - health endpoint in Docker root context: `http://localhost:8081/hello`
 
 Frontend integration notes:
 
-- Vite dev proxy can map `/api` to `http://localhost:8081/cms-app/api`
+- Vite dev proxy can map `/api` to `http://localhost:8080/cms-app/api`
 - backend CORS currently allows `http://localhost:5173` and `http://127.0.0.1:5173`
 - even with CORS, same-origin/reverse-proxy deployment remains simpler for session auth
 - frontend API client should centralize `credentials: "include"` and CSRF header handling
@@ -911,7 +928,7 @@ Testing notes:
 
 - `mvn test` runs DB-backed DAO tests
 - `mvn package` also runs tests unless skipped
-- current verified test count: 62
+- current verified test count: 101
 - PostgreSQL schema comes from app startup migrations in `src/main/resources/db/migration/`
 - tests clean up their own `dao_test_` user data and temporary boolean test table
 

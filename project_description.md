@@ -24,6 +24,8 @@ Fő belépési pontok:
 - `/api/auth/logout`: kijelentkezés
 - `/api/auth/register`: public regisztráció
 - `/api/users`, `/api/users/*`: admin-only user management
+- `/api/media`, `/api/media/*`: admin-only media library management
+- `/api/media/{id}/content`: media binary content response for frontend preview/download
 
 ## 2. Indítás és globális konfiguráció
 
@@ -327,6 +329,10 @@ Matematikai SVG CAPTCHA generálás és validáció. Kezeli a TTL-t, próbálkoz
 
 Admin user management üzleti logika. Listáz, lekér, létrehoz, módosít, deaktivál, regisztrációt jóváhagy vagy elutasít. Ellenőrzi a kötelező mezőket, email formátumot, duplicate login/email állapotot és password policyt.
 
+### `MediaService`
+
+Admin media library üzleti logika. Listázza és lekéri a média metaadatokat, kezeli a multipart feltöltést, hard delete-et, valamint külön metódussal adja vissza a média bináris tartalmat. A sima `GET /api/media/{id}` csak JSON metaadatot ad, a `GET /api/media/{id}/content` pedig JSON envelope nélküli bináris választ küld `Content-Type`, `Content-Length` és `Content-Disposition: inline` headerekkel.
+
 ### `PasswordPolicyValidator`
 
 A `PasswordPolicyConfig` alapján listázza a megsértett jelszó szabályokat, például `TOO_SHORT`, `MISSING_UPPERCASE`, `MISSING_DIGIT`.
@@ -438,6 +444,7 @@ Aktuális JUnit tesztek:
 - `InMemoryRequestRateLimiterTest`
 - `BaseDaoBooleanMappingTest`
 - `AppSessionConfigTest`
+- `MediaServiceTest`
 
 A teszt logolási konfiguráció: `src/test/resources/logback-test.xml`.
 
