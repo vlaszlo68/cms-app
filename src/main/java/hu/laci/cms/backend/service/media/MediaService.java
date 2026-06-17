@@ -44,6 +44,16 @@ public class MediaService {
         return toResponse(loadMedia(id));
     }
 
+    public MediaContent getMediaContent(Long id) {
+        Media media = loadMedia(id);
+        try {
+            byte[] content = mediaStorageService.load(media.getStoragePath());
+            return new MediaContent(media.getOriginalFileName(), media.getMimeType(), content.length, content);
+        } catch (RuntimeException e) {
+            throw new MediaServiceException(STORAGE_ERROR, "Failed to load media file.", e);
+        }
+    }
+
     public UploadMediaResponse uploadMedia(String originalFileName, InputStream inputStream, String mimeType,
                                            String description) {
         validateUpload(originalFileName, inputStream, mimeType);

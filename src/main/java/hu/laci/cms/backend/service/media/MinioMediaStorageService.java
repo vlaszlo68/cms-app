@@ -13,4 +13,9 @@ public class MinioMediaStorageService implements MediaStorageService {
     public void delete(String storagePath) {
         throw new UnsupportedOperationException("MINIO media storage is not implemented yet.");
     }
+
+    @Override
+    public byte[] load(String storagePath) {
+        throw new UnsupportedOperationException("MINIO media storage is not implemented yet.");
+    }
 }

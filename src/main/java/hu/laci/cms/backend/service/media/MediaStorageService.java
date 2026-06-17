@@ -11,4 +11,6 @@ public interface MediaStorageService {
     }
 
     void delete(String storagePath);
+
+    byte[] load(String storagePath);
 }

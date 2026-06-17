@@ -13,4 +13,9 @@ public class S3MediaStorageService implements MediaStorageService {
     public void delete(String storagePath) {
         throw new UnsupportedOperationException("S3 media storage is not implemented yet.");
     }
+
+    @Override
+    public byte[] load(String storagePath) {
+        throw new UnsupportedOperationException("S3 media storage is not implemented yet.");
+    }
 }

@@ -56,6 +56,23 @@ public class FileSystemMediaStorageService implements MediaStorageService {
         }
     }
 
+    @Override
+    public byte[] load(String storagePath) {
+        if (storagePath == null || storagePath.isBlank()) {
+            throw new MediaStorageException("Media storage path is required.");
+        }
+
+        try {
+            Path targetPath = Path.of(storagePath).toAbsolutePath().normalize();
+            if (!targetPath.startsWith(storageDirectory)) {
+                throw new MediaStorageException("Refusing to read file outside media storage directory.");
+            }
+            return Files.readAllBytes(targetPath);
+        } catch (IOException e) {
+            throw new MediaStorageException("Failed to read media file from filesystem.", e);
+        }
+    }
+
     private static String extractExtension(String originalFileName) {
         if (originalFileName == null || originalFileName.isBlank()) {
             return "";

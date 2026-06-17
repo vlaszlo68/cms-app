@@ -11,6 +11,7 @@ import hu.laci.cms.backend.model.user.UserRole;
 import hu.laci.cms.backend.service.media.MediaService;
 import hu.laci.cms.backend.service.media.MediaServiceException;
 import hu.laci.cms.backend.service.media.MediaStorageService;
+import hu.laci.cms.backend.service.media.MediaContent;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.ServletException;
@@ -44,6 +45,12 @@ public class MediaServlet extends JsonServletSupport {
         }
 
         try {
+            ContentPath contentPath = parseContentPath(request);
+            if (contentPath != null) {
+                writeMediaContent(response, mediaService.getMediaContent(contentPath.id()));
+                return;
+            }
+
             Long id = parseOptionalId(request);
             if (id != null) {
                 writeJsonResponse(response, HttpServletResponse.SC_OK, mediaService.getMedia(id));
@@ -57,6 +64,15 @@ public class MediaServlet extends JsonServletSupport {
         } catch (MediaServiceException e) {
             writeServiceError(response, e);
         }
+    }
+
+    private void writeMediaContent(HttpServletResponse response, MediaContent mediaContent) throws IOException {
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setContentType(mediaContent.getMimeType());
+        response.setContentLengthLong(mediaContent.getFileSize());
+        response.setHeader("Content-Disposition",
+                "inline; filename=\"" + sanitizeHeaderValue(mediaContent.getOriginalFileName()) + "\"");
+        response.getOutputStream().write(mediaContent.getContent());
     }
 
     @Override
@@ -139,6 +155,19 @@ public class MediaServlet extends JsonServletSupport {
         return parseId(pathInfo);
     }
 
+    private ContentPath parseContentPath(HttpServletRequest request) {
+        String pathInfo = parsePathInfo(request);
+        if (pathInfo == null || !pathInfo.endsWith("/content")) {
+            return null;
+        }
+
+        String idPart = pathInfo.substring(0, pathInfo.length() - "/content".length());
+        if (idPart.isBlank() || idPart.contains("/")) {
+            throw new BadRequestException("Invalid media content path.");
+        }
+        return new ContentPath(parseId(idPart));
+    }
+
     private String parsePathInfo(HttpServletRequest request) {
         String pathInfo = request.getPathInfo();
         if (pathInfo == null || pathInfo.isBlank() || "/".equals(pathInfo)) {
@@ -159,6 +188,16 @@ public class MediaServlet extends JsonServletSupport {
         } catch (NumberFormatException e) {
             throw new BadRequestException("Media id must be a number.", e);
         }
+    }
+
+    private String sanitizeHeaderValue(String value) {
+        if (value == null || value.isBlank()) {
+            return "media";
+        }
+        return value.replace("\\", "_")
+                .replace("\"", "_")
+                .replace("\r", "_")
+                .replace("\n", "_");
     }
 
     private void writeServiceError(HttpServletResponse response, MediaServiceException e) throws IOException {
@@ -184,5 +223,8 @@ public class MediaServlet extends JsonServletSupport {
         private BadRequestException(String message, Throwable cause) {
             super(message, cause);
         }
+    }
+
+    private record ContentPath(Long id) {
     }
 }

@@ -68,6 +68,28 @@ public class DatabaseMediaStorageService implements MediaStorageService {
         }
     }
 
+    @Override
+    public byte[] load(String storagePath) {
+        if (storagePath == null || storagePath.isBlank() || !storagePath.startsWith(STORAGE_PREFIX)) {
+            throw new MediaStorageException("Invalid database media storage path.");
+        }
+
+        String storageId = storagePath.substring(STORAGE_PREFIX.length());
+        try {
+            byte[] content = mediaContentDao.loadContent(Long.parseLong(storageId));
+            if (content == null) {
+                throw new MediaStorageException("Database media content is missing.");
+            }
+            return content;
+        } catch (NumberFormatException e) {
+            byte[] content = pendingContentByToken.get(storageId);
+            if (content == null) {
+                throw new MediaStorageException("Pending database media content is missing.");
+            }
+            return content;
+        }
+    }
+
     private static byte[] readAllBytes(InputStream inputStream) {
         try {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
