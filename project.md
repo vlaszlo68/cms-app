@@ -589,7 +589,7 @@ Package conventions:
 ## Current Backend Status
 
 - `User`, `UserDao`, `UserDaoImpl`, `AuthService`, `AuthServiceException`, `DatabaseConfig` already exist
-- Page, Media, Menu, and MenuItem modules are implemented through the model, DAO, service, DTO, and servlet layers.
+- Page, Media, Menu, MenuItem, PageType, and PageBlock modules are implemented through the model, DAO, service, DTO, and servlet layers.
 - Template and Site Settings modules are implemented. Templates describe what the frontend renders; pages hold content; site settings hold global website data.
 - Menu items support `PAGE` and `URL` targets. PAGE targets persist `pageId` and clear `targetUrl`; URL targets persist `targetUrl` and clear `pageId`.
 - The public menu tree API is independent from Page, Media, and Template implementations.

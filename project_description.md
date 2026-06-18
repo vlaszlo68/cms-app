@@ -364,6 +364,12 @@ Admin endpointok:
 
 A blokkok `sortOrder`, majd id szerint rendezettek. A `blockType` szabad szöveg, a `configJson` pedig backend oldali értelmezés és validáció nélkül tárolódik.
 
+Legutóbbi implementációs hullám röviden:
+
+- Menu modul: `PAGE` és `URL` target típusok, publikus fa endpoint, `MAIN` és `FOOTER` seed menük.
+- Template és Site Settings modul: konfigurációs template-ek, egyrekordos globális site settings, `pages.template_id` támogatás.
+- PageType és PageBlock modul: `CONTENT` / `BLOCK` oldaltípus, blokk CRUD, opcionális `includeBlocks=true` részletkérés.
+
 ## 9. DTO-k
 
 Auth DTO-k:

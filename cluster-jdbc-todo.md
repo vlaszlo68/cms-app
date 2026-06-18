@@ -4,6 +4,14 @@
 
 A jelenlegi JDBC-alapu cluster-kompatibilis mukodes mellett a megmaradt rizikok es kovetkezo lepesek legyenek egy helyen rogzitve.
 
+## Aktualis verified baseline
+
+- A session state mar JDBC-backed opcioval rendelkezik.
+- A rate limiter state mar JDBC-backed opcioval rendelkezik.
+- A Menu, Template, Site Settings, PageType es PageBlock modulok mar keszen vannak a backendben.
+- Utoljara ellenorzott build eredmeny: 123 teszt, 0 hiba.
+- A backend jelenleg le van allitva.
+
 ## Mai allapot
 
 - a session state mar nem JVM memoriaban el:
@@ -69,4 +77,3 @@ A jelenlegi JDBC-alapu cluster-kompatibilis mukodes mellett a megmaradt rizikok 
 ## Elfogadasi elv
 
 Ha a kovetkezo lepes barmelyike ujra servlet/filter/auth atirast igenyelne csak azert, mert a session vagy a rate limiter store valt, akkor az absztrakcio nem eleg jo. Ilyenkor az absztrakciot kell javitani, nem a felszini hasznalatot.
-

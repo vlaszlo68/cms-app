@@ -25,6 +25,12 @@ Primary backend packages:
 Current implemented auth HTTP entrypoints may differ from planned API routes in `project.md`.
 When continuing existing work, prefer actual current code and `SESSION_CONTEXT.md`, then align to planned routes only when explicitly requested.
 
+Current backend implementation snapshot:
+- Menu module: PAGE/URL target support, public tree endpoint, default MAIN and FOOTER menus.
+- Template and Site Settings modules: configuration-only templates, singleton site settings, page template selection.
+- PageType and PageBlock modules: CONTENT/BLOCK pages, ordered page blocks, optional includeBlocks response.
+- Latest verified test count: 123, with the backend currently stopped unless a turn explicitly redeploys it.
+
 Ignore:
 - frontend/
 - docker/

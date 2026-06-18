@@ -4,6 +4,13 @@
 
 A jelenlegi CMS backend tobb Tomcat replika mellett is megbizhatoan mukodjon Docker Swarm vagy mas cluster kornyezetben ugy, hogy a mostani egyszeru, lokalis `HttpSession` alapu mukodes tovabbra is megmaradjon.
 
+## Aktualis implementacios bazis
+
+- A Menu, Template, Site Settings, PageType es PageBlock modulok mar keszen vannak.
+- A session store es a rate limiter mar rendelkezik JDBC-backed opcioval.
+- A legutobbi ellenorzott build allapot: 123 teszt, 0 hiba.
+- A backend jelenleg le van allitva; a legutobbi ismert runtime URL a `http://localhost:8080/cms-app`.
+
 A valtas konfiguracio alapjan tortenjen. A konfiguracio feloldasi sorrendje kotelezoen:
 
 1. environment variable,
