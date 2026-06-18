@@ -1,6 +1,7 @@
 package hu.laci.cms.backend.service.page;
 
 import hu.laci.cms.backend.dao.page.PageDao;
+import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
 import hu.laci.cms.backend.dto.page.PageListResponse;
 import hu.laci.cms.backend.dto.page.PageResponse;
@@ -9,6 +10,8 @@ import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageProperty;
 import hu.laci.cms.backend.model.page.PageStatus;
+import hu.laci.cms.backend.model.page.PageType;
+import hu.laci.cms.backend.model.template.Template;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,13 +28,17 @@ public class PageService {
     public static final String VALIDATION_ERROR = "VALIDATION_ERROR";
     public static final String PAGE_NOT_FOUND = "PAGE_NOT_FOUND";
     public static final String DUPLICATE_SLUG = "DUPLICATE_SLUG";
+    public static final String TEMPLATE_NOT_FOUND = "TEMPLATE_NOT_FOUND";
+    private static final String DEFAULT_TEMPLATE_CODE = "STANDARD";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PageService.class);
 
     private final PageDao pageDao;
+    private final TemplateDao templateDao;
 
-    public PageService(PageDao pageDao) {
+    public PageService(PageDao pageDao, TemplateDao templateDao) {
         this.pageDao = Objects.requireNonNull(pageDao, "pageDao must not be null");
+        this.templateDao = Objects.requireNonNull(templateDao, "templateDao must not be null");
     }
 
     public List<PageListResponse> listPages() {
@@ -71,12 +78,14 @@ public class PageService {
                 null,
                 trim(request.getTitle()),
                 slug,
-                trim(request.getContent()),
+                normalizeContent(request.getContent(), defaultPageType(request.getPageType())),
+                defaultPageType(request.getPageType()),
                 request.getStatus(),
                 trimToNull(request.getMetaTitle()),
                 trimToNull(request.getMetaDescription()),
                 request.getHomepage() == null ? Boolean.FALSE : request.getHomepage(),
-                request.getMenuVisible() == null ? Boolean.TRUE : request.getMenuVisible()
+                request.getMenuVisible() == null ? Boolean.TRUE : request.getMenuVisible(),
+                resolveTemplateId(request.getTemplateId())
         );
 
         Page createdPage = pageDao.create(page);
@@ -94,12 +103,14 @@ public class PageService {
 
         page.setTitle(trim(request.getTitle()));
         page.setSlug(slug);
-        page.setContent(trim(request.getContent()));
+        page.setPageType(defaultPageType(request.getPageType()));
+        page.setContent(normalizeContent(request.getContent(), page.getPageType()));
         page.setStatus(request.getStatus());
         page.setMetaTitle(trimToNull(request.getMetaTitle()));
         page.setMetaDescription(trimToNull(request.getMetaDescription()));
         page.setHomepage(request.getHomepage() == null ? Boolean.FALSE : request.getHomepage());
         page.setMenuVisible(request.getMenuVisible() == null ? Boolean.TRUE : request.getMenuVisible());
+        page.setTemplateId(resolveTemplateId(request.getTemplateId()));
 
         Page updatedPage = pageDao.update(page);
         normalizeHomepage(updatedPage);
@@ -128,7 +139,8 @@ public class PageService {
             throw new PageServiceException(VALIDATION_ERROR, "Request body is required.");
         }
 
-        validateCommonFields(request.getTitle(), request.getSlug(), request.getContent(), request.getStatus());
+        validateCommonFields(request.getTitle(), request.getSlug(), request.getContent(), request.getPageType(),
+                request.getStatus());
     }
 
     private void validateUpdateRequest(UpdatePageRequest request) {
@@ -136,17 +148,19 @@ public class PageService {
             throw new PageServiceException(VALIDATION_ERROR, "Request body is required.");
         }
 
-        validateCommonFields(request.getTitle(), request.getSlug(), request.getContent(), request.getStatus());
+        validateCommonFields(request.getTitle(), request.getSlug(), request.getContent(), request.getPageType(),
+                request.getStatus());
     }
 
-    private void validateCommonFields(String title, String slug, String content, PageStatus status) {
+    private void validateCommonFields(String title, String slug, String content, PageType pageType,
+                                      PageStatus status) {
         if (isBlank(title)) {
             throw new PageServiceException(VALIDATION_ERROR, "title is required.");
         }
         if (isBlank(slug)) {
             throw new PageServiceException(VALIDATION_ERROR, "slug is required.");
         }
-        if (isBlank(content)) {
+        if (defaultPageType(pageType) == PageType.CONTENT && isBlank(content)) {
             throw new PageServiceException(VALIDATION_ERROR, "content is required.");
         }
         if (status == null) {
@@ -183,11 +197,13 @@ public class PageService {
                 page.getTitle(),
                 page.getSlug(),
                 page.getContent(),
+                page.getPageType(),
                 page.getStatus(),
                 page.getMetaTitle(),
                 page.getMetaDescription(),
                 page.getHomepage(),
                 page.getMenuVisible(),
+                page.getTemplateId(),
                 toIsoString(page.getCreatedAt()),
                 toIsoString(page.getUpdatedAt())
         );
@@ -198,11 +214,13 @@ public class PageService {
                 page.getId(),
                 page.getTitle(),
                 page.getSlug(),
+                page.getPageType(),
                 page.getStatus(),
                 page.getMetaTitle(),
                 page.getMetaDescription(),
                 page.getHomepage(),
                 page.getMenuVisible(),
+                page.getTemplateId(),
                 toIsoString(page.getCreatedAt()),
                 toIsoString(page.getUpdatedAt())
         );
@@ -212,6 +230,18 @@ public class PageService {
         return timestamp == null ? null : timestamp.toInstant().toString();
     }
 
+    private Long resolveTemplateId(Long templateId) {
+        if (templateId != null) {
+            return templateDao.findById(templateId)
+                    .map(Template::getId)
+                    .orElseThrow(() -> new PageServiceException(TEMPLATE_NOT_FOUND, "Template not found."));
+        }
+        return templateDao.findByCode(DEFAULT_TEMPLATE_CODE)
+                .map(Template::getId)
+                .orElseThrow(() -> new PageServiceException(TEMPLATE_NOT_FOUND,
+                        "Default STANDARD template not found."));
+    }
+
     private static String trim(String value) {
         return value == null ? null : value.trim();
     }
@@ -219,6 +249,14 @@ public class PageService {
     private static String trimToNull(String value) {
         String trimmed = trim(value);
         return trimmed == null || trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static String normalizeContent(String content, PageType pageType) {
+        return pageType == PageType.BLOCK ? trimToNull(content) : trim(content);
+    }
+
+    private static PageType defaultPageType(PageType pageType) {
+        return pageType == null ? PageType.CONTENT : pageType;
     }
 
     private static boolean isBlank(String value) {

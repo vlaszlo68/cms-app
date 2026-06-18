@@ -6,12 +6,15 @@ import hu.laci.cms.backend.config.session.SessionContext;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.page.PageDaoImpl;
+import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
 import hu.laci.cms.backend.dto.page.PageListResponse;
 import hu.laci.cms.backend.dto.page.PageResponse;
 import hu.laci.cms.backend.dto.page.UpdatePageRequest;
 import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageStatus;
+import hu.laci.cms.backend.model.page.PageType;
+import hu.laci.cms.backend.model.template.Template;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -36,6 +39,7 @@ class PageServiceTest {
     private static final String TEST_PREFIX = "page_service_test_";
 
     private PageDao pageDao;
+    private TemplateDao templateDao;
     private PageService pageService;
 
     @BeforeAll
@@ -55,7 +59,8 @@ class PageServiceTest {
     void setUp() throws SQLException {
         SessionContext.clear();
         pageDao = new PageDaoImpl();
-        pageService = new PageService(pageDao);
+        templateDao = DaoRegistry.getDao(Template.class);
+        pageService = new PageService(pageDao, templateDao);
         deleteTestPages();
     }
 
@@ -79,12 +84,14 @@ class PageServiceTest {
         assertEquals(TEST_PREFIX + "alpha description", response.getMetaDescription());
         assertTrue(response.getHomepage());
         assertTrue(response.getMenuVisible());
+        assertNotNull(response.getTemplateId());
         assertNotNull(response.getCreatedAt());
         assertNotNull(response.getUpdatedAt());
 
         Page persistedPage = pageDao.findById(response.getId()).orElseThrow();
         assertTrue(persistedPage.getHomepage());
         assertTrue(persistedPage.getMenuVisible());
+        assertEquals(response.getTemplateId(), persistedPage.getTemplateId());
     }
 
     @Test
@@ -159,6 +166,52 @@ class PageServiceTest {
         PageServiceException exception = assertThrows(PageServiceException.class,
                 () -> pageService.createPage(new CreatePageRequest(" ", " ", " ", null,
                         null, null, false, true)));
+
+        assertEquals(PageService.VALIDATION_ERROR, exception.getCode());
+    }
+
+    @Test
+    void createPageUsesRequestedTemplate() {
+        Long templateId = templateDao.findByCode("LANDING").orElseThrow().getId();
+
+        PageResponse response = pageService.createPage(new CreatePageRequest(
+                TEST_PREFIX + "landing", TEST_PREFIX + "landing", TEST_PREFIX + "landing content",
+                PageStatus.PUBLISHED, null, null, false, true, templateId));
+
+        assertEquals(templateId, response.getTemplateId());
+        assertEquals(templateId, pageDao.findById(response.getId()).orElseThrow().getTemplateId());
+    }
+
+    @Test
+    void createPageRejectsUnknownTemplate() {
+        PageServiceException exception = assertThrows(PageServiceException.class,
+                () -> pageService.createPage(new CreatePageRequest(
+                        TEST_PREFIX + "invalid-template", TEST_PREFIX + "invalid-template",
+                        TEST_PREFIX + "invalid-template content", PageStatus.DRAFT,
+                        null, null, false, true, Long.MAX_VALUE)));
+
+        assertEquals(PageService.TEMPLATE_NOT_FOUND, exception.getCode());
+    }
+
+    @Test
+    void blockPageAllowsMissingContent() {
+        PageResponse response = pageService.createPage(new CreatePageRequest(
+                TEST_PREFIX + "block", TEST_PREFIX + "block", null, PageType.BLOCK,
+                PageStatus.PUBLISHED, null, null, false, true, null));
+
+        assertEquals(PageType.BLOCK, response.getPageType());
+        assertEquals(null, response.getContent());
+        Page persisted = pageDao.findById(response.getId()).orElseThrow();
+        assertEquals(PageType.BLOCK, persisted.getPageType());
+        assertEquals(null, persisted.getContent());
+    }
+
+    @Test
+    void contentPageStillRequiresContent() {
+        PageServiceException exception = assertThrows(PageServiceException.class,
+                () -> pageService.createPage(new CreatePageRequest(
+                        TEST_PREFIX + "content-required", TEST_PREFIX + "content-required", " ",
+                        PageType.CONTENT, PageStatus.DRAFT, null, null, false, true, null)));
 
         assertEquals(PageService.VALIDATION_ERROR, exception.getCode());
     }

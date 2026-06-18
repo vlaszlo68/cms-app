@@ -590,6 +590,7 @@ Package conventions:
 
 - `User`, `UserDao`, `UserDaoImpl`, `AuthService`, `AuthServiceException`, `DatabaseConfig` already exist
 - Page, Media, Menu, and MenuItem modules are implemented through the model, DAO, service, DTO, and servlet layers.
+- Template and Site Settings modules are implemented. Templates describe what the frontend renders; pages hold content; site settings hold global website data.
 - Menu items support `PAGE` and `URL` targets. PAGE targets persist `pageId` and clear `targetUrl`; URL targets persist `targetUrl` and clear `pageId`.
 - The public menu tree API is independent from Page, Media, and Template implementations.
 - Startup migrations ensure the `MAIN` and `FOOTER` menus exist.
@@ -832,6 +833,54 @@ Current local `FOOTER` content:
 - `GDPR` -> PAGE with slug `gdpr`
 - `Support` -> URL `mailto:support@example.com`
 
+### Template endpoints
+
+Template records are configuration only; they do not store HTML, React code, or other executable rendering logic.
+
+- `GET /api/templates`: lists templates.
+- `GET /api/templates/{id}`: returns one template.
+- `POST /api/templates`: creates a template.
+- `PUT /api/templates/{id}`: updates a template.
+- `DELETE /api/templates/{id}`: deactivates a template.
+
+All template endpoints require `ADMIN`. Template codes are unique. `STANDARD`, `LANDING`, and `BLOG` are created by migration.
+
+Pages expose an optional `templateId` request field and include it in list/detail responses. When omitted during create or update, the service persists the `STANDARD` template id.
+
+### Site Settings endpoints
+
+Site Settings stores one global configuration record, independently from page content and template selection.
+
+- `GET /api/site-settings`: returns the global settings.
+- `PUT /api/site-settings`: replaces the global settings fields.
+
+Both endpoints require `ADMIN`. The database enforces a single `site_settings` row.
+
+`V11__templates_and_site_settings.sql` creates templates, adds `pages.template_id`, backfills existing pages with `STANDARD`, and creates the singleton site settings record.
+
+### Page types and blocks
+
+Pages support two content models:
+
+- `CONTENT`: traditional CMS page; non-blank `content` is required.
+- `BLOCK`: composite page; `content` is optional and the page is assembled from ordered `PageBlock` records.
+
+Page create, update, list, and detail DTOs contain `pageType`. Missing `pageType` remains backward compatible and is interpreted as `CONTENT`.
+
+Page block admin endpoints:
+
+- `GET /api/pages/{id}/blocks`: returns all blocks ordered by `sortOrder`, then id.
+- `GET /api/page-blocks/{id}`: returns one block.
+- `POST /api/page-blocks`: creates a block.
+- `PUT /api/page-blocks/{id}`: updates a block.
+- `DELETE /api/page-blocks/{id}`: deletes a block.
+
+`GET /api/pages/{id}?includeBlocks=true` returns `{ "page": ..., "blocks": [...] }`.
+
+`blockType` is currently free text. `configJson` is stored as opaque text and is intentionally not parsed or validated by the backend. Deleting a page cascades to its blocks.
+
+`V12__page_types_and_blocks.sql` adds `pages.page_type`, permits null page content for BLOCK pages, and creates `page_blocks`.
+
 Current filter responsibilities:
 
 | Filter | Scope | Responsibility |
@@ -976,7 +1025,7 @@ Testing notes:
 
 - `mvn test` runs DB-backed DAO tests
 - `mvn package` also runs tests unless skipped
-- current verified test count: 110
+- current verified test count: 123
 - PostgreSQL schema comes from app startup migrations in `src/main/resources/db/migration/`
 - tests clean up their own `dao_test_` user data and temporary boolean test table
 

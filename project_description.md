@@ -29,6 +29,9 @@ Fő belépési pontok:
 - `/api/menus`, `/api/menus/*`: admin-only menü CRUD és menüpontlista
 - `/api/menu-items`, `/api/menu-items/*`: admin-only menüpont CRUD
 - `/api/public/menus/{code}`: publikus, fa struktúrájú menülekérdezés
+- `/api/templates`, `/api/templates/*`: admin-only template konfiguráció
+- `/api/site-settings`: admin-only globális webhelybeállítások
+- `/api/page-blocks`, `/api/page-blocks/*`: admin-only PageBlock CRUD
 
 ## 2. Indítás és globális konfiguráció
 
@@ -64,6 +67,8 @@ Aktuális migrációk:
 - `V8__media_library.sql`
 - `V9__menus.sql`
 - `V10__menu_item_targets_and_default_menus.sql`
+- `V11__templates_and_site_settings.sql`
+- `V12__page_types_and_blocks.sql`
 
 ### `TransactionContext`
 
@@ -71,7 +76,7 @@ Thread-local request tranzakciós állapot. A `TransactionFilter` nyitja és zá
 
 ### `DaoRegistryListener` és `DaoRegistry`
 
-Induláskor regisztrálja a DAO-kat. Az aktív mappingek: `User`, `Page`, `Media`, `Menu` és `MenuItem`. A servlet és service réteg ezen keresztül jut a megfelelő DAO-khoz.
+Induláskor regisztrálja a DAO-kat. Az aktív mappingek: `User`, `Page`, `Media`, `Menu`, `MenuItem`, `Template` és `SiteSettings`. A servlet és service réteg ezen keresztül jut a megfelelő DAO-khoz.
 
 ### `SecurityConfigListener`, `SecurityConfig`, `PasswordPolicyConfig`
 
@@ -322,6 +327,43 @@ Aktuális lokális `FOOTER` elemek:
 - `GDPR` -> PAGE, `gdpr` oldal
 - `Support` -> URL, `mailto:support@example.com`
 
+### Template és Site Settings endpointok
+
+A Template konfigurációs entitás, nem tárol HTML-t vagy React kódot. Az admin API:
+
+- `GET /api/templates`
+- `GET /api/templates/{id}`
+- `POST /api/templates`
+- `PUT /api/templates/{id}`
+- `DELETE /api/templates/{id}`: soft deaktiválás
+
+A migráció létrehozza a `STANDARD`, `LANDING` és `BLOG` template-eket. A Page request és response DTO-k `templateId` mezőt tartalmaznak. Hiányzó értéknél a Page service a `STANDARD` template-et menti.
+
+A Site Settings a Page és Template moduloktól független globális webhely-konfiguráció:
+
+- `GET /api/site-settings`
+- `PUT /api/site-settings`
+
+Az adatbázis és a service egyetlen `site_settings` rekordot tart fenn.
+
+### PageType és PageBlock endpointok
+
+A Page `pageType` mezője:
+
+- `CONTENT`: a `content` kötelező
+- `BLOCK`: a `content` opcionális, az oldal PageBlock rekordokból épül fel
+
+Admin endpointok:
+
+- `GET /api/pages/{id}/blocks`
+- `GET /api/page-blocks/{id}`
+- `POST /api/page-blocks`
+- `PUT /api/page-blocks/{id}`
+- `DELETE /api/page-blocks/{id}`
+- `GET /api/pages/{id}?includeBlocks=true`: összetett `{page, blocks}` válasz
+
+A blokkok `sortOrder`, majd id szerint rendezettek. A `blockType` szabad szöveg, a `configJson` pedig backend oldali értelmezés és validáció nélkül tárolódik.
+
 ## 9. DTO-k
 
 Auth DTO-k:
@@ -346,6 +388,18 @@ Menü DTO-k:
 - `MenuItemResponse`, `CreateMenuItemRequest`, `UpdateMenuItemRequest`
 - `PublicMenuItemResponse`: rekurzív publikus faelem
 - a menüpont DTO-k a `targetType` és `targetUrl` mezőket is kezelik
+
+Template és Site Settings DTO-k:
+
+- `TemplateResponse`, `CreateTemplateRequest`, `UpdateTemplateRequest`
+- `SiteSettingsResponse`, `SaveSiteSettingsRequest`
+
+PageBlock DTO-k:
+
+- `PageBlockResponse`
+- `CreatePageBlockRequest`
+- `UpdatePageBlockRequest`
+- `PageWithBlocksResponse`
 
 ## 10. Service réteg
 
@@ -383,6 +437,18 @@ Menüpont CRUD, hierarchia-validáció és publikus faépítés. A parent csak u
 
 A publikus fa csak aktív menüt és látható elemeket ad vissza, `sortOrder`, majd id szerint rendezve.
 
+### `TemplateService`
+
+Template listázás, lekérés, létrehozás, módosítás, code alapú keresés és deaktiválás. Validálja a kötelező `code` és `name` mezőket, valamint a code egyediségét.
+
+### `SiteSettingsService`
+
+Betölti vagy szükség esetén létrehozza az egyetlen globális beállításrekordot, majd teljes mezőkészlettel frissíti azt.
+
+### `PageBlockService`
+
+Blokklistázás, lekérés, létrehozás, módosítás és törlés. Ellenőrzi a `pageId` és `blockType` mezőket, valamint a hivatkozott Page létezését.
+
 ### `PasswordPolicyValidator`
 
 A `PasswordPolicyConfig` alapján listázza a megsértett jelszó szabályokat, például `TOO_SHORT`, `MISSING_UPPERCASE`, `MISSING_DIGIT`.
@@ -418,6 +484,17 @@ User-specifikus DAO interfész és JDBC implementáció. A generikus CRUD művel
 
 A `BaseDao` a `MenuItem` annotált `target_type` és `target_url` mezőit automatikusan kezeli INSERT, UPDATE, SELECT és row mapping során. Az enum adatbázisban a nevével (`PAGE`, `URL`) tárolódik.
 
+### Template és Site Settings DAO-k
+
+- `TemplateDao` / `TemplateDaoImpl`: `findByCode`, `findActive`, generikus CRUD
+- `SiteSettingsDao` / `SiteSettingsDaoImpl`: singleton rekord lekérése és generikus CRUD
+
+### PageBlock DAO
+
+- `PageBlockDao` / `PageBlockDaoImpl`
+- `findByPageId`: minden blokk rendezve
+- `findVisibleByPageId`: csak látható blokkok rendezve
+
 ### DAO annotációk
 
 - `DbTable`: entity osztályhoz tartozó adatbázis tábla neve
@@ -439,6 +516,10 @@ A `BaseDao` a `MenuItem` annotált `target_type` és `target_url` mezőit automa
 - `Media`: `media` táblára mappelt média metaadat
 - `Menu`: `menus` táblára mappelt menü
 - `MenuItem`: `menu_items` táblára mappelt hierarchikus menüpont
+- `Template`: `templates` táblára mappelt frontend layout konfiguráció
+- `SiteSettings`: `site_settings` táblára mappelt globális webhely-konfiguráció
+- `PageBlock`: `page_blocks` táblára mappelt összetett oldalelem
+- `PageType`: `CONTENT`, `BLOCK`
 
 ### User enumok és propertyk
 
@@ -518,10 +599,12 @@ Aktuális JUnit tesztek:
 - `PageServiceTest`
 - `PageDaoImplTest`
 - `MenuServiceTest`
+- `TemplateAndSiteSettingsServiceTest`
+- `PageBlockServiceTest`
 
 A teszt logolási konfiguráció: `src/test/resources/logback-test.xml`.
 
-Aktuális ellenőrzött eredmény: 110 teszt, 0 hiba.
+Aktuális ellenőrzött eredmény: 123 teszt, 0 hiba.
 
 ## 15. Docker, CI és futtatási környezet
 
