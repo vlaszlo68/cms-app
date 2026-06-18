@@ -48,7 +48,8 @@ public class AuthFilter implements Filter {
         HttpServletResponse httpResponse = (HttpServletResponse) response;
 
         String servletPath = httpRequest.getServletPath();
-        if (LOGIN_PATH.equals(servletPath)
+        if (servletPath.startsWith("/api/public/")
+                || LOGIN_PATH.equals(servletPath)
                 || LOGOUT_PATH.equals(servletPath)
                 || CONFIG_PATH.equals(servletPath)
                 || REGISTER_PATH.equals(servletPath)

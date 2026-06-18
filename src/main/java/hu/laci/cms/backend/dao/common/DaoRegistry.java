@@ -3,9 +3,13 @@ package hu.laci.cms.backend.dao.common;
 import hu.laci.cms.backend.dao.user.UserDaoImpl;
 import hu.laci.cms.backend.dao.page.PageDaoImpl;
 import hu.laci.cms.backend.dao.media.MediaDaoImpl;
+import hu.laci.cms.backend.dao.menu.MenuDaoImpl;
+import hu.laci.cms.backend.dao.menu.MenuItemDaoImpl;
 import hu.laci.cms.backend.model.common.BaseEntity;
 import hu.laci.cms.backend.model.common.BaseProperty;
 import hu.laci.cms.backend.model.media.Media;
+import hu.laci.cms.backend.model.menu.Menu;
+import hu.laci.cms.backend.model.menu.MenuItem;
 import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.user.User;
 
@@ -37,6 +41,8 @@ public final class DaoRegistry {
         register(User.class, new UserDaoImpl());
         register(Page.class, new PageDaoImpl());
         register(Media.class, new MediaDaoImpl());
+        register(Menu.class, new MenuDaoImpl());
+        register(MenuItem.class, new MenuItemDaoImpl());
     }
 
     /**
