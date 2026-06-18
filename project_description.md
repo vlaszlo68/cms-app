@@ -26,6 +26,9 @@ Fő belépési pontok:
 - `/api/users`, `/api/users/*`: admin-only user management
 - `/api/media`, `/api/media/*`: admin-only media library management
 - `/api/media/{id}/content`: media binary content response for frontend preview/download
+- `/api/menus`, `/api/menus/*`: admin-only menü CRUD és menüpontlista
+- `/api/menu-items`, `/api/menu-items/*`: admin-only menüpont CRUD
+- `/api/public/menus/{code}`: publikus, fa struktúrájú menülekérdezés
 
 ## 2. Indítás és globális konfiguráció
 
@@ -57,6 +60,10 @@ Aktuális migrációk:
 - `V4__user_registration_state.sql`
 - `V5__app_sessions.sql`
 - `V6__rate_limits.sql`
+- `V7__pages.sql`
+- `V8__media_library.sql`
+- `V9__menus.sql`
+- `V10__menu_item_targets_and_default_menus.sql`
 
 ### `TransactionContext`
 
@@ -64,7 +71,7 @@ Thread-local request tranzakciós állapot. A `TransactionFilter` nyitja és zá
 
 ### `DaoRegistryListener` és `DaoRegistry`
 
-Induláskor regisztrálja a DAO-kat. Jelenleg a `User.class -> UserDaoImpl` mapping aktív. A servlet és service réteg ezen keresztül jut a user DAO-hoz.
+Induláskor regisztrálja a DAO-kat. Az aktív mappingek: `User`, `Page`, `Media`, `Menu` és `MenuItem`. A servlet és service réteg ezen keresztül jut a megfelelő DAO-khoz.
 
 ### `SecurityConfigListener`, `SecurityConfig`, `PasswordPolicyConfig`
 
@@ -293,6 +300,28 @@ Aktuális műveletek:
 
 Az admin jogosultságot a servlet külön ellenőrzi az `AuthenticatedUser.role == ADMIN` feltétellel.
 
+### Menü endpointok
+
+Az admin végpontok `ADMIN` jogosultságot igényelnek, a state-changing műveletekre a közös CSRF szabály érvényes.
+
+- `GET /api/menus`: menük listázása
+- `GET /api/menus/{id}`: egy menü lekérése
+- `POST /api/menus`: menü létrehozása
+- `PUT /api/menus/{id}`: menü módosítása
+- `DELETE /api/menus/{id}`: menü és menüpontjainak törlése
+- `GET /api/menus/{id}/items`: menüpontok lapos, rendezett listája
+- `POST /api/menu-items`: menüpont létrehozása
+- `PUT /api/menu-items/{id}`: menüpont módosítása
+- `DELETE /api/menu-items/{id}`: menüpont és gyermek-részfájának törlése
+
+A `GET /api/public/menus/{code}` publikus, autentikáció nélküli endpoint. Csak aktív menüt és látható elemeket ad vissza fa struktúrában. A válasz elemei tartalmazzák a `title`, `targetType`, `pageId`, `targetUrl` és `children` mezőket.
+
+Aktuális lokális `FOOTER` elemek:
+
+- `ÁSZF` -> PAGE, `aszf` oldal
+- `GDPR` -> PAGE, `gdpr` oldal
+- `Support` -> URL, `mailto:support@example.com`
+
 ## 9. DTO-k
 
 Auth DTO-k:
@@ -310,6 +339,13 @@ User DTO-k:
 - `CreateUserRequest`: admin user létrehozási request
 - `UpdateUserRequest`: admin user módosítási request
 - `UserResponse`: password hash nélküli user válasz
+
+Menü DTO-k:
+
+- `MenuResponse`, `CreateMenuRequest`, `UpdateMenuRequest`
+- `MenuItemResponse`, `CreateMenuItemRequest`, `UpdateMenuItemRequest`
+- `PublicMenuItemResponse`: rekurzív publikus faelem
+- a menüpont DTO-k a `targetType` és `targetUrl` mezőket is kezelik
 
 ## 10. Service réteg
 
@@ -333,6 +369,20 @@ Admin user management üzleti logika. Listáz, lekér, létrehoz, módosít, dea
 
 Admin media library üzleti logika. Listázza és lekéri a média metaadatokat, kezeli a multipart feltöltést, hard delete-et, valamint külön metódussal adja vissza a média bináris tartalmat. A sima `GET /api/media/{id}` csak JSON metaadatot ad, a `GET /api/media/{id}/content` pedig JSON envelope nélküli bináris választ küld `Content-Type`, `Content-Length` és `Content-Disposition: inline` headerekkel.
 
+### `MenuService`
+
+Admin menü CRUD üzleti logika. Validálja a kötelező `name` és `code` mezőket, biztosítja a code egyediségét, és DTO-ra mapeli a menüket. A `MAIN` és `FOOTER` alapmenüket a V10 migráció idempotensen létrehozza.
+
+### `MenuItemService`
+
+Menüpont CRUD, hierarchia-validáció és publikus faépítés. A parent csak ugyanahhoz a menühöz tartozhat, és ciklus nem hozható létre. A target normalizálása create és update esetén azonos:
+
+- `PAGE`: `pageId` kötelező, `targetUrl` mentéskor `null`
+- `URL`: `targetUrl` kötelező, trimelve tárolódik, `pageId` mentéskor `null`
+- hiányzó `targetType`: visszafelé kompatibilisen `PAGE`
+
+A publikus fa csak aktív menüt és látható elemeket ad vissza, `sortOrder`, majd id szerint rendezve.
+
 ### `PasswordPolicyValidator`
 
 A `PasswordPolicyConfig` alapján listázza a megsértett jelszó szabályokat, például `TOO_SHORT`, `MISSING_UPPERCASE`, `MISSING_DIGIT`.
@@ -341,6 +391,9 @@ A `PasswordPolicyConfig` alapján listázza a megsértett jelszó szabályokat, 
 
 - `AuthServiceException`
 - `UserServiceException`
+- `PageServiceException`
+- `MediaServiceException`
+- `MenuServiceException`
 
 A servlet réteg ezeket HTTP státuszra és egységes JSON hibára fordítja.
 
@@ -357,6 +410,13 @@ Generikus JDBC DAO alapimplementáció. Reflection és annotáció alapján ép�
 ### `UserDao` és `UserDaoImpl`
 
 User-specifikus DAO interfész és JDBC implementáció. A generikus CRUD műveletek mellett login név és email alapú keresést ad.
+
+### Menü DAO-k
+
+- `MenuDao` / `MenuDaoImpl`: generikus CRUD és `findByCode`
+- `MenuItemDao` / `MenuItemDaoImpl`: generikus CRUD, `findByMenuId` és `findRootItems`
+
+A `BaseDao` a `MenuItem` annotált `target_type` és `target_url` mezőit automatikusan kezeli INSERT, UPDATE, SELECT és row mapping során. Az enum adatbázisban a nevével (`PAGE`, `URL`) tárolódik.
 
 ### DAO annotációk
 
@@ -375,6 +435,10 @@ User-specifikus DAO interfész és JDBC implementáció. A generikus CRUD művel
 - `BaseEntity`: közös `id`
 - `AuditableEntity`: `createdAt`, `updatedAt`, `createdBy`, `updatedBy`
 - `User`: `users` táblára mappelt user entity
+- `Page`: `pages` táblára mappelt CMS oldal
+- `Media`: `media` táblára mappelt média metaadat
+- `Menu`: `menus` táblára mappelt menü
+- `MenuItem`: `menu_items` táblára mappelt hierarchikus menüpont
 
 ### User enumok és propertyk
 
@@ -382,6 +446,12 @@ User-specifikus DAO interfész és JDBC implementáció. A generikus CRUD művel
 - `RegistrationState`: `PENDING`, `EMAIL_VERIFICATION_REQUIRED`, `COMPLETED`, `REJECTED`
 - `UserProperty`: user query property konstansok
 - `AuditableProperty`: közös audit property konstansok auditálható entity-khez
+
+### Menü enumok és propertyk
+
+- `MenuItemTargetType`: `PAGE`, `URL`
+- `MenuProperty`: menü query property konstansok
+- `MenuItemProperty`: tartalmazza többek között a `TARGET_TYPE` és `TARGET_URL` propertyket
 
 ### Query modell
 
@@ -445,8 +515,13 @@ Aktuális JUnit tesztek:
 - `BaseDaoBooleanMappingTest`
 - `AppSessionConfigTest`
 - `MediaServiceTest`
+- `PageServiceTest`
+- `PageDaoImplTest`
+- `MenuServiceTest`
 
 A teszt logolási konfiguráció: `src/test/resources/logback-test.xml`.
+
+Aktuális ellenőrzött eredmény: 110 teszt, 0 hiba.
 
 ## 15. Docker, CI és futtatási környezet
 

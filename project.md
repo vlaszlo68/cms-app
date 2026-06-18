@@ -479,23 +479,37 @@ cms-app/
 |   |   |           |-- dao/
 |   |   |           |   |-- common/
 |   |   |           |   |   `-- annotations/
+|   |   |           |   |-- media/
+|   |   |           |   |-- menu/
+|   |   |           |   |-- page/
 |   |   |           |   `-- user/
 |   |   |           |-- dto/
 |   |   |           |   |-- auth/
-|   |   |           |   |-- user/
-|   |   |           |   `-- common/
+|   |   |           |   |-- common/
+|   |   |           |   |-- media/
+|   |   |           |   |-- menu/
+|   |   |           |   |-- page/
+|   |   |           |   `-- user/
 |   |   |           |-- model/
 |   |   |           |   |-- common/
-|   |   |           |   |   `-- annotations/
+|   |   |           |   |-- media/
+|   |   |           |   |-- menu/
+|   |   |           |   |-- page/
 |   |   |           |   `-- user/
 |   |   |           |-- service/
 |   |   |           |   |-- auth/
+|   |   |           |   |-- media/
+|   |   |           |   |-- menu/
+|   |   |           |   |-- page/
 |   |   |           |   |-- security/
 |   |   |           |   `-- user/
 |   |   |           `-- servlet/
 |   |   |               |-- auth/
 |   |   |               |-- filter/
 |   |   |               |-- health/
+|   |   |               |-- media/
+|   |   |               |-- menu/
+|   |   |               |-- page/
 |   |   |               `-- support/
 |   |   |-- resources/
 |   |   |   `-- db/
@@ -575,6 +589,10 @@ Package conventions:
 ## Current Backend Status
 
 - `User`, `UserDao`, `UserDaoImpl`, `AuthService`, `AuthServiceException`, `DatabaseConfig` already exist
+- Page, Media, Menu, and MenuItem modules are implemented through the model, DAO, service, DTO, and servlet layers.
+- Menu items support `PAGE` and `URL` targets. PAGE targets persist `pageId` and clear `targetUrl`; URL targets persist `targetUrl` and clear `pageId`.
+- The public menu tree API is independent from Page, Media, and Template implementations.
+- Startup migrations ensure the `MAIN` and `FOOTER` menus exist.
 - `User` currently has `role`, `active`, and `registrationState` fields in addition to identity and credential fields
 - user enum models currently include `UserRole` and `RegistrationState`
 - generic DAO CRUD, `QuerySpec` filtering/sorting/join support, and custom SQL helpers are implemented in `BaseDao`
@@ -784,6 +802,36 @@ Admin-only media library endpoints live under `/api/media`.
 
 The current local storage mode is configured through `media.storage.type`. `DATABASE` stores binary content in `media_contents`; `FILESYSTEM` stores files under `media.filesystem.path`. `MINIO` and `S3` are declared storage types but are not implemented yet.
 
+### Menu endpoints
+
+Administrator menu CRUD endpoints require an authenticated `ADMIN` session. State-changing requests also require the normal CSRF header.
+
+- `GET /api/menus`: lists menus.
+- `GET /api/menus/{id}`: returns one menu.
+- `POST /api/menus`: creates a menu.
+- `PUT /api/menus/{id}`: updates a menu.
+- `DELETE /api/menus/{id}`: deletes a menu and its items.
+- `GET /api/menus/{id}/items`: returns the flat, ordered item list.
+- `POST /api/menu-items`: creates a menu item.
+- `PUT /api/menu-items/{id}`: updates a menu item.
+- `DELETE /api/menu-items/{id}`: deletes a menu item and its child subtree.
+
+Target normalization:
+
+- `PAGE`: requires `pageId`; `targetUrl` is stored as `null`.
+- `URL`: requires a non-blank `targetUrl`; `pageId` is stored as `null`.
+- missing `targetType` is interpreted as `PAGE` for backward compatibility.
+
+`GET /api/public/menus/{code}` is authentication-free and returns the active menu as a visible, ordered tree. Public items contain `title`, `targetType`, `pageId`, `targetUrl`, and `children`.
+
+`V9__menus.sql` creates the menu tables. `V10__menu_item_targets_and_default_menus.sql` adds target support and idempotently creates `MAIN` and `FOOTER`.
+
+Current local `FOOTER` content:
+
+- `ÁSZF` -> PAGE with slug `aszf`
+- `GDPR` -> PAGE with slug `gdpr`
+- `Support` -> URL `mailto:support@example.com`
+
 Current filter responsibilities:
 
 | Filter | Scope | Responsibility |
@@ -793,7 +841,7 @@ Current filter responsibilities:
 | `CorsFilter` | `/*` | Handles allowed origins and `OPTIONS` preflight. |
 | `SecurityHeadersFilter` | `/*` | Adds no-store cache and browser hardening headers. |
 | `CharacterEncodingFilter` | `/*` | Sets UTF-8 request and response encoding. |
-| `AuthFilter` | `/api/*` | Requires authenticated session except public auth paths. |
+| `AuthFilter` | `/api/*` | Requires authenticated session except public auth paths and `/api/public/*`. |
 | `AppSessionContextFilter` | `/*` | Copies selected application session data into request-local `SessionContext`. |
 | `CsrfFilter` | `/api/*` | Requires CSRF token for state-changing API requests. |
 | `TransactionFilter` | `/*` | Wraps request processing in DB transaction scope. |
@@ -928,7 +976,7 @@ Testing notes:
 
 - `mvn test` runs DB-backed DAO tests
 - `mvn package` also runs tests unless skipped
-- current verified test count: 101
+- current verified test count: 110
 - PostgreSQL schema comes from app startup migrations in `src/main/resources/db/migration/`
 - tests clean up their own `dao_test_` user data and temporary boolean test table
 
