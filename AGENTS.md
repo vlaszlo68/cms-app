@@ -9,10 +9,10 @@ Edit ONLY in:
 - src/main/webapp/
 
 You may also read project instruction files from:
-- agent.md
 - project.md
-- SESSION_CONTEXT.md
 - skills/
+
+Read `project.md` when a task touches backend architecture, API contracts, database migrations, deployment/runtime assumptions, or when current behavior is unclear from the immediate code context.
 
 Primary backend packages:
 - hu.laci.cms.backend.model
@@ -23,13 +23,7 @@ Primary backend packages:
 - hu.laci.cms.backend.config
 
 Current implemented auth HTTP entrypoints may differ from planned API routes in `project.md`.
-When continuing existing work, prefer actual current code and `SESSION_CONTEXT.md`, then align to planned routes only when explicitly requested.
-
-Current backend implementation snapshot:
-- Menu module: PAGE/URL target support, public tree endpoint, default MAIN and FOOTER menus.
-- Template and Site Settings modules: configuration-only templates, singleton site settings, page template selection.
-- PageType and PageBlock modules: CONTENT/BLOCK pages, ordered page blocks, optional includeBlocks response.
-- Latest verified test count: 123, with the backend currently stopped unless a turn explicitly redeploys it.
+When continuing existing work, prefer actual current code, then align to planned routes only when explicitly requested.
 
 Ignore:
 - frontend/
@@ -122,6 +116,12 @@ Do NOT:
 
 ---
 
+## Plan Mode Collaboration
+
+When working in Plan mode, build the plan collaboratively. Identify assumptions, scope boundaries, affected files, risks, and decision points before implementation. Ask for user input on architectural choices, API contracts, database schema changes, security/session behavior, deletion/renaming, or broad refactors. Do not ask for approval on trivial implementation details when the existing code pattern clearly determines the choice.
+
+---
+
 ## Output Style
 
 - Prefer working code over explanation
@@ -142,7 +142,3 @@ Use that file as the project-specific review checklist in addition to the rules 
 ## When Uncertain
 
 Ask before making assumptions.
-
-## Session Continuity
-
-If present, read `SESSION_CONTEXT.md` at the start of a new session to recover the latest implementation state, local setup notes, and verified runtime behavior.

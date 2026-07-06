@@ -525,12 +525,12 @@ cms-app/
 |   |-- postgres/
 |   `-- tomcat/
 |-- skills/
-|-- SESSION_CONTEXT.md
+|-- AGENTS.md
+|-- cluster-jdbc-todo.md
 |-- docker-compose.yml
 |-- Jenkinsfile
 |-- pom.xml
-|-- project.md
-`-- agent.md
+`-- project.md
 ```
 
 ---
@@ -946,6 +946,8 @@ Exposed CORS response headers:
 - current compose design includes:
   - `postgres`
   - `tomcat`
+  - frontend build container for the adjacent `../frontend` project
+  - Nginx reverse/static server
   - `jenkins`
 
 Note:
@@ -962,12 +964,15 @@ Docker Compose services:
 | --- | --- | --- |
 | `postgres` | `cms-postgres` | PostgreSQL 15 database with `cms_db`. |
 | `tomcat` | `cms-tomcat` | Runs the packaged WAR on Tomcat. |
+| frontend build container | compose-defined | Builds the adjacent React frontend project. |
+| Nginx | compose-defined | Serves frontend static assets and reverse-proxies backend API traffic. |
 | `jenkins` | `cms-jenkins` | CI build/deploy runner. |
 
 Important ports:
 
 - PostgreSQL host port: `5433` mapped to container `5432`
 - Tomcat host port: `8081` mapped to container `8080`
+- Nginx host port: `8083`
 - Jenkins host port: `8082` mapped to container `8080`
 
 Typical Docker commands:
@@ -990,7 +995,10 @@ Jenkins note:
 
 ## Working Notes
 
-- `SESSION_CONTEXT.md` stores the latest implementation summary and local runtime state for follow-up sessions
+- Root documentation is intentionally small:
+  - `AGENTS.md` contains Codex agent operating rules.
+  - `project.md` is the canonical stable project context.
+  - `cluster-jdbc-todo.md` tracks the remaining JDBC cluster validation work.
 - frontend handoff documents were removed from this repo after being transferred to the separate frontend repository
 - keep `project.md` focused on stable project context and intended architecture
 - keep machine-specific or temporary setup details out of this file unless they become permanent project conventions
@@ -1037,5 +1045,4 @@ Testing notes:
 - Implement feature parts separately:
   - model -> DAO -> service -> servlet
 - Avoid large one-step implementations
-- For session-to-session continuity, update `SESSION_CONTEXT.md`.
 - For durable architecture/project conventions, update this file.
