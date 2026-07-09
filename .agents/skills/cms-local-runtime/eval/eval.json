@@ -1,0 +1,94 @@
+{
+  "name": "cms-local-runtime",
+  "description": "Manual eval cases for the local CMS backend runtime skill.",
+  "warning": "These evals start and stop the local Tomcat instance at C:\\Tomcat 9.0. Do not run blindly on a shared environment.",
+  "passCriteria": [
+    "The assistant uses the cms-local-runtime skill for local backend start/stop requests.",
+    "Startup uses Start-Process -FilePath \"C:\\Tomcat 9.0\\bin\\catalina.bat\" -ArgumentList \"start\".",
+    "Startup never directly invokes & \"C:\\Tomcat 9.0\\bin\\catalina.bat\" start.",
+    "The Start-Process startup command is the final tool call.",
+    "After the Start-Process tool call returns, the assistant immediately sends the final response.",
+    "No healthcheck, file read, todo/status update, or extra command runs after the startup Start-Process call unless explicitly requested before startup.",
+    "CAPTCHA is disabled only when explicitly requested for that startup.",
+    "If CAPTCHA was disabled for startup, stop flow restores both CAPTCHA flags to true in src/main/webapp/WEB-INF/web.xml."
+  ],
+  "cases": [
+    {
+      "name": "normal-startup",
+      "prompt": "indítsd el az alkalmazást",
+      "expected": [
+        "Build with mvn package -DskipTests.",
+        "Redeploy target/cms-app.war to C:\\Tomcat 9.0\\webapps\\cms-app.war.",
+        "Do not set CAPTCHA flags to false.",
+        "Start Tomcat with detached Start-Process.",
+        "Final response is exactly or effectively: Az alkalmazás elindult."
+      ],
+      "failIf": [
+        "CAPTCHA is disabled.",
+        "Direct catalina.bat start invocation is used instead of Start-Process.",
+        "Any tool call runs after Start-Process.",
+        "The prompt is not returned immediately after startup."
+      ]
+    },
+    {
+      "name": "startup-with-captcha-disabled",
+      "prompt": "indítsd el az alkalmazást kikapcsolt captcha-val",
+      "expected": [
+        "Set captcha.login.enabled=false in src/main/webapp/WEB-INF/web.xml.",
+        "Set captcha.registration.enabled=false in src/main/webapp/WEB-INF/web.xml.",
+        "Build with mvn package -DskipTests.",
+        "Redeploy target/cms-app.war to C:\\Tomcat 9.0\\webapps\\cms-app.war.",
+        "Start Tomcat with detached Start-Process.",
+        "Final response is exactly or effectively: Az alkalmazás elindult. Captcha kikapcsolva."
+      ],
+      "failIf": [
+        "CAPTCHA remains enabled in source before build.",
+        "Direct catalina.bat start invocation is used instead of Start-Process.",
+        "Any tool call runs after Start-Process.",
+        "The prompt is not returned immediately after startup."
+      ]
+    },
+    {
+      "name": "stop-after-captcha-disabled-startup",
+      "prompt": "állítsd le az alkalmazást",
+      "precondition": "The most recent startup explicitly disabled CAPTCHA.",
+      "expected": [
+        "Stop Tomcat with C:\\Tomcat 9.0\\bin\\catalina.bat stop using local Tomcat env vars.",
+        "Restore captcha.login.enabled=true in src/main/webapp/WEB-INF/web.xml.",
+        "Restore captcha.registration.enabled=true in src/main/webapp/WEB-INF/web.xml.",
+        "Send a concise final response."
+      ],
+      "failIf": [
+        "The stop flow leaves either CAPTCHA flag as false.",
+        "Unrelated files are modified."
+      ]
+    },
+    {
+      "name": "stop-after-normal-startup",
+      "prompt": "állítsd le az alkalmazást",
+      "precondition": "The most recent startup did not explicitly disable CAPTCHA.",
+      "expected": [
+        "Stop Tomcat with C:\\Tomcat 9.0\\bin\\catalina.bat stop using local Tomcat env vars.",
+        "Do not change CAPTCHA flags unless they are unexpectedly false and the user asks to restore them.",
+        "Send a concise final response."
+      ],
+      "failIf": [
+        "CAPTCHA is modified unnecessarily.",
+        "Unrelated files are modified."
+      ]
+    },
+    {
+      "name": "ambiguous-captcha-mention",
+      "prompt": "indítsd el az alkalmazást, a captcha állapotát ne piszkáld",
+      "expected": [
+        "Treat this as normal startup.",
+        "Do not disable CAPTCHA.",
+        "Start with detached Start-Process as the final tool call.",
+        "Final response is exactly or effectively: Az alkalmazás elindult."
+      ],
+      "failIf": [
+        "CAPTCHA is disabled just because the prompt mentions CAPTCHA."
+      ]
+    }
+  ]
+}

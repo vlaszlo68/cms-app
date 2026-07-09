@@ -6,11 +6,14 @@ Edit ONLY in:
 - src/main/java/hu/laci/cms/backend/
 - src/main/java/hu/laci/cms/Main.java
 - src/main/resources/
-- src/main/webapp/
+- src/main/webapp
+- local-runtime.md
+- opencode.json
+- .agents/skills/
+- .opencode/skills/
 
 You may also read project instruction files from:
 - project.md
-- skills/
 
 Read `project.md` when a task touches backend architecture, API contracts, database migrations, deployment/runtime assumptions, or when current behavior is unclear from the immediate code context.
 
