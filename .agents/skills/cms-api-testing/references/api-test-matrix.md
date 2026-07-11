@@ -44,7 +44,7 @@ The script should create test entities with a unique `codex-api-test-*` prefix a
 
 | Surface | Create | Read | Update | Delete/Cleanup | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Users | `POST /api/users` | `GET /api/users/{id}` | `PUT /api/users/{id}` | `DELETE /api/users/{id}` | Admin only, use `USER` role for created test users |
+| Users | `POST /api/users` | `GET /api/users/{id}` | `PUT /api/users/{id}` | `DELETE /api/users/{id}` | Admin only, use `USER` role for created test users; delete soft-deactivates users |
 | Pages | `POST /api/pages` | `GET /api/pages/{id}` | `PUT /api/pages/{id}` | `DELETE /api/pages/{id}` | Use `BLOCK` when also testing page blocks |
 | Page blocks | `POST /api/page-blocks` | `GET /api/page-blocks/{id}` | `PUT /api/page-blocks/{id}` | `DELETE /api/page-blocks/{id}` | Requires a page id |
 | Menus | `POST /api/menus` | `GET /api/menus/{id}` | `PUT /api/menus/{id}` | `DELETE /api/menus/{id}` | Deleting a menu deletes its items |
@@ -61,7 +61,7 @@ Strict destructive assertions:
 | Read-after-create bodies | returned `data.id` matches the created id |
 | Update bodies | returned `data.id` matches the updated id, and updated fields match where the endpoint returns them |
 | Media content | response body is non-empty |
-| Cleanup verification | after delete, `GET /api/users/{id}`, `/api/pages/{id}`, `/api/page-blocks/{id}`, `/api/menus/{id}`, and `/api/media/{id}` return `404`; deleted menu item is absent from `GET /api/menus/{menuId}/items` when the menu still exists; deleted template remains readable with `data.active=false` because template delete deactivates |
+| Cleanup verification | after delete, `GET /api/pages/{id}`, `/api/page-blocks/{id}`, `/api/menus/{id}`, and `/api/media/{id}` return `404`; deleted menu item is absent from `GET /api/menus/{menuId}/items` when the menu still exists; deleted user and template remain readable with `data.active=false` because those deletes deactivate |
 
 ## Auth And CAPTCHA Rules
 

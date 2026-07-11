@@ -141,7 +141,17 @@ function ConvertTo-JsonBody {
 }
 
 function Read-ErrorBody {
-    param([object] $Response)
+    param(
+        [object] $ErrorRecord,
+        [object] $Response
+    )
+
+    $hasErrorDetails = $null -ne $ErrorRecord -and
+            $null -ne $ErrorRecord.ErrorDetails -and
+            -not [string]::IsNullOrWhiteSpace($ErrorRecord.ErrorDetails.Message)
+    if ($hasErrorDetails) {
+        return [string] $ErrorRecord.ErrorDetails.Message
+    }
 
     if ($null -eq $Response) {
         return ""
@@ -197,7 +207,7 @@ function Invoke-CmsApi {
         $response = $_.Exception.Response
         if ($null -ne $response) {
             $actualStatus = [int] $response.StatusCode
-            $content = Read-ErrorBody $response
+            $content = Read-ErrorBody $_ $response
         } else {
             Add-Result $Name $ExpectedStatus $null $false $_.Exception.Message
             return $null
@@ -623,9 +633,13 @@ function Cleanup-Destructive {
     if ($null -ne $script:created.UserId) {
         $deletedId = $script:created.UserId
         Assert-NotLoginUser $script:created.UserId "delete"
-        Invoke-CmsApi "Delete user" "DELETE" "/api/users/$($script:created.UserId)" 200 $null $headers | Out-Null
+        $deletedUser = Invoke-CmsApi "Delete user" "DELETE" "/api/users/$($script:created.UserId)" 200 $null $headers
         if ($script:Strict) {
-            Invoke-CmsApi "Strict verify user deleted" "GET" "/api/users/$deletedId" 404 | Out-Null
+            Test-ResponseId "Strict delete user id" $deletedUser $deletedId
+            Test-StrictCondition "Strict delete user inactive" ($false -eq $deletedUser.data.active) "Expected deleted user to be inactive."
+            $readDeletedUser = Invoke-CmsApi "Strict verify user deactivated" "GET" "/api/users/$deletedId" 200
+            Test-ResponseId "Strict deactivated user id" $readDeletedUser $deletedId
+            Test-StrictCondition "Strict deactivated user inactive" ($false -eq $readDeletedUser.data.active) "Expected deactivated user to remain inactive."
         }
     }
 }
