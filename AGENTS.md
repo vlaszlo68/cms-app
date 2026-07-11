@@ -70,6 +70,20 @@ When building a feature:
 
 ---
 
+## API Testing Workflow
+
+When a backend change adds, removes, or changes API endpoints, request/response DTOs, auth/session/CSRF/CAPTCHA behavior, or CRUD contracts, check whether `.agents/skills/cms-api-testing/` must be updated.
+
+Update the relevant part:
+- `SKILL.md` for workflow or safety-rule changes
+- `references/api-test-matrix.md` for endpoint contracts and expected behavior
+- `scripts/smoke-api.ps1` for repeatable API checks
+- `eval/eval.json` for expected agent behavior
+
+Internal DAO/service changes that do not affect HTTP behavior usually do not require skill updates.
+
+---
+
 ## Database Rules
 
 - Prefer ANSI SQL where possible

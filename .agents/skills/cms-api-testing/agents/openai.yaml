@@ -1,0 +1,4 @@
+interface:
+  display_name: "CMS API Testing"
+  short_description: "Smoke and CRUD API checks for CMS"
+  default_prompt: "Use $cms-api-testing to ask which CMS API test mode to run, then execute the selected checks."
