@@ -2,6 +2,12 @@
 
 Base URL for local standalone Tomcat: `http://localhost:8080/cms-app`.
 
+## Strictness
+
+Standard checks verify expected HTTP status codes and the basic login/session/CSRF flow.
+
+Strict checks are optional and must be selected before the test starts. Strict mode adds response-body assertions and, for destructive mode, post-cleanup read checks proving test-created records are no longer readable.
+
 ## Non-Destructive Mode
 
 | Step | Request | Expected |
@@ -17,6 +23,18 @@ Base URL for local standalone Tomcat: `http://localhost:8080/cms-app`.
 | Media metadata read | `GET /api/media` | `200` for admin |
 | Site settings read | `GET /api/site-settings` | `200` for admin |
 | Logout | `POST /api/auth/logout` with `X-CSRF-Token` | `200`, message `Logged out` |
+
+Strict non-destructive assertions:
+
+| Assertion | Expected |
+| --- | --- |
+| Health body | contains `Hello CMS` |
+| Auth config envelope | `success=true`, CAPTCHA flags present, password policy present |
+| Unauthenticated `/me` envelope | `success=false`, error object present |
+| Login body | `success=true`, matching `data.loginName`, `data.role=ADMIN`, non-empty `data.csrfToken` |
+| Session restore body | `success=true`, matching authenticated user shape, non-empty `data.csrfToken` |
+| Admin list bodies | common success envelope, list-like `data` where applicable |
+| Logout body | `success=true`, `data.message=Logged out` |
 
 ## Destructive Mode
 
@@ -34,6 +52,16 @@ The script should create test entities with a unique `codex-api-test-*` prefix a
 | Templates | `POST /api/templates` | `GET /api/templates/{id}` | `PUT /api/templates/{id}` | `DELETE /api/templates/{id}` | Delete deactivates templates |
 | Media | `POST /api/media` multipart | `GET /api/media/{id}` and `/content` | Not exposed | `DELETE /api/media/{id}` | API exposes create/read/delete, not update |
 | Site settings | Not exposed | `GET /api/site-settings` | Not run by default | Not run by default | Singleton settings record, not normal CRUD; do not update it during standard destructive mode because the row was not created by the test |
+
+Strict destructive assertions:
+
+| Assertion | Expected |
+| --- | --- |
+| Created entity bodies | common success envelope and `data.id` present |
+| Read-after-create bodies | returned `data.id` matches the created id |
+| Update bodies | returned `data.id` matches the updated id, and updated fields match where the endpoint returns them |
+| Media content | response body is non-empty |
+| Cleanup verification | after delete, `GET /api/users/{id}`, `/api/pages/{id}`, `/api/page-blocks/{id}`, `/api/menus/{id}`, and `/api/media/{id}` return `404`; deleted menu item is absent from `GET /api/menus/{menuId}/items` when the menu still exists; deleted template remains readable with `data.active=false` because template delete deactivates |
 
 ## Auth And CAPTCHA Rules
 

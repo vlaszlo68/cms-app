@@ -10,6 +10,8 @@ param(
 
     [switch] $ConfirmDestructive,
 
+    [switch] $Strict,
+
     [int] $TimeoutSec = 10
 )
 
@@ -51,6 +53,85 @@ function Add-Result {
         Passed = $Passed
         Detail = $Detail
     })
+}
+
+function Add-AssertionResult {
+    param(
+        [string] $Name,
+        [bool] $Passed,
+        [string] $Detail = ""
+    )
+
+    $actual = 0
+    if ($Passed) {
+        $actual = 1
+    }
+
+    Add-Result $Name 1 $actual $Passed $Detail
+}
+
+function Test-StrictCondition {
+    param(
+        [string] $Name,
+        [bool] $Condition,
+        [string] $FailureDetail
+    )
+
+    if (-not $script:Strict) {
+        return
+    }
+
+    Add-AssertionResult $Name $Condition $FailureDetail
+    if (-not $Condition) {
+        throw "Strict assertion failed: $Name. $FailureDetail"
+    }
+}
+
+function Test-SuccessEnvelope {
+    param(
+        [string] $Name,
+        [object] $Response
+    )
+
+    Test-StrictCondition $Name ($null -ne $Response -and $true -eq $Response.success -and $null -ne $Response.data) "Expected success=true with data."
+}
+
+function Test-ErrorEnvelope {
+    param(
+        [string] $Name,
+        [object] $Response
+    )
+
+    Test-StrictCondition $Name ($null -ne $Response -and $false -eq $Response.success -and $null -ne $Response.error) "Expected success=false with error."
+}
+
+function Test-ResponseId {
+    param(
+        [string] $Name,
+        [object] $Response,
+        [long] $ExpectedId
+    )
+
+    $actualId = $null
+    if ($null -ne $Response -and $null -ne $Response.data -and $null -ne $Response.data.id) {
+        $actualId = [long] $Response.data.id
+    }
+
+    Test-StrictCondition $Name ($null -ne $actualId -and $actualId -eq $ExpectedId) "Expected data.id $ExpectedId but got $actualId."
+}
+
+function Test-ListEnvelope {
+    param(
+        [string] $Name,
+        [object] $Response
+    )
+
+    $isList = $false
+    if ($null -ne $Response -and $null -ne $Response.data) {
+        $isList = ($Response.data -is [System.Array]) -or ($Response.data -is [System.Collections.IEnumerable])
+    }
+
+    Test-StrictCondition $Name ($null -ne $Response -and $true -eq $Response.success -and $isList) "Expected success=true with list-like data."
 }
 
 function ConvertTo-JsonBody {
@@ -141,6 +222,124 @@ function Invoke-CmsApi {
     }
 }
 
+function Get-ResultCategory {
+    param([object] $Result)
+
+    $name = [string] $Result.Name
+    if ($name -match "Script error|Cleanup error|Logout error") {
+        return "Errors"
+    }
+    if ($name -match "Strict verify|absent after delete|deactivated|delete template inactive|Delete ") {
+        return "Cleanup"
+    }
+    if ($name -like "Strict *") {
+        return "Strict assertions"
+    }
+    if ($name -match "Health|Auth config|/me|Login|Logout") {
+        return "Auth/session"
+    }
+    if ($name -match "^Read pages$|^Read templates$|^Read menus$|^Read media$|^Read site settings$") {
+        return "Admin reads"
+    }
+    if ($name -match "Create |Read user|Read template|Read page|Read page block|Read menu|Read media item|Read media content|Update |Delete ") {
+        return "CRUD"
+    }
+    return "Other"
+}
+
+function Get-ActualResultLabel {
+    param([object] $Result)
+
+    if ($null -eq $Result.Actual) {
+        return "No response"
+    }
+    if ($Result.Name -like "Strict *" -and $Result.Expected -eq 1 -and $Result.Actual -eq 1) {
+        return "Assertion passed"
+    }
+    if ($Result.Name -like "Strict *" -and $Result.Expected -eq 1 -and $Result.Actual -eq 0) {
+        return "Assertion failed"
+    }
+    return [string] $Result.Actual
+}
+
+function New-StatsRow {
+    param(
+        [string] $Name,
+        [int] $Total,
+        [int] $Passed,
+        [int] $Failed
+    )
+
+    $passRate = 0
+    if ($Total -gt 0) {
+        $passRate = [Math]::Round(($Passed / $Total) * 100, 2)
+    }
+
+    return [pscustomobject]@{
+        Name = $Name
+        Total = $Total
+        Passed = $Passed
+        Failed = $Failed
+        PassRatePercent = $passRate
+    }
+}
+
+function Write-TestStatistics {
+    $all = @($script:results.ToArray())
+    $failed = @($all | Where-Object { -not $_.Passed })
+    $passed = $all.Count - $failed.Count
+    $cleanupStatus = "Skipped"
+    if ($script:Mode -eq "Destructive") {
+        if (@($all | Where-Object { $_.Name -match "Cleanup error" }).Count -gt 0) {
+            $cleanupStatus = "Failed"
+        } elseif (@($all | Where-Object { $_.Name -match "^Delete " }).Count -gt 0) {
+            $cleanupStatus = "Run"
+        } else {
+            $cleanupStatus = "Not reached"
+        }
+    }
+
+    ""
+    "Detailed API Test Statistics"
+    [pscustomobject]@{
+        Mode = $script:Mode
+        Strict = [bool] $script:Strict
+        RunId = $script:runId
+        Total = $all.Count
+        Passed = $passed
+        Failed = $failed.Count
+        PassRatePercent = if ($all.Count -gt 0) { [Math]::Round(($passed / $all.Count) * 100, 2) } else { 0 }
+        CleanupStatus = $cleanupStatus
+    } | Format-Table -AutoSize
+
+    "By category"
+    $all |
+            Group-Object { Get-ResultCategory $_ } |
+            Sort-Object Name |
+            ForEach-Object {
+                $items = @($_.Group)
+                $itemFailures = @($items | Where-Object { -not $_.Passed })
+                New-StatsRow $_.Name $items.Count ($items.Count - $itemFailures.Count) $itemFailures.Count
+            } |
+            Format-Table -AutoSize
+
+    "By actual status or assertion result"
+    $all |
+            Group-Object { Get-ActualResultLabel $_ } |
+            Sort-Object Name |
+            ForEach-Object {
+                $items = @($_.Group)
+                $itemFailures = @($items | Where-Object { -not $_.Passed })
+                New-StatsRow $_.Name $items.Count ($items.Count - $itemFailures.Count) $itemFailures.Count
+            } |
+            Format-Table -AutoSize
+
+    if ($failed.Count -gt 0) {
+        "Failures"
+        $failed | Select-Object Name, Expected, Actual, Detail | Format-Table -AutoSize
+    }
+}
+
 function Invoke-CmsMultipartUpload {
     param(
         [string] $Name,
@@ -193,9 +392,16 @@ function Assert-NotLoginUser {
 }
 
 function Test-NonDestructive {
-    Invoke-CmsApi "Health" "GET" "/hello" 200 | Out-Null
+    $health = Invoke-CmsApi "Health" "GET" "/hello" 200
+    $healthText = $health | ConvertTo-Json -Depth 5 -Compress
+    Test-StrictCondition "Strict health body" ($healthText.Contains("Hello CMS")) "Expected body to contain Hello CMS."
+
     $config = Invoke-CmsApi "Auth config" "GET" "/api/auth/config" 200
-    Invoke-CmsApi "Unauthenticated /me" "GET" "/api/auth/me" 401 | Out-Null
+    Test-SuccessEnvelope "Strict auth config envelope" $config
+    Test-StrictCondition "Strict auth config fields" ($null -ne $config.data.loginCaptchaEnabled -and $null -ne $config.data.registrationCaptchaEnabled -and $null -ne $config.data.passwordPolicy) "Expected CAPTCHA flags and passwordPolicy."
+
+    $unauthenticatedMe = Invoke-CmsApi "Unauthenticated /me" "GET" "/api/auth/me" 401
+    Test-ErrorEnvelope "Strict unauthenticated /me envelope" $unauthenticatedMe
 
     if ($null -ne $config -and $true -eq $config.data.loginCaptchaEnabled) {
         throw "Login CAPTCHA is enabled. Start local runtime with CAPTCHA disabled or add CAPTCHA solving support before login tests."
@@ -210,17 +416,27 @@ function Test-NonDestructive {
     if ($null -eq $login -or $null -eq $login.data.csrfToken) {
         throw "Login succeeded status check did not return data.csrfToken."
     }
+    Test-SuccessEnvelope "Strict login envelope" $login
+    Test-StrictCondition "Strict login identity" ($login.data.loginName -eq $script:LoginName -and $login.data.role -eq "ADMIN" -and -not [string]::IsNullOrWhiteSpace([string] $login.data.csrfToken)) "Expected matching admin login with csrfToken."
 
     $script:csrfToken = [string] $login.data.csrfToken
     if ($null -ne $login.data.id) {
         $script:loginUserId = [long] $login.data.id
     }
-    Invoke-CmsApi "Authenticated /me" "GET" "/api/auth/me" 200 | Out-Null
-    Invoke-CmsApi "Read pages" "GET" "/api/pages" 200 | Out-Null
-    Invoke-CmsApi "Read templates" "GET" "/api/templates" 200 | Out-Null
-    Invoke-CmsApi "Read menus" "GET" "/api/menus" 200 | Out-Null
-    Invoke-CmsApi "Read media" "GET" "/api/media" 200 | Out-Null
-    Invoke-CmsApi "Read site settings" "GET" "/api/site-settings" 200 | Out-Null
+    $me = Invoke-CmsApi "Authenticated /me" "GET" "/api/auth/me" 200
+    Test-SuccessEnvelope "Strict authenticated /me envelope" $me
+    Test-StrictCondition "Strict authenticated /me identity" ($me.data.loginName -eq $script:LoginName -and $me.data.role -eq "ADMIN" -and -not [string]::IsNullOrWhiteSpace([string] $me.data.csrfToken)) "Expected matching admin session with csrfToken."
+
+    $pages = Invoke-CmsApi "Read pages" "GET" "/api/pages" 200
+    Test-ListEnvelope "Strict pages list envelope" $pages
+    $templates = Invoke-CmsApi "Read templates" "GET" "/api/templates" 200
+    Test-ListEnvelope "Strict templates list envelope" $templates
+    $menus = Invoke-CmsApi "Read menus" "GET" "/api/menus" 200
+    Test-ListEnvelope "Strict menus list envelope" $menus
+    $media = Invoke-CmsApi "Read media" "GET" "/api/media" 200
+    Test-ListEnvelope "Strict media list envelope" $media
+    $siteSettings = Invoke-CmsApi "Read site settings" "GET" "/api/site-settings" 200
+    Test-SuccessEnvelope "Strict site settings envelope" $siteSettings
 }
 
 function Test-Destructive {
@@ -237,11 +453,15 @@ function Test-Destructive {
     }
     $user = Invoke-CmsApi "Create user" "POST" "/api/users" 201 $userBody $headers
     $script:created.UserId = Get-DataId $user
+    Test-SuccessEnvelope "Strict create user envelope" $user
     Assert-NotLoginUser $script:created.UserId "update or delete"
-    Invoke-CmsApi "Read user" "GET" "/api/users/$($script:created.UserId)" 200 | Out-Null
+    $readUser = Invoke-CmsApi "Read user" "GET" "/api/users/$($script:created.UserId)" 200
+    Test-ResponseId "Strict read user id" $readUser $script:created.UserId
     $userBody.userName = "$script:runId User Updated"
     Assert-NotLoginUser $script:created.UserId "update"
-    Invoke-CmsApi "Update user" "PUT" "/api/users/$($script:created.UserId)" 200 $userBody $headers | Out-Null
+    $updatedUser = Invoke-CmsApi "Update user" "PUT" "/api/users/$($script:created.UserId)" 200 $userBody $headers
+    Test-ResponseId "Strict update user id" $updatedUser $script:created.UserId
+    Test-StrictCondition "Strict update user value" ($updatedUser.data.userName -eq $userBody.userName) "Expected updated userName."
 
     $templateBody = @{
         code = ($script:runId + "-template").ToUpperInvariant().Replace("-", "_")
@@ -252,9 +472,13 @@ function Test-Destructive {
     }
     $template = Invoke-CmsApi "Create template" "POST" "/api/templates" 201 $templateBody $headers
     $script:created.TemplateId = Get-DataId $template
-    Invoke-CmsApi "Read template" "GET" "/api/templates/$($script:created.TemplateId)" 200 | Out-Null
+    Test-SuccessEnvelope "Strict create template envelope" $template
+    $readTemplate = Invoke-CmsApi "Read template" "GET" "/api/templates/$($script:created.TemplateId)" 200
+    Test-ResponseId "Strict read template id" $readTemplate $script:created.TemplateId
     $templateBody.name = "$script:runId template updated"
-    Invoke-CmsApi "Update template" "PUT" "/api/templates/$($script:created.TemplateId)" 200 $templateBody $headers | Out-Null
+    $updatedTemplate = Invoke-CmsApi "Update template" "PUT" "/api/templates/$($script:created.TemplateId)" 200 $templateBody $headers
+    Test-ResponseId "Strict update template id" $updatedTemplate $script:created.TemplateId
+    Test-StrictCondition "Strict update template value" ($updatedTemplate.data.name -eq $templateBody.name) "Expected updated template name."
 
     $pageBody = @{
         title = "$script:runId page"
@@ -270,9 +494,13 @@ function Test-Destructive {
     }
     $page = Invoke-CmsApi "Create page" "POST" "/api/pages" 201 $pageBody $headers
     $script:created.PageId = Get-DataId $page
-    Invoke-CmsApi "Read page" "GET" "/api/pages/$($script:created.PageId)" 200 | Out-Null
+    Test-SuccessEnvelope "Strict create page envelope" $page
+    $readPage = Invoke-CmsApi "Read page" "GET" "/api/pages/$($script:created.PageId)" 200
+    Test-ResponseId "Strict read page id" $readPage $script:created.PageId
     $pageBody.title = "$script:runId page updated"
-    Invoke-CmsApi "Update page" "PUT" "/api/pages/$($script:created.PageId)" 200 $pageBody $headers | Out-Null
+    $updatedPage = Invoke-CmsApi "Update page" "PUT" "/api/pages/$($script:created.PageId)" 200 $pageBody $headers
+    Test-ResponseId "Strict update page id" $updatedPage $script:created.PageId
+    Test-StrictCondition "Strict update page value" ($updatedPage.data.title -eq $pageBody.title) "Expected updated page title."
 
     $blockBody = @{
         pageId = $script:created.PageId
@@ -284,9 +512,13 @@ function Test-Destructive {
     }
     $block = Invoke-CmsApi "Create page block" "POST" "/api/page-blocks" 201 $blockBody $headers
     $script:created.PageBlockId = Get-DataId $block
-    Invoke-CmsApi "Read page block" "GET" "/api/page-blocks/$($script:created.PageBlockId)" 200 | Out-Null
+    Test-SuccessEnvelope "Strict create page block envelope" $block
+    $readBlock = Invoke-CmsApi "Read page block" "GET" "/api/page-blocks/$($script:created.PageBlockId)" 200
+    Test-ResponseId "Strict read page block id" $readBlock $script:created.PageBlockId
     $blockBody.title = "$script:runId block updated"
-    Invoke-CmsApi "Update page block" "PUT" "/api/page-blocks/$($script:created.PageBlockId)" 200 $blockBody $headers | Out-Null
+    $updatedBlock = Invoke-CmsApi "Update page block" "PUT" "/api/page-blocks/$($script:created.PageBlockId)" 200 $blockBody $headers
+    Test-ResponseId "Strict update page block id" $updatedBlock $script:created.PageBlockId
+    Test-StrictCondition "Strict update page block value" ($updatedBlock.data.title -eq $blockBody.title) "Expected updated page block title."
 
     $menuBody = @{
         name = "$script:runId menu"
@@ -295,9 +527,13 @@ function Test-Destructive {
     }
     $menu = Invoke-CmsApi "Create menu" "POST" "/api/menus" 201 $menuBody $headers
     $script:created.MenuId = Get-DataId $menu
-    Invoke-CmsApi "Read menu" "GET" "/api/menus/$($script:created.MenuId)" 200 | Out-Null
+    Test-SuccessEnvelope "Strict create menu envelope" $menu
+    $readMenu = Invoke-CmsApi "Read menu" "GET" "/api/menus/$($script:created.MenuId)" 200
+    Test-ResponseId "Strict read menu id" $readMenu $script:created.MenuId
     $menuBody.name = "$script:runId menu updated"
-    Invoke-CmsApi "Update menu" "PUT" "/api/menus/$($script:created.MenuId)" 200 $menuBody $headers | Out-Null
+    $updatedMenu = Invoke-CmsApi "Update menu" "PUT" "/api/menus/$($script:created.MenuId)" 200 $menuBody $headers
+    Test-ResponseId "Strict update menu id" $updatedMenu $script:created.MenuId
+    Test-StrictCondition "Strict update menu value" ($updatedMenu.data.name -eq $menuBody.name) "Expected updated menu name."
 
     $menuItemBody = @{
         menuId = $script:created.MenuId
@@ -311,14 +547,24 @@ function Test-Destructive {
     }
     $menuItem = Invoke-CmsApi "Create menu item" "POST" "/api/menu-items" 201 $menuItemBody $headers
     $script:created.MenuItemId = Get-DataId $menuItem
-    Invoke-CmsApi "Read menu items" "GET" "/api/menus/$($script:created.MenuId)/items" 200 | Out-Null
+    Test-SuccessEnvelope "Strict create menu item envelope" $menuItem
+    $readMenuItems = Invoke-CmsApi "Read menu items" "GET" "/api/menus/$($script:created.MenuId)/items" 200
+    Test-ListEnvelope "Strict read menu items envelope" $readMenuItems
+    $createdMenuItemId = $script:created.MenuItemId
+    $hasMenuItem = @($readMenuItems.data | Where-Object { [long] $_.id -eq $createdMenuItemId }).Count -gt 0
+    Test-StrictCondition "Strict read menu item presence" $hasMenuItem "Expected created menu item in menu item list."
     $menuItemBody.title = "$script:runId link updated"
-    Invoke-CmsApi "Update menu item" "PUT" "/api/menu-items/$($script:created.MenuItemId)" 200 $menuItemBody $headers | Out-Null
+    $updatedMenuItem = Invoke-CmsApi "Update menu item" "PUT" "/api/menu-items/$($script:created.MenuItemId)" 200 $menuItemBody $headers
+    Test-ResponseId "Strict update menu item id" $updatedMenuItem $script:created.MenuItemId
+    Test-StrictCondition "Strict update menu item value" ($updatedMenuItem.data.title -eq $menuItemBody.title) "Expected updated menu item title."
 
     $media = Invoke-CmsMultipartUpload "Create media" "/api/media" 201 "$script:runId.txt" "Temporary CMS API test media." "$script:runId media" $headers
     $script:created.MediaId = Get-DataId $media
-    Invoke-CmsApi "Read media item" "GET" "/api/media/$($script:created.MediaId)" 200 | Out-Null
-    Invoke-CmsApi "Read media content" "GET" "/api/media/$($script:created.MediaId)/content" 200 | Out-Null
+    Test-SuccessEnvelope "Strict create media envelope" $media
+    $readMedia = Invoke-CmsApi "Read media item" "GET" "/api/media/$($script:created.MediaId)" 200
+    Test-ResponseId "Strict read media id" $readMedia $script:created.MediaId
+    $mediaContent = Invoke-CmsApi "Read media content" "GET" "/api/media/$($script:created.MediaId)/content" 200
+    Test-StrictCondition "Strict media content body" (-not [string]::IsNullOrWhiteSpace([string] $mediaContent)) "Expected non-empty media content body."
 
 }
 
@@ -326,26 +572,61 @@ function Cleanup-Destructive {
     $headers = Get-CsrfHeaders
 
     if ($null -ne $script:created.MediaId) {
+        $deletedId = $script:created.MediaId
         Invoke-CmsApi "Delete media" "DELETE" "/api/media/$($script:created.MediaId)" 200 $null $headers | Out-Null
+        if ($script:Strict) {
+            Invoke-CmsApi "Strict verify media deleted" "GET" "/api/media/$deletedId" 404 | Out-Null
+        }
     }
     if ($null -ne $script:created.MenuItemId) {
+        $deletedId = $script:created.MenuItemId
+        $menuId = $script:created.MenuId
         Invoke-CmsApi "Delete menu item" "DELETE" "/api/menu-items/$($script:created.MenuItemId)" 200 $null $headers | Out-Null
+        if ($script:Strict -and $null -ne $menuId) {
+            $remainingItems = Invoke-CmsApi "Strict verify menu item deleted" "GET" "/api/menus/$menuId/items" 200
+            $stillPresent = @($remainingItems.data | Where-Object { [long] $_.id -eq $deletedId }).Count -gt 0
+            Test-StrictCondition "Strict menu item absent after delete" (-not $stillPresent) "Expected deleted menu item to be absent from menu item list."
+        }
     }
     if ($null -ne $script:created.MenuId) {
+        $deletedId = $script:created.MenuId
         Invoke-CmsApi "Delete menu" "DELETE" "/api/menus/$($script:created.MenuId)" 200 $null $headers | Out-Null
+        if ($script:Strict) {
+            Invoke-CmsApi "Strict verify menu deleted" "GET" "/api/menus/$deletedId" 404 | Out-Null
+        }
     }
     if ($null -ne $script:created.PageBlockId) {
+        $deletedId = $script:created.PageBlockId
         Invoke-CmsApi "Delete page block" "DELETE" "/api/page-blocks/$($script:created.PageBlockId)" 200 $null $headers | Out-Null
+        if ($script:Strict) {
+            Invoke-CmsApi "Strict verify page block deleted" "GET" "/api/page-blocks/$deletedId" 404 | Out-Null
+        }
     }
     if ($null -ne $script:created.PageId) {
+        $deletedId = $script:created.PageId
         Invoke-CmsApi "Delete page" "DELETE" "/api/pages/$($script:created.PageId)" 200 $null $headers | Out-Null
+        if ($script:Strict) {
+            Invoke-CmsApi "Strict verify page deleted" "GET" "/api/pages/$deletedId" 404 | Out-Null
+        }
     }
     if ($null -ne $script:created.TemplateId) {
-        Invoke-CmsApi "Delete template" "DELETE" "/api/templates/$($script:created.TemplateId)" 200 $null $headers | Out-Null
+        $deletedId = $script:created.TemplateId
+        $deletedTemplate = Invoke-CmsApi "Delete template" "DELETE" "/api/templates/$($script:created.TemplateId)" 200 $null $headers
+        if ($script:Strict) {
+            Test-ResponseId "Strict delete template id" $deletedTemplate $deletedId
+            Test-StrictCondition "Strict delete template inactive" ($false -eq $deletedTemplate.data.active) "Expected deleted template to be inactive."
+            $readDeletedTemplate = Invoke-CmsApi "Strict verify template deactivated" "GET" "/api/templates/$deletedId" 200
+            Test-ResponseId "Strict deactivated template id" $readDeletedTemplate $deletedId
+            Test-StrictCondition "Strict deactivated template inactive" ($false -eq $readDeletedTemplate.data.active) "Expected deactivated template to remain inactive."
+        }
     }
     if ($null -ne $script:created.UserId) {
+        $deletedId = $script:created.UserId
         Assert-NotLoginUser $script:created.UserId "delete"
         Invoke-CmsApi "Delete user" "DELETE" "/api/users/$($script:created.UserId)" 200 $null $headers | Out-Null
+        if ($script:Strict) {
+            Invoke-CmsApi "Strict verify user deleted" "GET" "/api/users/$deletedId" 404 | Out-Null
+        }
     }
 }
 
@@ -371,7 +652,9 @@ try {
 
     if (-not [string]::IsNullOrWhiteSpace($csrfToken)) {
         try {
-            Invoke-CmsApi "Logout" "POST" "/api/auth/logout" 200 $null (Get-CsrfHeaders) | Out-Null
+            $logout = Invoke-CmsApi "Logout" "POST" "/api/auth/logout" 200 $null (Get-CsrfHeaders)
+            Test-SuccessEnvelope "Strict logout envelope" $logout
+            Test-StrictCondition "Strict logout message" ($logout.data.message -eq "Logged out") "Expected logout message."
         } catch {
             $hadFailure = $true
             Add-Result "Logout error" 0 $null $false $_.Exception.Message
@@ -380,6 +663,7 @@ try {
 }
 
 $results | Format-Table -AutoSize
+Write-TestStatistics
 
 $failed = @($results | Where-Object { -not $_.Passed })
 if ($failed.Count -gt 0 -or $hadFailure) {
