@@ -19,13 +19,14 @@ import java.io.IOException;
  * Requires an authenticated HTTP session for protected API requests.
  * <p>
  * The filter expects the session attribute {@code user} to contain an
- * {@link AuthenticatedUser}. Login and logout endpoints are allowed through so
- * they can create or clear authentication state themselves.
+ * {@link AuthenticatedUser}. Public auth endpoints are allowed through so
+ * they can create, restore, report, or clear authentication state themselves.
  */
 public class AuthFilter implements Filter {
 
     private static final String LOGIN_PATH = "/api/auth/login";
     private static final String LOGOUT_PATH = "/api/auth/logout";
+    private static final String ME_PATH = "/api/auth/me";
     private static final String CONFIG_PATH = "/api/auth/config";
     private static final String REGISTER_PATH = "/api/auth/register";
     private static final String CAPTCHA_PATH = "/api/auth/captcha";
@@ -51,6 +52,7 @@ public class AuthFilter implements Filter {
         if (servletPath.startsWith("/api/public/")
                 || LOGIN_PATH.equals(servletPath)
                 || LOGOUT_PATH.equals(servletPath)
+                || ME_PATH.equals(servletPath)
                 || CONFIG_PATH.equals(servletPath)
                 || REGISTER_PATH.equals(servletPath)
                 || CAPTCHA_PATH.equals(servletPath)) {
