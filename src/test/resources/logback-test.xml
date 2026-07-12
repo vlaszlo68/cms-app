@@ -7,6 +7,7 @@
     </appender>
 
     <logger name="hu.laci.cms.backend.dao.common.BaseDao" level="OFF"/>
+    <logger name="hu.laci.cms.backend.servlet.filter.ExceptionHandlingFilter" level="OFF"/>
 
     <root level="WARN">
         <appender-ref ref="CONSOLE"/>
