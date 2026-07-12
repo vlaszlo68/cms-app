@@ -39,8 +39,8 @@ Strictness is independent from mode: `non-destructive strict` is allowed, and `d
 10. Use one `WebRequestSession` or equivalent cookie jar for login, authenticated calls, and logout.
 11. Extract `data.csrfToken` from login or `/api/auth/me`.
 12. Send `X-CSRF-Token` on state-changing authenticated calls.
-13. Report endpoint/assertion, expected status or assertion value, actual status or assertion value, and pass/fail.
-14. End every API test report with detailed statistics in table form. Include total checks, passed checks, failed checks, pass rate, selected mode, selected strictness, status/assertion distribution, category distribution, and cleanup status when destructive checks ran.
+13. Record endpoint/assertion, expected status or assertion value, actual status or assertion value, pass/fail, and detail where available. Include check-level rows only when the user explicitly asks for them; when checks fail, identify the failed checks in the overall-results table.
+14. End every API test report with detailed-statistics tables. Include total checks, passed checks, failed checks, pass rate, selected mode, selected strictness, status/assertion distribution, category distribution, and cleanup status when destructive checks ran.
 15. State whether strict checks were skipped or run.
 16. State whether destructive checks were skipped, run, cleaned up, or failed during cleanup.
 17. If the API test flow started or restarted the app with CAPTCHA disabled, stop the app through `cms-local-runtime` at the end of testing so both CAPTCHA flags are restored to enabled. Do not leave startup-only CAPTCHA disablement in the repo.
@@ -54,10 +54,18 @@ At minimum, include:
 - overall totals: total, passed, failed, pass rate, mode, strictness, and run id when available
 - distribution by category, such as auth/session, admin reads, CRUD, strict assertions, cleanup, and errors
 - distribution by actual HTTP status or assertion result
-- failed rows with detail when any check failed
+- failed-check details in the overall-results table when any check failed
 - destructive cleanup result: skipped, run and cleaned up, or failed during cleanup
 
-When using the bundled script, preserve or summarize the script's statistics tables in the final answer. If testing stops during preflight or CAPTCHA handling, report statistics for the checks actually performed.
+### Required Final Output Format
+
+For a completed API test, output exactly these three tables and no prose before or after them:
+
+1. **Overall results**: run ID, mode, strictness, total, passed, failed, pass rate, cleanup status, and failed-check details when applicable.
+2. **By category**: category, total, passed, and failed.
+3. **By actual status or assertion**: status/assertion result, total, passed, and failed.
+
+Do not add a check-level table, a prose summary, or other commentary unless the user explicitly asks for it. If testing stops during preflight or CAPTCHA handling, report the checks actually performed using the same three-table format.
 
 ## Script
 
