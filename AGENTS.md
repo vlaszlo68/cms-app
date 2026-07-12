@@ -7,8 +7,11 @@ Edit ONLY in:
 - src/main/java/hu/laci/cms/Main.java
 - src/main/resources/
 - src/main/webapp
+- src/test/java/
+- src/test/resources/
 - local-runtime.md
 - opencode.json
+- pom.xml (test dependencies and test-plugin configuration only)
 - .agents/skills/
 - .opencode/skills/
 
