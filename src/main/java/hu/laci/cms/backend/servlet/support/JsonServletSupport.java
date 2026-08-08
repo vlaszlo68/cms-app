@@ -1,6 +1,7 @@
 package hu.laci.cms.backend.servlet.support;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import hu.laci.cms.backend.dto.common.ApiErrorResponse;
 import hu.laci.cms.backend.dto.common.ApiResponse;
 
@@ -47,6 +48,23 @@ public abstract class JsonServletSupport extends HttpServlet {
     protected void writeJsonResponse(HttpServletResponse response, int status, Object payload)
             throws IOException {
         writeJson(response, status, ApiResponse.success(payload));
+    }
+
+    /**
+     * Writes a successful JSON response while retaining null-valued payload fields.
+     *
+     * @param response HTTP response
+     * @param status HTTP status code
+     * @param payload response payload
+     * @throws IOException when writing fails
+     */
+    protected void writeJsonResponseIncludingNulls(HttpServletResponse response, int status, Object payload)
+            throws IOException {
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        response.setStatus(status);
+        Gson nullSerializingGson = new GsonBuilder().serializeNulls().create();
+        response.getWriter().write(nullSerializingGson.toJson(ApiResponse.success(payload)));
     }
 
     /**

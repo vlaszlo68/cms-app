@@ -10,7 +10,7 @@
     "Non-destructive mode runs only health, auth config, unauthenticated /me, login, authenticated /me, read-only admin endpoints, and logout.",
     "Destructive mode requires explicit user intent and uses the script guard -Mode Destructive -ConfirmDestructive.",
     "Strict checks are optional, use the script guard -Strict, and do not replace the separate destructive confirmation requirement.",
-    "Destructive mode updates and deletes only records created during the same API test run with a codex-api-test-* prefix.",
+    "Destructive mode updates and deletes only records created during the same API test run with a codex-api-test-* prefix, and permanently removes every current-run test row before reporting cleanup success.",
     "The tester user is used only for login and is never updated, deleted, deactivated, approved, rejected, or otherwise mutated.",
     "Site settings are read in the normal smoke flow but are not updated during standard destructive CRUD mode because the singleton row was not created by the test.",
     "For normal API testing, CAPTCHA should be disabled for login and registration before the app starts, currently by setting the two web.xml context params through cms-local-runtime before packaging/startup.",
@@ -96,6 +96,7 @@
         "Create test entities with a unique codex-api-test-* prefix.",
         "Update only entities created during this same run.",
         "Delete only entities created during this same run.",
+        "Permanently remove current-run rows that the API soft-deletes, then verify those IDs no longer exist in the database.",
         "Report cleanup status.",
         "End with detailed statistics in table form, including cleanup status."
       ],
@@ -115,6 +116,7 @@
         "Run .agents\\skills\\cms-api-testing\\scripts\\smoke-api.ps1 -Mode Destructive -ConfirmDestructive -Strict when the local environment is appropriate.",
         "Run response-body assertions in addition to status checks.",
         "Verify cleanup with post-delete reads for test-created records.",
+        "Verify that current-run soft-deleted user and template rows are permanently removed from the database.",
         "Report strict checks as run.",
         "End with detailed statistics in table form, including strict assertion counts."
       ],

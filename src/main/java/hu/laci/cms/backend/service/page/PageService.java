@@ -4,6 +4,7 @@ import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
 import hu.laci.cms.backend.dto.page.PageListResponse;
+import hu.laci.cms.backend.dto.page.PublicPageResponse;
 import hu.laci.cms.backend.dto.page.PageResponse;
 import hu.laci.cms.backend.dto.page.UpdatePageRequest;
 import hu.laci.cms.backend.model.common.QuerySpec;
@@ -60,6 +61,35 @@ public class PageService {
         return pageDao.findBySlug(trim(slug))
                 .map(this::toResponse)
                 .orElseThrow(() -> new PageServiceException(PAGE_NOT_FOUND, "Page not found."));
+    }
+
+    /**
+     * Returns the limited public representation for an exactly matched published content page.
+     *
+     * <p>The supplied slug is intentionally not normalized so public lookup remains case-sensitive.
+     * Draft, archived, and block pages are indistinguishable from an unknown page.</p>
+     *
+     * @param slug exact page slug from the public URL path
+     * @return the public page representation
+     * @throws PageServiceException when the slug is blank or does not identify a published content page
+     */
+    public PublicPageResponse getPublicPageBySlug(String slug) {
+        if (isBlank(slug)) {
+            throw new PageServiceException(VALIDATION_ERROR, "slug is required.");
+        }
+
+        Page page = pageDao.findBySlug(slug)
+                .filter(this::isPublicContentPage)
+                .orElseThrow(() -> new PageServiceException(PAGE_NOT_FOUND, "Page not found."));
+
+        return new PublicPageResponse(
+                page.getId(),
+                page.getTitle(),
+                page.getSlug(),
+                page.getPageType(),
+                resolveTemplateCode(page.getTemplateId()),
+                page.getContent()
+        );
     }
 
     public PageResponse getHomepage() {
@@ -224,6 +254,20 @@ public class PageService {
                 toIsoString(page.getCreatedAt()),
                 toIsoString(page.getUpdatedAt())
         );
+    }
+
+    private boolean isPublicContentPage(Page page) {
+        return page.getStatus() == PageStatus.PUBLISHED && page.getPageType() == PageType.CONTENT;
+    }
+
+    private String resolveTemplateCode(Long templateId) {
+        if (templateId == null) {
+            return null;
+        }
+
+        return templateDao.findById(templateId)
+                .map(Template::getCode)
+                .orElse(null);
     }
 
     private static String toIsoString(Timestamp timestamp) {

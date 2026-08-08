@@ -65,7 +65,7 @@ class MenuServiceTest {
         menuItemDao = DaoRegistry.getDao(MenuItem.class);
         pageDao = DaoRegistry.getDao(Page.class);
         menuService = new MenuService(menuDao);
-        menuItemService = new MenuItemService(menuDao, menuItemDao);
+        menuItemService = new MenuItemService(menuDao, menuItemDao, pageDao);
         cleanTestData();
     }
 
@@ -93,7 +93,8 @@ class MenuServiceTest {
 
     @Test
     void publicMenuBuildsSortedVisibleTree() {
-        Long pageId = createPage("tree").getId();
+        Page page = createPage("tree");
+        Long pageId = page.getId();
         MenuResponse menu = menuService.createMenu(new CreateMenuRequest("Main", PREFIX + "TREE", true));
 
         MenuItemResponse second = menuItemService.createItem(
@@ -112,6 +113,9 @@ class MenuServiceTest {
                 .map(PublicMenuItemResponse::getTitle).toList());
         assertEquals(MenuItemTargetType.PAGE, tree.get(0).getTargetType());
         assertEquals(pageId, tree.get(0).getPageId());
+        assertEquals(page.getSlug(), tree.get(0).getPageSlug());
+        assertEquals("/" + page.getSlug(), tree.get(0).getPath());
+        assertEquals(first.getId(), tree.get(0).getId());
         assertNull(tree.get(0).getTargetUrl());
         List<MenuItemResponse> flatItems = menuItemService.listItems(menu.getId());
         assertEquals(second.getId(), flatItems.get(flatItems.size() - 1).getId());
@@ -142,6 +146,8 @@ class MenuServiceTest {
         PublicMenuItemResponse publicItem = menuItemService.getPublicMenu(PREFIX + "LINKS").getFirst();
         assertEquals(MenuItemTargetType.URL, publicItem.getTargetType());
         assertNull(publicItem.getPageId());
+        assertNull(publicItem.getPageSlug());
+        assertNull(publicItem.getPath());
         assertEquals("https://github.com", publicItem.getTargetUrl());
     }
 

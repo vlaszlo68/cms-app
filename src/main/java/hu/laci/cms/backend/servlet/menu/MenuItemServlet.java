@@ -5,11 +5,13 @@ import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.menu.MenuDao;
 import hu.laci.cms.backend.dao.menu.MenuItemDao;
+import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.dto.menu.CreateMenuItemRequest;
 import hu.laci.cms.backend.dto.menu.UpdateMenuItemRequest;
 import hu.laci.cms.backend.model.menu.Menu;
 import hu.laci.cms.backend.model.menu.MenuItem;
+import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.user.UserRole;
 import hu.laci.cms.backend.service.menu.MenuItemService;
 import hu.laci.cms.backend.service.menu.MenuService;
@@ -33,7 +35,8 @@ public class MenuItemServlet extends JsonServletSupport {
     public void init() throws ServletException {
         MenuDao menuDao = DaoRegistry.getDao(Menu.class);
         MenuItemDao menuItemDao = DaoRegistry.getDao(MenuItem.class);
-        menuItemService = new MenuItemService(menuDao, menuItemDao);
+        PageDao pageDao = DaoRegistry.getDao(Page.class);
+        menuItemService = new MenuItemService(menuDao, menuItemDao, pageDao);
     }
 
     @Override

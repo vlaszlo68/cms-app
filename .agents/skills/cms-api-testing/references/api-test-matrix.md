@@ -36,6 +36,16 @@ Strict non-destructive assertions:
 | Admin list bodies | common success envelope, list-like `data` where applicable |
 | Logout body | `success=true`, `data.message=Logged out` |
 
+## Public Page Read
+
+`GET /api/public/pages/{slug}` is unauthenticated and performs an exact, case-sensitive slug lookup. It returns a common success envelope only for a `PUBLISHED` `CONTENT` page. Its `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and `content`; it does not expose page status, metadata, blocks, media, or administration flags. Unknown, draft, archived, and `BLOCK` pages return `404` with `PAGE_NOT_FOUND`. Missing or multi-segment slug paths return `400` with `INVALID_REQUEST`.
+
+`GET /api/public/site-settings` is unauthenticated and returns the common success envelope with exactly `siteName`, `logoMediaId`, `footerText`, `contactEmail`, `phone`, `facebookUrl`, and `linkedinUrl`. If the singleton settings record is absent, every field is present with a `null` value and the request does not create a record.
+
+`GET /api/public/menus/MAIN` and `GET /api/public/menus/FOOTER` are unauthenticated and return active, visible, ordered menu trees. PAGE items contain `id`, `title`, `targetType`, `pageId`, `pageSlug`, `path`, and `children`; only PUBLISHED CONTENT page targets are included. URL items contain `id`, `title`, `targetType`, `targetUrl`, and `children`. Inactive or unknown menu codes return `404 MENU_NOT_FOUND`.
+
+The repeatable smoke script verifies this endpoint in destructive mode using a published `CONTENT` fixture created within the same run, then deletes that fixture during cleanup. Strict destructive mode additionally verifies the limited field set and the public `404` after cleanup.
+
 ## Destructive Mode
 
 Run only when the user explicitly requests destructive CRUD checks.
@@ -44,12 +54,12 @@ The script should create test entities with a unique `codex-api-test-*` prefix a
 
 | Surface | Create | Read | Update | Delete/Cleanup | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Users | `POST /api/users` | `GET /api/users/{id}` | `PUT /api/users/{id}` | `DELETE /api/users/{id}` | Admin only, use `USER` role for created test users; delete soft-deactivates users |
+| Users | `POST /api/users` | `GET /api/users/{id}` | `PUT /api/users/{id}` | API `DELETE`, then permanent database removal by current-run ID | Admin only, use `USER` role for created test users; API delete soft-deactivates, so the test script must physically remove only its own row |
 | Pages | `POST /api/pages` | `GET /api/pages/{id}` | `PUT /api/pages/{id}` | `DELETE /api/pages/{id}` | Use `BLOCK` when also testing page blocks |
 | Page blocks | `POST /api/page-blocks` | `GET /api/page-blocks/{id}` | `PUT /api/page-blocks/{id}` | `DELETE /api/page-blocks/{id}` | Requires a page id |
 | Menus | `POST /api/menus` | `GET /api/menus/{id}` | `PUT /api/menus/{id}` | `DELETE /api/menus/{id}` | Deleting a menu deletes its items |
 | Menu items | `POST /api/menu-items` | `GET /api/menus/{menuId}/items` | `PUT /api/menu-items/{id}` | `DELETE /api/menu-items/{id}` | Prefer `URL` target to avoid page coupling |
-| Templates | `POST /api/templates` | `GET /api/templates/{id}` | `PUT /api/templates/{id}` | `DELETE /api/templates/{id}` | Delete deactivates templates |
+| Templates | `POST /api/templates` | `GET /api/templates/{id}` | `PUT /api/templates/{id}` | API `DELETE`, then permanent database removal by current-run ID | API delete deactivates templates, so the test script must physically remove only its own row after verifying no page reference |
 | Media | `POST /api/media` multipart | `GET /api/media/{id}` and `/content` | Not exposed | `DELETE /api/media/{id}` | API exposes create/read/delete, not update |
 | Site settings | Not exposed | `GET /api/site-settings` | Not run by default | Not run by default | Singleton settings record, not normal CRUD; do not update it during standard destructive mode because the row was not created by the test |
 
@@ -61,7 +71,7 @@ Strict destructive assertions:
 | Read-after-create bodies | returned `data.id` matches the created id |
 | Update bodies | returned `data.id` matches the updated id, and updated fields match where the endpoint returns them |
 | Media content | response body is non-empty |
-| Cleanup verification | after delete, `GET /api/pages/{id}`, `/api/page-blocks/{id}`, `/api/menus/{id}`, and `/api/media/{id}` return `404`; deleted menu item is absent from `GET /api/menus/{menuId}/items` when the menu still exists; deleted user and template remain readable with `data.active=false` because those deletes deactivate |
+| Cleanup verification | after delete, `GET /api/pages/{id}`, `/api/page-blocks/{id}`, `/api/menus/{id}`, and `/api/media/{id}` return `404`; deleted menu item is absent from `GET /api/menus/{menuId}/items` when the menu still exists; user and template API deletes first return `data.active=false`, then the script permanently removes only the current-run IDs and verifies their database row counts are zero |
 
 ## Auth And CAPTCHA Rules
 

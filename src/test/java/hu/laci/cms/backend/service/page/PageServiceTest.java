@@ -10,6 +10,7 @@ import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
 import hu.laci.cms.backend.dto.page.PageListResponse;
 import hu.laci.cms.backend.dto.page.PageResponse;
+import hu.laci.cms.backend.dto.page.PublicPageResponse;
 import hu.laci.cms.backend.dto.page.UpdatePageRequest;
 import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageStatus;
@@ -214,6 +215,68 @@ class PageServiceTest {
                         PageType.CONTENT, PageStatus.DRAFT, null, null, false, true, null)));
 
         assertEquals(PageService.VALIDATION_ERROR, exception.getCode());
+    }
+
+    @Test
+    void publicPageReturnsPublishedContentWithTemplateCode() {
+        Long templateId = templateDao.findByCode("LANDING").orElseThrow().getId();
+        PageResponse created = pageService.createPage(new CreatePageRequest(
+                TEST_PREFIX + "public", TEST_PREFIX + "public", TEST_PREFIX + "public content",
+                PageType.CONTENT, PageStatus.PUBLISHED, null, null, false, true, templateId));
+
+        PublicPageResponse response = pageService.getPublicPageBySlug(created.getSlug());
+
+        assertEquals(created.getId(), response.getId());
+        assertEquals(created.getTitle(), response.getTitle());
+        assertEquals(created.getSlug(), response.getSlug());
+        assertEquals(PageType.CONTENT, response.getPageType());
+        assertEquals("LANDING", response.getTemplateCode());
+        assertEquals(created.getContent(), response.getContent());
+    }
+
+    @Test
+    void publicPageTreatsDraftArchivedAndBlockPagesAsNotFound() {
+        PageResponse draft = pageService.createPage(new CreatePageRequest(
+                TEST_PREFIX + "draft", TEST_PREFIX + "draft", TEST_PREFIX + "draft content",
+                PageType.CONTENT, PageStatus.DRAFT, null, null, false, true, null));
+        PageResponse archived = pageService.createPage(new CreatePageRequest(
+                TEST_PREFIX + "archived", TEST_PREFIX + "archived", TEST_PREFIX + "archived content",
+                PageType.CONTENT, PageStatus.ARCHIVED, null, null, false, true, null));
+        PageResponse block = pageService.createPage(new CreatePageRequest(
+                TEST_PREFIX + "block-public", TEST_PREFIX + "block-public", null,
+                PageType.BLOCK, PageStatus.PUBLISHED, null, null, false, true, null));
+
+        assertPublicPageNotFound(draft.getSlug());
+        assertPublicPageNotFound(archived.getSlug());
+        assertPublicPageNotFound(block.getSlug());
+    }
+
+    @Test
+    void publicPageLookupIsCaseSensitiveAndUnknownPagesAreNotFound() {
+        PageResponse created = pageService.createPage(new CreatePageRequest(
+                TEST_PREFIX + "case", TEST_PREFIX + "Case", TEST_PREFIX + "case content",
+                PageType.CONTENT, PageStatus.PUBLISHED, null, null, false, true, null));
+
+        assertPublicPageNotFound(created.getSlug().toLowerCase());
+        assertPublicPageNotFound(TEST_PREFIX + "unknown");
+    }
+
+    @Test
+    void publicPageMapsMissingLegacyTemplateToNullTemplateCode() {
+        Page legacyPage = pageDao.create(new Page(null, TEST_PREFIX + "legacy", TEST_PREFIX + "legacy",
+                TEST_PREFIX + "legacy content", PageType.CONTENT, PageStatus.PUBLISHED,
+                null, null, false, true, null));
+
+        PublicPageResponse response = pageService.getPublicPageBySlug(legacyPage.getSlug());
+
+        assertEquals(null, response.getTemplateCode());
+    }
+
+    private void assertPublicPageNotFound(String slug) {
+        PageServiceException exception = assertThrows(PageServiceException.class,
+                () -> pageService.getPublicPageBySlug(slug));
+
+        assertEquals(PageService.PAGE_NOT_FOUND, exception.getCode());
     }
 
     private static CreatePageRequest createRequest(String suffix, PageStatus status, Boolean homepage,

@@ -1,0 +1,32 @@
+- generic [ref=e14]:
+  - banner [ref=e15]:
+    - generic [ref=e16]:
+      - text: CMS
+      - heading "CMS Admin" [level=1] [ref=e17]
+    - generic [ref=e18]:
+      - time [ref=e19]: Jul 13, 2026, 6:25 PM
+      - generic [ref=e20]: tester
+      - button "Logout" [ref=e21] [cursor=pointer]:
+        - generic [ref=e22]:
+          - generic [ref=e23]: ▶
+          - generic [ref=e24]: Logout
+  - generic [ref=e25]:
+    - navigation "Main navigation" [ref=e26]:
+      - link "Dashboard" [ref=e27] [cursor=pointer]:
+        - /url: /
+      - link "Users" [ref=e28] [cursor=pointer]:
+        - /url: /users
+      - link "Pages" [ref=e29] [cursor=pointer]:
+        - /url: /pages
+      - link "Menus" [ref=e30] [cursor=pointer]:
+        - /url: /menus
+      - link "Templates" [ref=e31] [cursor=pointer]:
+        - /url: /templates
+      - link "Media" [ref=e32] [cursor=pointer]:
+        - /url: /media
+      - link "Site Settings" [ref=e33] [cursor=pointer]:
+        - /url: /site-settings
+      - link "Settings" [ref=e34] [cursor=pointer]:
+        - /url: /settings
+    - main [ref=e35]:
+      - heading "Welcome tester" [level=2] [ref=e37]

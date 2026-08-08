@@ -1,15 +1,12 @@
-package hu.laci.cms.backend.servlet.menu;
+package hu.laci.cms.backend.servlet.page;
 
 import hu.laci.cms.backend.dao.common.DaoRegistry;
-import hu.laci.cms.backend.dao.menu.MenuDao;
-import hu.laci.cms.backend.dao.menu.MenuItemDao;
 import hu.laci.cms.backend.dao.page.PageDao;
-import hu.laci.cms.backend.model.menu.Menu;
-import hu.laci.cms.backend.model.menu.MenuItem;
+import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.model.page.Page;
-import hu.laci.cms.backend.service.menu.MenuItemService;
-import hu.laci.cms.backend.service.menu.MenuService;
-import hu.laci.cms.backend.service.menu.MenuServiceException;
+import hu.laci.cms.backend.model.template.Template;
+import hu.laci.cms.backend.service.page.PageService;
+import hu.laci.cms.backend.service.page.PageServiceException;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.ServletException;
@@ -17,51 +14,53 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.Locale;
 
 /**
- * Exposes the active visible menu tree for anonymous public layout rendering.
+ * Unauthenticated JSON endpoint for resolving published content pages by an exact public slug.
  */
-@WebServlet(urlPatterns = "/api/public/menus/*")
-public class PublicMenuServlet extends JsonServletSupport {
+@WebServlet(urlPatterns = "/api/public/pages/*")
+public class PublicPageServlet extends JsonServletSupport {
 
-    private MenuItemService menuItemService;
+    private PageService pageService;
 
     @Override
     public void init() throws ServletException {
-        MenuDao menuDao = DaoRegistry.getDao(Menu.class);
-        MenuItemDao menuItemDao = DaoRegistry.getDao(MenuItem.class);
         PageDao pageDao = DaoRegistry.getDao(Page.class);
-        menuItemService = new MenuItemService(menuDao, menuItemDao, pageDao);
+        TemplateDao templateDao = DaoRegistry.getDao(Template.class);
+        pageService = new PageService(pageDao, templateDao);
     }
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
         try {
             writeJsonResponse(response, HttpServletResponse.SC_OK,
-                    menuItemService.getPublicMenu(parseCode(request)));
+                    pageService.getPublicPageBySlug(parseSlug(request)));
         } catch (BadRequestException e) {
             writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
-        } catch (MenuServiceException e) {
-            int status = MenuService.MENU_NOT_FOUND.equals(e.getCode())
+        } catch (PageServiceException e) {
+            int status = PageService.PAGE_NOT_FOUND.equals(e.getCode())
                     ? HttpServletResponse.SC_NOT_FOUND
                     : HttpServletResponse.SC_BAD_REQUEST;
             writeErrorResponse(response, status, e.getCode(), e.getMessage());
         }
     }
 
-    private String parseCode(HttpServletRequest request) {
+    private String parseSlug(HttpServletRequest request) {
         String path = request.getPathInfo();
         if (path == null || path.isBlank() || "/".equals(path) || !path.startsWith("/")) {
-            throw new BadRequestException("Menu code is required.");
+            throw new BadRequestException("Page slug is required.");
         }
-        String code = path.substring(1);
-        if (code.isBlank() || code.contains("/")) {
-            throw new BadRequestException("Invalid menu code path.");
+
+        String slug = path.substring(1);
+        if (slug.isBlank() || slug.contains("/") || slug.toLowerCase(Locale.ROOT).contains("%2f")) {
+            throw new BadRequestException("Invalid public page slug path.");
         }
-        return code;
+        return slug;
     }
 
     private static final class BadRequestException extends RuntimeException {
+
         private BadRequestException(String message) {
             super(message);
         }

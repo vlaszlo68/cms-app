@@ -12,7 +12,7 @@ Use this skill to test the CMS backend over HTTP. This skill is specific to the 
 When this skill is used, ask the user which mode to run before making API calls unless the user already chose a mode in the prompt.
 
 - `non-destructive`: health, auth config, unauthenticated `/me`, login, authenticated `/me`, read-only admin endpoints, logout.
-- `destructive`: all non-destructive checks plus create/read/update/delete checks for CRUD surfaces where the API exposes those operations. Require an explicit destructive request and use the script's `-ConfirmDestructive` guard.
+- `destructive`: all non-destructive checks plus create/read/update/delete checks for CRUD surfaces where the API exposes those operations. Require an explicit destructive request and use the script's `-ConfirmDestructive` guard. Every current-run test record must be permanently removed before the run is reported as successful.
 
 Do not run destructive mode against shared, production, or unclear environments.
 
@@ -39,11 +39,12 @@ Strictness is independent from mode: `non-destructive strict` is allowed, and `d
 10. Use one `WebRequestSession` or equivalent cookie jar for login, authenticated calls, and logout.
 11. Extract `data.csrfToken` from login or `/api/auth/me`.
 12. Send `X-CSRF-Token` on state-changing authenticated calls.
-13. Record endpoint/assertion, expected status or assertion value, actual status or assertion value, pass/fail, and detail where available. Include check-level rows only when the user explicitly asks for them; when checks fail, identify the failed checks in the overall-results table.
-14. End every API test report with detailed-statistics tables. Include total checks, passed checks, failed checks, pass rate, selected mode, selected strictness, status/assertion distribution, category distribution, and cleanup status when destructive checks ran.
-15. State whether strict checks were skipped or run.
-16. State whether destructive checks were skipped, run, cleaned up, or failed during cleanup.
-17. If the API test flow started or restarted the app with CAPTCHA disabled, stop the app through `cms-local-runtime` at the end of testing so both CAPTCHA flags are restored to enabled. Do not leave startup-only CAPTCHA disablement in the repo.
+13. For destructive runs, allow the API cleanup to run first, then permanently remove current-run rows that the API only soft-deletes (currently users and templates). Verify that their database row count is zero. If the permanent cleanup cannot run or verify, mark the run failed; do not report cleanup as successful.
+14. Record endpoint/assertion, expected status or assertion value, actual status or assertion value, pass/fail, and detail where available. Include check-level rows only when the user explicitly asks for them; when checks fail, identify the failed checks in the overall-results table.
+15. End every API test report with detailed-statistics tables. Include total checks, passed checks, failed checks, pass rate, selected mode, selected strictness, status/assertion distribution, category distribution, and cleanup status when destructive checks ran.
+16. State whether strict checks were skipped or run.
+17. State whether destructive checks were skipped, run, permanently cleaned up, or failed during cleanup.
+18. If the API test flow started or restarted the app with CAPTCHA disabled, stop the app through `cms-local-runtime` at the end of testing so both CAPTCHA flags are restored to enabled. Do not leave startup-only CAPTCHA disablement in the repo.
 
 ## Reporting
 
@@ -113,7 +114,8 @@ Read `references/api-test-matrix.md` when planning manual API tests, expanding t
 - Never silently choose strictness; ask before the run unless the user already requested standard or strict checks.
 - Keep test data identifiable with the `codex-api-test-*` prefix.
 - In destructive mode, update and delete only database records that were created during the same API test run.
-- Delete created test entities before logout.
+- Delete created test entities before logout. API cleanup is insufficient when the API performs a soft delete: permanently delete only the current-run test user and template rows, then verify zero rows remain for their IDs before reporting success.
+- Do not use a broad prefix-based database delete as normal cleanup. Permanent cleanup must target only IDs created by the current run and must verify the test marker before removal.
 - Do not update or delete existing rows as part of CRUD checks. Existing rows may be read only.
 - Treat registration as destructive because it creates a pending user. Do not run it unless the user explicitly asks for registration coverage or destructive mode.
 - During normal API testing, require CAPTCHA disabled for login and registration before app startup. In this project, that means using `cms-local-runtime` to set the two `web.xml` context params to `false` before build/start unless a verified environment-variable override exists.

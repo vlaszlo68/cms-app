@@ -4,6 +4,7 @@ import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.model.user.UserRole;
 import hu.laci.cms.backend.service.menu.MenuItemService;
 import hu.laci.cms.backend.service.menu.MenuService;
+import hu.laci.cms.backend.service.menu.MenuServiceException;
 import hu.laci.cms.backend.servlet.support.ServletTestSupport;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
@@ -70,6 +71,13 @@ class MenuServletTest {
         ServletTestSupport.ResponseFixture invalidResponse = ServletTestSupport.response();
         servlet.doGet(ServletTestSupport.request().build(), invalidResponse.build());
         Assertions.assertEquals(400, invalidResponse.getStatus());
+
+        Mockito.doThrow(new MenuServiceException(MenuService.MENU_NOT_FOUND, "Menu not found."))
+                .when(service).getPublicMenu("UNKNOWN");
+        ServletTestSupport.ResponseFixture missingResponse = ServletTestSupport.response();
+        servlet.doGet(ServletTestSupport.request().withPathInfo("/UNKNOWN").build(), missingResponse.build());
+        Assertions.assertEquals(404, missingResponse.getStatus());
+        Assertions.assertTrue(missingResponse.getBody().contains(MenuService.MENU_NOT_FOUND));
     }
 
     private void invokeGet(MenuServlet servlet, String path, MenuService menuService, MenuItemService itemService)

@@ -12,7 +12,17 @@ param(
 
     [switch] $Strict,
 
-    [int] $TimeoutSec = 10
+    [int] $TimeoutSec = 10,
+
+    [string] $DbHost = "localhost",
+
+    [int] $DbPort = 5432,
+
+    [string] $DbName = "cms_db",
+
+    [string] $DbUser = "cms_user",
+
+    [string] $DbPassword = "cms_pw"
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,6 +39,8 @@ $loginUserId = $null
 $created = @{
     UserId = $null
     PageId = $null
+    PublicPageId = $null
+    PublicPageSlug = $null
     PageBlockId = $null
     MenuId = $null
     MenuItemId = $null
@@ -132,6 +144,113 @@ function Test-ListEnvelope {
     }
 
     Test-StrictCondition $Name ($null -ne $Response -and $true -eq $Response.success -and $isList) "Expected success=true with list-like data."
+}
+
+function Get-PostgresDriverPath {
+    $driverRoot = Join-Path $env:USERPROFILE ".m2\\repository\\org\\postgresql\\postgresql"
+    $driver = Get-ChildItem -LiteralPath $driverRoot -Recurse -Filter "postgresql-*.jar" -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notlike "*-sources.jar" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+    if ($null -eq $driver) {
+        throw "PostgreSQL JDBC driver not found under $driverRoot. Permanent destructive-test cleanup cannot run."
+    }
+
+    return $driver.FullName
+}
+
+function Get-CleanupMarkerValue {
+    param(
+        [string] $Output,
+        [string] $Name
+    )
+
+    $match = [regex]::Match($Output, "$Name=(\\d+)")
+    if (-not $match.Success) {
+        throw "Permanent cleanup did not report $Name. Output: $Output"
+    }
+
+    return [int] $match.Groups[1].Value
+}
+
+function Invoke-PermanentSoftDeleteCleanup {
+    $userId = if ($null -eq $script:created.UserId) { -1 } else { [long] $script:created.UserId }
+    $templateId = if ($null -eq $script:created.TemplateId) { -1 } else { [long] $script:created.TemplateId }
+
+    if ($userId -lt 0 -and $templateId -lt 0) {
+        return
+    }
+
+    $driverPath = Get-PostgresDriverPath
+    $cleanupSource = @"
+import java.sql.*;
+Connection connection = DriverManager.getConnection("jdbc:postgresql://$script:DbHost`:$script:DbPort/$script:DbName", "$script:DbUser", "$script:DbPassword");
+connection.setAutoCommit(false);
+long userId = ${userId}L;
+long templateId = ${templateId}L;
+String marker = "$script:runId";
+int deletedUser = 0;
+int deletedTemplate = 0;
+if (userId >= 0) {
+    PreparedStatement statement = connection.prepareStatement("DELETE FROM users WHERE id = ? AND LOWER(username) LIKE ?");
+    statement.setLong(1, userId);
+    statement.setString(2, "%" + marker.toLowerCase() + "%");
+    deletedUser = statement.executeUpdate();
+    statement.close();
+}
+if (templateId >= 0) {
+    PreparedStatement statement = connection.prepareStatement("DELETE FROM templates WHERE id = ? AND LOWER(name) LIKE ?");
+    statement.setLong(1, templateId);
+    statement.setString(2, "%" + marker.toLowerCase() + "%");
+    deletedTemplate = statement.executeUpdate();
+    statement.close();
+}
+PreparedStatement userCountStatement = connection.prepareStatement("SELECT COUNT(*) AS total FROM users WHERE id = ?");
+userCountStatement.setLong(1, userId);
+ResultSet userCountRows = userCountStatement.executeQuery();
+userCountRows.next();
+int remainingUser = userCountRows.getInt("total");
+userCountRows.close();
+userCountStatement.close();
+PreparedStatement templateCountStatement = connection.prepareStatement("SELECT COUNT(*) AS total FROM templates WHERE id = ?");
+templateCountStatement.setLong(1, templateId);
+ResultSet templateCountRows = templateCountStatement.executeQuery();
+templateCountRows.next();
+int remainingTemplate = templateCountRows.getInt("total");
+templateCountRows.close();
+templateCountStatement.close();
+if ((userId >= 0 && (deletedUser != 1 || remainingUser != 0)) || (templateId >= 0 && (deletedTemplate != 1 || remainingTemplate != 0))) {
+    connection.rollback();
+    connection.close();
+    throw new IllegalStateException("Permanent cleanup did not remove only the current-run soft-deleted records.");
+}
+connection.commit();
+connection.close();
+System.out.println("PERMANENT_DELETED_USER=" + deletedUser);
+System.out.println("PERMANENT_DELETED_TEMPLATE=" + deletedTemplate);
+System.out.println("PERMANENT_REMAINING_USER=" + remainingUser);
+System.out.println("PERMANENT_REMAINING_TEMPLATE=" + remainingTemplate);
+/exit
+"@
+    $cleanupOutput = $cleanupSource | & jshell --class-path $driverPath -q 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0 -or $cleanupOutput -match "Exception|ERROR:") {
+        throw "Permanent cleanup failed. Output: $cleanupOutput"
+    }
+
+    $deletedUser = Get-CleanupMarkerValue $cleanupOutput "PERMANENT_DELETED_USER"
+    $deletedTemplate = Get-CleanupMarkerValue $cleanupOutput "PERMANENT_DELETED_TEMPLATE"
+    $remainingUser = Get-CleanupMarkerValue $cleanupOutput "PERMANENT_REMAINING_USER"
+    $remainingTemplate = Get-CleanupMarkerValue $cleanupOutput "PERMANENT_REMAINING_TEMPLATE"
+
+    if ($userId -ge 0) {
+        Add-Result "Permanently delete test user" 1 $deletedUser ($deletedUser -eq 1) "Deleted only the current-run test user."
+        Add-Result "Verify test user permanently removed" 0 $remainingUser ($remainingUser -eq 0) "Expected no row for the current-run test user."
+    }
+    if ($templateId -ge 0) {
+        Add-Result "Permanently delete test template" 1 $deletedTemplate ($deletedTemplate -eq 1) "Deleted only the current-run test template."
+        Add-Result "Verify test template permanently removed" 0 $remainingTemplate ($remainingTemplate -eq 0) "Expected no row for the current-run test template."
+    }
 }
 
 function ConvertTo-JsonBody {
@@ -410,6 +529,28 @@ function Test-NonDestructive {
     Test-SuccessEnvelope "Strict auth config envelope" $config
     Test-StrictCondition "Strict auth config fields" ($null -ne $config.data.loginCaptchaEnabled -and $null -ne $config.data.registrationCaptchaEnabled -and $null -ne $config.data.passwordPolicy) "Expected CAPTCHA flags and passwordPolicy."
 
+    $publicSettings = Invoke-CmsApi "Read public site settings" "GET" "/api/public/site-settings" 200
+    Test-SuccessEnvelope "Strict public site settings envelope" $publicSettings
+    $publicSettingsFields = @($publicSettings.data.PSObject.Properties.Name)
+    $expectedPublicSettingsFields = @("siteName", "logoMediaId", "footerText", "contactEmail", "phone", "facebookUrl", "linkedinUrl")
+    $hasExpectedPublicSettingsFields = $publicSettingsFields.Count -eq $expectedPublicSettingsFields.Count -and
+            @($expectedPublicSettingsFields | Where-Object { $_ -notin $publicSettingsFields }).Count -eq 0
+    Test-StrictCondition "Strict public site settings fields" $hasExpectedPublicSettingsFields "Expected the seven public site settings fields."
+
+    foreach ($publicMenuCode in @("MAIN", "FOOTER")) {
+        $publicMenu = Invoke-CmsApi "Read public menu $publicMenuCode" "GET" "/api/public/menus/$publicMenuCode" 200
+        Test-ListEnvelope "Strict public menu $publicMenuCode envelope" $publicMenu
+        $validPublicMenuItems = @($publicMenu.data | Where-Object {
+                $null -ne $_.id -and -not [string]::IsNullOrWhiteSpace([string] $_.title) -and
+                $null -ne $_.targetType -and $null -ne $_.children -and
+                (($_.targetType -eq "PAGE" -and $null -ne $_.pageId -and
+                        -not [string]::IsNullOrWhiteSpace([string] $_.pageSlug) -and
+                        -not [string]::IsNullOrWhiteSpace([string] $_.path)) -or
+                 ($_.targetType -eq "URL" -and -not [string]::IsNullOrWhiteSpace([string] $_.targetUrl)))
+            }).Count -eq @($publicMenu.data).Count
+        Test-StrictCondition "Strict public menu $publicMenuCode items" $validPublicMenuItems "Expected public menu target fields and children."
+    }
+
     $unauthenticatedMe = Invoke-CmsApi "Unauthenticated /me" "GET" "/api/auth/me" 401
     Test-ErrorEnvelope "Strict unauthenticated /me envelope" $unauthenticatedMe
 
@@ -511,6 +652,33 @@ function Test-Destructive {
     $updatedPage = Invoke-CmsApi "Update page" "PUT" "/api/pages/$($script:created.PageId)" 200 $pageBody $headers
     Test-ResponseId "Strict update page id" $updatedPage $script:created.PageId
     Test-StrictCondition "Strict update page value" ($updatedPage.data.title -eq $pageBody.title) "Expected updated page title."
+
+    $publicPageBody = @{
+        title = "$script:runId public page"
+        slug = "$script:runId-public-page"
+        content = "Temporary public API test page"
+        pageType = "CONTENT"
+        status = "PUBLISHED"
+        metaTitle = $null
+        metaDescription = $null
+        homepage = $false
+        menuVisible = $false
+        templateId = $null
+    }
+    $publicPage = Invoke-CmsApi "Create public page fixture" "POST" "/api/pages" 201 $publicPageBody $headers
+    $script:created.PublicPageId = Get-DataId $publicPage
+    $script:created.PublicPageSlug = $publicPageBody.slug
+    Test-SuccessEnvelope "Strict create public page fixture envelope" $publicPage
+    $readPublicPage = Invoke-CmsApi "Read public page" "GET" "/api/public/pages/$($script:created.PublicPageSlug)" 200
+    Test-SuccessEnvelope "Strict public page envelope" $readPublicPage
+    $publicPageFields = @($readPublicPage.data.PSObject.Properties.Name)
+    $expectedPublicPageFields = @("id", "title", "slug", "pageType", "templateCode", "content")
+    $hasExpectedPublicPageFields = $publicPageFields.Count -eq $expectedPublicPageFields.Count -and
+            @($expectedPublicPageFields | Where-Object { $_ -notin $publicPageFields }).Count -eq 0
+    Test-StrictCondition "Strict public page fields" ($hasExpectedPublicPageFields -and
+            $readPublicPage.data.slug -eq $publicPageBody.slug -and
+            $readPublicPage.data.pageType -eq "CONTENT" -and
+            $readPublicPage.data.content -eq $publicPageBody.content) "Expected the limited published CONTENT page response."
 
     $blockBody = @{
         pageId = $script:created.PageId
@@ -619,6 +787,13 @@ function Cleanup-Destructive {
             Invoke-CmsApi "Strict verify page deleted" "GET" "/api/pages/$deletedId" 404 | Out-Null
         }
     }
+    if ($null -ne $script:created.PublicPageId) {
+        $deletedSlug = $script:created.PublicPageSlug
+        Invoke-CmsApi "Delete public page fixture" "DELETE" "/api/pages/$($script:created.PublicPageId)" 200 $null $headers | Out-Null
+        if ($script:Strict) {
+            Invoke-CmsApi "Strict verify public page deleted" "GET" "/api/public/pages/$deletedSlug" 404 | Out-Null
+        }
+    }
     if ($null -ne $script:created.TemplateId) {
         $deletedId = $script:created.TemplateId
         $deletedTemplate = Invoke-CmsApi "Delete template" "DELETE" "/api/templates/$($script:created.TemplateId)" 200 $null $headers
@@ -642,6 +817,7 @@ function Cleanup-Destructive {
             Test-StrictCondition "Strict deactivated user inactive" ($false -eq $readDeletedUser.data.active) "Expected deactivated user to remain inactive."
         }
     }
+
 }
 
 $hadFailure = $false
@@ -661,6 +837,12 @@ try {
         } catch {
             $hadFailure = $true
             Add-Result "Cleanup error" 0 $null $false $_.Exception.Message
+        }
+        try {
+            Invoke-PermanentSoftDeleteCleanup
+        } catch {
+            $hadFailure = $true
+            Add-Result "Permanent cleanup error" 0 $null $false $_.Exception.Message
         }
     }
 

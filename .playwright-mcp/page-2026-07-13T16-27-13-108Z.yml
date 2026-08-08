@@ -1,0 +1,14 @@
+- main [ref=e38]:
+  - generic [ref=e39]:
+    - generic [ref=e40]:
+      - heading "CMS Login" [level=1] [ref=e41]
+      - paragraph [ref=e42]: Sign in with your CMS account.
+    - generic [ref=e43]:
+      - text: Login name
+      - textbox "Login name" [ref=e44]
+    - generic [ref=e45]:
+      - text: Password
+      - textbox "Password" [ref=e46]
+    - button "Sign in" [ref=e47] [cursor=pointer]
+    - link "Create account" [ref=e48] [cursor=pointer]:
+      - /url: /register
