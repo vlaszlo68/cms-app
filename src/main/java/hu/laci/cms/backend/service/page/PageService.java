@@ -1,14 +1,17 @@
 package hu.laci.cms.backend.service.page;
 
 import hu.laci.cms.backend.dao.page.PageDao;
+import hu.laci.cms.backend.dao.page.PageBlockDao;
 import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
 import hu.laci.cms.backend.dto.page.PageListResponse;
+import hu.laci.cms.backend.dto.page.PublicPageBlockResponse;
 import hu.laci.cms.backend.dto.page.PublicPageResponse;
 import hu.laci.cms.backend.dto.page.PageResponse;
 import hu.laci.cms.backend.dto.page.UpdatePageRequest;
 import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.page.Page;
+import hu.laci.cms.backend.model.page.PageBlock;
 import hu.laci.cms.backend.model.page.PageProperty;
 import hu.laci.cms.backend.model.page.PageStatus;
 import hu.laci.cms.backend.model.page.PageType;
@@ -36,10 +39,19 @@ public class PageService {
 
     private final PageDao pageDao;
     private final TemplateDao templateDao;
+    private final PageBlockDao pageBlockDao;
 
-    public PageService(PageDao pageDao, TemplateDao templateDao) {
+    /**
+     * Creates the page service with persistence dependencies for administrative and public page reads.
+     *
+     * @param pageDao page persistence dependency
+     * @param templateDao template lookup dependency
+     * @param pageBlockDao visible block lookup dependency for public BLOCK pages
+     */
+    public PageService(PageDao pageDao, TemplateDao templateDao, PageBlockDao pageBlockDao) {
         this.pageDao = Objects.requireNonNull(pageDao, "pageDao must not be null");
         this.templateDao = Objects.requireNonNull(templateDao, "templateDao must not be null");
+        this.pageBlockDao = Objects.requireNonNull(pageBlockDao, "pageBlockDao must not be null");
     }
 
     public List<PageListResponse> listPages() {
@@ -64,10 +76,10 @@ public class PageService {
     }
 
     /**
-     * Returns the limited public representation for an exactly matched published content page.
+     * Returns the limited public representation for an exactly matched published CONTENT or BLOCK page.
      *
      * <p>The supplied slug is intentionally not normalized so public lookup remains case-sensitive.
-     * Draft, archived, and block pages are indistinguishable from an unknown page.</p>
+     * Draft and archived pages are indistinguishable from an unknown page.</p>
      *
      * @param slug exact page slug from the public URL path
      * @return the public page representation
@@ -79,16 +91,31 @@ public class PageService {
         }
 
         Page page = pageDao.findBySlug(slug)
-                .filter(this::isPublicContentPage)
+                .filter(this::isPublicPage)
                 .orElseThrow(() -> new PageServiceException(PAGE_NOT_FOUND, "Page not found."));
+
+        String templateCode = resolveTemplateCode(page.getTemplateId());
+        if (page.getPageType() == PageType.CONTENT) {
+            return new PublicPageResponse(
+                    page.getId(),
+                    page.getTitle(),
+                    page.getSlug(),
+                    page.getPageType(),
+                    templateCode,
+                    page.getContent()
+            );
+        }
 
         return new PublicPageResponse(
                 page.getId(),
                 page.getTitle(),
                 page.getSlug(),
                 page.getPageType(),
-                resolveTemplateCode(page.getTemplateId()),
-                page.getContent()
+                templateCode,
+                null,
+                pageBlockDao.findVisibleByPageId(page.getId()).stream()
+                        .map(this::toPublicBlockResponse)
+                        .toList()
         );
     }
 
@@ -256,8 +283,14 @@ public class PageService {
         );
     }
 
-    private boolean isPublicContentPage(Page page) {
-        return page.getStatus() == PageStatus.PUBLISHED && page.getPageType() == PageType.CONTENT;
+    private boolean isPublicPage(Page page) {
+        return page.getStatus() == PageStatus.PUBLISHED
+                && (page.getPageType() == PageType.CONTENT || page.getPageType() == PageType.BLOCK);
+    }
+
+    private PublicPageBlockResponse toPublicBlockResponse(PageBlock block) {
+        return new PublicPageBlockResponse(block.getId(), block.getBlockType(), block.getTitle(),
+                block.getSortOrder(), block.isVisible(), block.getConfigJson());
     }
 
     private String resolveTemplateCode(Long templateId) {

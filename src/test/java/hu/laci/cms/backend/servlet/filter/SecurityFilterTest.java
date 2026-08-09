@@ -20,6 +20,7 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -37,6 +38,44 @@ class SecurityFilterTest {
         filter.doFilter(request, response.build(), chain);
 
         Mockito.verify(chain).doFilter(request, response.build());
+    }
+
+    @Test
+    void authFilterAllowsPublicMenuAndSettingsPathsWithoutSessionLookup() throws Exception {
+        AuthFilter filter = new AuthFilter();
+
+        for (String path : List.of("/api/public/menus/MAIN", "/api/public/site-settings")) {
+            HttpServletRequest request = ServletTestSupport.request().withServletPath(path).build();
+            ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+            FilterChain chain = ServletTestSupport.filterChain();
+
+            try (MockedStatic<AppSessionManager> sessions = Mockito.mockStatic(AppSessionManager.class)) {
+                filter.doFilter(request, response.build(), chain);
+
+                sessions.verifyNoInteractions();
+            }
+
+            Mockito.verify(chain).doFilter(request, response.build());
+        }
+    }
+
+    @Test
+    void authFilterKeepsAdminMenuEndpointProtectedWithoutUser() throws Exception {
+        AuthFilter filter = new AuthFilter();
+        HttpServletRequest request = ServletTestSupport.request().withServletPath("/api/menus").build();
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+        FilterChain chain = ServletTestSupport.filterChain();
+
+        try (MockedStatic<AppSessionManager> sessions = Mockito.mockStatic(AppSessionManager.class)) {
+            sessions.when(() -> AppSessionManager.getAuthenticatedUser(request, response.build()))
+                    .thenReturn(Optional.empty());
+
+            filter.doFilter(request, response.build(), chain);
+        }
+
+        Assertions.assertEquals(401, response.getStatus());
+        Assertions.assertTrue(response.getBody().contains("AUTH_REQUIRED"));
+        Mockito.verifyNoInteractions(chain);
     }
 
     @Test

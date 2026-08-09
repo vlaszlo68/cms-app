@@ -1,6 +1,11 @@
 package hu.laci.cms.backend.servlet.menu;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
+import hu.laci.cms.backend.dto.menu.PublicMenuItemResponse;
+import hu.laci.cms.backend.model.menu.MenuItemTargetType;
 import hu.laci.cms.backend.model.user.UserRole;
 import hu.laci.cms.backend.service.menu.MenuItemService;
 import hu.laci.cms.backend.service.menu.MenuService;
@@ -9,6 +14,9 @@ import hu.laci.cms.backend.servlet.support.ServletTestSupport;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+
+import java.util.List;
+import java.util.Set;
 
 /** Unit tests for menu, menu-item, and public-menu endpoint dispatch. */
 class MenuServletTest {
@@ -78,6 +86,38 @@ class MenuServletTest {
         servlet.doGet(ServletTestSupport.request().withPathInfo("/UNKNOWN").build(), missingResponse.build());
         Assertions.assertEquals(404, missingResponse.getStatus());
         Assertions.assertTrue(missingResponse.getBody().contains(MenuService.MENU_NOT_FOUND));
+    }
+
+    @Test
+    void publicMenuServletSerializesPageAndUrlTargetsForFrontendRouting() throws Exception {
+        MenuItemService service = Mockito.mock(MenuItemService.class);
+        Mockito.when(service.getPublicMenu("MAIN")).thenReturn(List.of(
+                new PublicMenuItemResponse(1L, "Home", MenuItemTargetType.PAGE, 11L, "home", "/", null,
+                        List.of()),
+                new PublicMenuItemResponse(2L, "External", MenuItemTargetType.URL, null, null, null,
+                        "https://example.com", List.of())
+        ));
+        PublicMenuServlet servlet = new PublicMenuServlet();
+        ServletTestSupport.setField(servlet, "menuItemService", service);
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+
+        servlet.doGet(ServletTestSupport.request().withPathInfo("/MAIN").build(), response.build());
+
+        JsonObject envelope = JsonParser.parseString(response.getBody()).getAsJsonObject();
+        JsonArray items = envelope.getAsJsonArray("data");
+        JsonObject pageItem = items.get(0).getAsJsonObject();
+        JsonObject urlItem = items.get(1).getAsJsonObject();
+        Assertions.assertEquals(200, response.getStatus());
+        Assertions.assertTrue(envelope.get("success").getAsBoolean());
+        Assertions.assertEquals(Set.of("id", "title", "targetType", "pageId", "pageSlug", "path", "children"),
+                pageItem.keySet());
+        Assertions.assertEquals("PAGE", pageItem.get("targetType").getAsString());
+        Assertions.assertEquals("home", pageItem.get("pageSlug").getAsString());
+        Assertions.assertEquals("/", pageItem.get("path").getAsString());
+        Assertions.assertEquals(Set.of("id", "title", "targetType", "targetUrl", "children"),
+                urlItem.keySet());
+        Assertions.assertEquals("URL", urlItem.get("targetType").getAsString());
+        Assertions.assertEquals("https://example.com", urlItem.get("targetUrl").getAsString());
     }
 
     private void invokeGet(MenuServlet servlet, String path, MenuService menuService, MenuItemService itemService)

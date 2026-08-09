@@ -13,6 +13,7 @@
     "Destructive mode updates and deletes only records created during the same API test run with a codex-api-test-* prefix, and permanently removes every current-run test row before reporting cleanup success.",
     "The tester user is used only for login and is never updated, deleted, deactivated, approved, rejected, or otherwise mutated.",
     "Site settings are read in the normal smoke flow but are not updated during standard destructive CRUD mode because the singleton row was not created by the test.",
+    "Public page verification preserves the exact CONTENT field set and validates visible ordered BLOCK page blocks with visible=true and without pageId.",
     "For normal API testing, CAPTCHA should be disabled for login and registration before the app starts, currently by setting the two web.xml context params through cms-local-runtime before packaging/startup.",
     "The assistant uses environment variables for CAPTCHA only if the backend has a verified implementation for those exact CAPTCHA flags.",
     "When CAPTCHA is enabled and selected tests need authenticated coverage, the assistant asks whether to restart/start the app with CAPTCHA disabled through cms-local-runtime and does not disable or restart silently.",

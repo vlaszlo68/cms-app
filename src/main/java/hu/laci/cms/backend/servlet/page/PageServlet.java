@@ -43,7 +43,7 @@ public class PageServlet extends JsonServletSupport {
         PageDao pageDao = DaoRegistry.getDao(Page.class);
         TemplateDao templateDao = DaoRegistry.getDao(Template.class);
         PageBlockDao pageBlockDao = DaoRegistry.getDao(PageBlock.class);
-        this.pageService = new PageService(pageDao, templateDao);
+        this.pageService = new PageService(pageDao, templateDao, pageBlockDao);
         this.pageBlockService = new PageBlockService(pageDao, pageBlockDao);
     }
 

@@ -1,9 +1,11 @@
 package hu.laci.cms.backend.servlet.page;
 
 import hu.laci.cms.backend.dao.common.DaoRegistry;
+import hu.laci.cms.backend.dao.page.PageBlockDao;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.model.page.Page;
+import hu.laci.cms.backend.model.page.PageBlock;
 import hu.laci.cms.backend.model.template.Template;
 import hu.laci.cms.backend.service.page.PageService;
 import hu.laci.cms.backend.service.page.PageServiceException;
@@ -17,7 +19,7 @@ import java.io.IOException;
 import java.util.Locale;
 
 /**
- * Unauthenticated JSON endpoint for resolving published content pages by an exact public slug.
+ * Unauthenticated JSON endpoint for resolving published CONTENT and BLOCK pages by an exact public slug.
  */
 @WebServlet(urlPatterns = "/api/public/pages/*")
 public class PublicPageServlet extends JsonServletSupport {
@@ -27,8 +29,9 @@ public class PublicPageServlet extends JsonServletSupport {
     @Override
     public void init() throws ServletException {
         PageDao pageDao = DaoRegistry.getDao(Page.class);
+        PageBlockDao pageBlockDao = DaoRegistry.getDao(PageBlock.class);
         TemplateDao templateDao = DaoRegistry.getDao(Template.class);
-        pageService = new PageService(pageDao, templateDao);
+        pageService = new PageService(pageDao, templateDao, pageBlockDao);
     }
 
     @Override

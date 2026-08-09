@@ -62,7 +62,7 @@ class PageBlockServiceTest {
         PageDao pageDao = DaoRegistry.getDao(Page.class);
         pageBlockDao = DaoRegistry.getDao(PageBlock.class);
         TemplateDao templateDao = DaoRegistry.getDao(Template.class);
-        pageService = new PageService(pageDao, templateDao);
+        pageService = new PageService(pageDao, templateDao, pageBlockDao);
         pageBlockService = new PageBlockService(pageDao, pageBlockDao);
         deleteTestPages();
     }

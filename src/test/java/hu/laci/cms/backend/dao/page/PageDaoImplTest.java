@@ -8,6 +8,7 @@ import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageProperty;
 import hu.laci.cms.backend.model.page.PageStatus;
+import hu.laci.cms.backend.model.page.PageType;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -173,6 +174,18 @@ class PageDaoImplTest {
     }
 
     @Test
+    void findPublishedContentByIdsExcludesArchivedAndBlockPages() {
+        Page publishedContent = pageDao.create(createPage("public", PageType.CONTENT, PageStatus.PUBLISHED));
+        Page archivedContent = pageDao.create(createPage("archived", PageType.CONTENT, PageStatus.ARCHIVED));
+        Page publishedBlock = pageDao.create(createPage("block", PageType.BLOCK, PageStatus.PUBLISHED));
+
+        List<Page> pages = pageDao.findPublishedContentByIds(List.of(
+                publishedContent.getId(), archivedContent.getId(), publishedBlock.getId()));
+
+        assertEquals(List.of(publishedContent.getId()), pages.stream().map(Page::getId).toList());
+    }
+
+    @Test
     void deleteRemovesExistingPage() {
         Page page = pageDao.create(createPage("delete", PageStatus.DRAFT, false, true));
 
@@ -199,6 +212,22 @@ class PageDaoImplTest {
                 TEST_PREFIX + suffix + " description",
                 homepage,
                 menuVisible
+        );
+    }
+
+    private static Page createPage(String suffix, PageType pageType, PageStatus status) {
+        return new Page(
+                null,
+                TEST_PREFIX + suffix,
+                TEST_PREFIX + suffix,
+                TEST_PREFIX + suffix + " content",
+                pageType,
+                status,
+                TEST_PREFIX + suffix + " meta",
+                TEST_PREFIX + suffix + " description",
+                false,
+                true,
+                null
         );
     }
 

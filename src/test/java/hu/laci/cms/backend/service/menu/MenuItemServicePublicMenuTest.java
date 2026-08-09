@@ -19,6 +19,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /** Unit tests for public menu eligibility and route mapping. */
 class MenuItemServicePublicMenuTest {
@@ -62,6 +63,38 @@ class MenuItemServicePublicMenuTest {
         assertEquals("https://example.com/docs", docs.getTargetUrl());
         Mockito.verify(pageDao).findPublishedContentByIds(Set.of(100L, 101L, 102L));
         Mockito.verifyNoMoreInteractions(pageDao);
+    }
+
+    @Test
+    void publicMenuRejectsInactiveMenu() {
+        MenuDao menuDao = Mockito.mock(MenuDao.class);
+        MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
+        PageDao pageDao = Mockito.mock(PageDao.class);
+        Mockito.when(menuDao.findByCode("MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", false)));
+        MenuItemService service = new MenuItemService(menuDao, menuItemDao, pageDao);
+
+        MenuServiceException exception = assertThrows(MenuServiceException.class,
+                () -> service.getPublicMenu("MAIN"));
+
+        assertEquals(MenuService.MENU_NOT_FOUND, exception.getCode());
+        Mockito.verifyNoInteractions(menuItemDao, pageDao);
+    }
+
+    @Test
+    void invisibleParentSuppressesVisibleDescendantFromPublicTree() {
+        MenuDao menuDao = Mockito.mock(MenuDao.class);
+        MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
+        PageDao pageDao = Mockito.mock(PageDao.class);
+        Mockito.when(menuDao.findByCode("MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
+        Mockito.when(menuItemDao.findByMenuId(10L)).thenReturn(List.of(
+                urlItem(1L, null, "Hidden parent", "https://example.com/hidden", 1, false),
+                urlItem(2L, 1L, "Visible child", "https://example.com/visible", 2, true)
+        ));
+        MenuItemService service = new MenuItemService(menuDao, menuItemDao, pageDao);
+
+        List<PublicMenuItemResponse> result = service.getPublicMenu("MAIN");
+
+        assertEquals(List.of(), result);
     }
 
     private static MenuItem pageItem(Long id, Long parentId, Long pageId, String title, int sortOrder,

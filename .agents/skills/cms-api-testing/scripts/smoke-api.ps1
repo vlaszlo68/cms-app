@@ -41,6 +41,8 @@ $created = @{
     PageId = $null
     PublicPageId = $null
     PublicPageSlug = $null
+    PublicBlockPageId = $null
+    PublicBlockPageSlug = $null
     PageBlockId = $null
     MenuId = $null
     MenuItemId = $null
@@ -680,6 +682,50 @@ function Test-Destructive {
             $readPublicPage.data.pageType -eq "CONTENT" -and
             $readPublicPage.data.content -eq $publicPageBody.content) "Expected the limited published CONTENT page response."
 
+    $publicBlockPageBody = @{
+        title = "$script:runId public block page"
+        slug = "$script:runId-public-block-page"
+        content = $null
+        pageType = "BLOCK"
+        status = "PUBLISHED"
+        metaTitle = $null
+        metaDescription = $null
+        homepage = $false
+        menuVisible = $false
+        templateId = $null
+    }
+    $publicBlockPage = Invoke-CmsApi "Create public block page fixture" "POST" "/api/pages" 201 $publicBlockPageBody $headers
+    $script:created.PublicBlockPageId = Get-DataId $publicBlockPage
+    $script:created.PublicBlockPageSlug = $publicBlockPageBody.slug
+    $publicBlockFirst = Invoke-CmsApi "Create first public block fixture" "POST" "/api/page-blocks" 201 @{
+        pageId = $script:created.PublicBlockPageId; blockType = "HERO"; title = "First"; sortOrder = 10; visible = $true; configJson = "{`"headline`":`"First`"}"
+    } $headers
+    $publicBlockHidden = Invoke-CmsApi "Create hidden public block fixture" "POST" "/api/page-blocks" 201 @{
+        pageId = $script:created.PublicBlockPageId; blockType = "HIDDEN"; title = "Hidden"; sortOrder = 15; visible = $false; configJson = "{`"headline`":`"Hidden`"}"
+    } $headers
+    $publicBlockSecond = Invoke-CmsApi "Create second public block fixture" "POST" "/api/page-blocks" 201 @{
+        pageId = $script:created.PublicBlockPageId; blockType = "CTA"; title = "Second"; sortOrder = 20; visible = $true; configJson = "{`"label`":`"Second`"}"
+    } $headers
+    $readPublicBlockPage = Invoke-CmsApi "Read public block page" "GET" "/api/public/pages/$($script:created.PublicBlockPageSlug)" 200
+    Test-SuccessEnvelope "Strict public block page envelope" $readPublicBlockPage
+    $publicBlockFields = @($readPublicBlockPage.data.PSObject.Properties.Name)
+    $expectedPublicBlockFields = @("id", "title", "slug", "pageType", "templateCode", "blocks")
+    $expectedPublicBlockItemFields = @("id", "blockType", "title", "sortOrder", "visible", "configJson")
+    $publicBlockIds = @($readPublicBlockPage.data.blocks | ForEach-Object { [long] $_.id })
+    $expectedPublicBlockIds = @((Get-DataId $publicBlockFirst), (Get-DataId $publicBlockSecond))
+    $publicBlockShapeValid = @($readPublicBlockPage.data.blocks | Where-Object {
+            $publicBlockItemFields = @($_.PSObject.Properties.Name)
+            $publicBlockItemFields.Count -eq $expectedPublicBlockItemFields.Count -and
+            @($expectedPublicBlockItemFields | Where-Object { $_ -notin $publicBlockItemFields }).Count -eq 0 -and
+            $_.visible -eq $true
+    }).Count -eq 2
+    $hasExpectedPublicBlockFields = $publicBlockFields.Count -eq $expectedPublicBlockFields.Count -and
+            @($expectedPublicBlockFields | Where-Object { $_ -notin $publicBlockFields }).Count -eq 0
+    Test-StrictCondition "Strict public block page fields" ($hasExpectedPublicBlockFields -and
+            $readPublicBlockPage.data.pageType -eq "BLOCK" -and
+            $null -eq $readPublicBlockPage.data.content -and $publicBlockShapeValid -and
+            [System.Linq.Enumerable]::SequenceEqual([long[]] $publicBlockIds, [long[]] $expectedPublicBlockIds)) "Expected visible ordered public BLOCK page fields."
+
     $blockBody = @{
         pageId = $script:created.PageId
         blockType = "TEXT"
@@ -792,6 +838,13 @@ function Cleanup-Destructive {
         Invoke-CmsApi "Delete public page fixture" "DELETE" "/api/pages/$($script:created.PublicPageId)" 200 $null $headers | Out-Null
         if ($script:Strict) {
             Invoke-CmsApi "Strict verify public page deleted" "GET" "/api/public/pages/$deletedSlug" 404 | Out-Null
+        }
+    }
+    if ($null -ne $script:created.PublicBlockPageId) {
+        $deletedSlug = $script:created.PublicBlockPageSlug
+        Invoke-CmsApi "Delete public block page fixture" "DELETE" "/api/pages/$($script:created.PublicBlockPageId)" 200 $null $headers | Out-Null
+        if ($script:Strict) {
+            Invoke-CmsApi "Strict verify public block page deleted" "GET" "/api/public/pages/$deletedSlug" 404 | Out-Null
         }
     }
     if ($null -ne $script:created.TemplateId) {

@@ -38,7 +38,7 @@ Strict non-destructive assertions:
 
 ## Public Page Read
 
-`GET /api/public/pages/{slug}` is unauthenticated and performs an exact, case-sensitive slug lookup. It returns a common success envelope only for a `PUBLISHED` `CONTENT` page. Its `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and `content`; it does not expose page status, metadata, blocks, media, or administration flags. Unknown, draft, archived, and `BLOCK` pages return `404` with `PAGE_NOT_FOUND`. Missing or multi-segment slug paths return `400` with `INVALID_REQUEST`.
+`GET /api/public/pages/{slug}` is unauthenticated and performs an exact, case-sensitive slug lookup. It returns a common success envelope only for a `PUBLISHED` `CONTENT` or `BLOCK` page. A CONTENT `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and `content`; it omits `blocks`. A BLOCK `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and a non-null `blocks` list; it omits `content`. Each public block contains `id`, `blockType`, `title`, `sortOrder`, `visible`, and `configJson`, never `pageId`; only visible blocks are returned in `sortOrder`, then id order, so every returned `visible` value is `true`. Unknown, draft, and archived pages return `404` with `PAGE_NOT_FOUND`. Missing or multi-segment slug paths return `400` with `INVALID_REQUEST`.
 
 `GET /api/public/site-settings` is unauthenticated and returns the common success envelope with exactly `siteName`, `logoMediaId`, `footerText`, `contactEmail`, `phone`, `facebookUrl`, and `linkedinUrl`. If the singleton settings record is absent, every field is present with a `null` value and the request does not create a record.
 
