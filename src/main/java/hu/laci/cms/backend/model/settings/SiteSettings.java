@@ -3,12 +3,16 @@ package hu.laci.cms.backend.model.settings;
 import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.AuditableEntity;
+import hu.laci.cms.backend.model.site.Site;
 
 /**
- * Stores the single global website configuration record.
+ * Stores the single website configuration record for one Site.
  */
 @DbTable("site_settings")
 public class SiteSettings extends AuditableEntity {
+
+    @DbColumn("site_id")
+    private Site site;
 
     @DbColumn("site_name")
     private String siteName;
@@ -44,6 +48,18 @@ public class SiteSettings extends AuditableEntity {
         this.phone = phone;
         this.facebookUrl = facebookUrl;
         this.linkedinUrl = linkedinUrl;
+    }
+
+    /** @return Site that owns these settings */
+    /** @return Site that owns these settings */
+    public Site getSite() {
+        return site;
+    }
+
+    /** @param site Site that owns these settings */
+    /** @param site Site that owns these settings */
+    public void setSite(Site site) {
+        this.site = site;
     }
 
     public String getSiteName() {

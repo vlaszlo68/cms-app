@@ -6,6 +6,7 @@ import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageProperty;
 import hu.laci.cms.backend.model.page.PageStatus;
 import hu.laci.cms.backend.model.page.PageType;
+import hu.laci.cms.backend.model.site.Site;
 
 import java.util.Collection;
 import java.util.List;
@@ -21,13 +22,32 @@ public class PageDaoImpl extends BaseDao<Page, PageProperty> implements PageDao 
     }
 
     @Override
-    public Optional<Page> findBySlug(String slug) {
-        return findOneByProperty("slug", slug, "Failed to find page by slug: " + slug);
+    public List<Page> findAllBySite(Site site) {
+        return findAll(QuerySpec.<PageProperty>create()
+                .where(PageProperty.SITE).equalsTo(site)
+                .orderBy(PageProperty.TITLE.asc()));
     }
 
     @Override
-    public Optional<Page> findHomepage() {
+    public Optional<Page> findBySiteAndId(Site site, Long id) {
         return findAll(QuerySpec.<PageProperty>create()
+                .where(PageProperty.SITE).equalsTo(site)
+                .where(PageProperty.ID).equalsTo(id))
+                .stream().findFirst();
+    }
+
+    @Override
+    public Optional<Page> findBySiteAndSlug(Site site, String slug) {
+        return findAll(QuerySpec.<PageProperty>create()
+                .where(PageProperty.SITE).equalsTo(site)
+                .where(PageProperty.SLUG).equalsTo(slug))
+                .stream().findFirst();
+    }
+
+    @Override
+    public Optional<Page> findHomepageBySite(Site site) {
+        return findAll(QuerySpec.<PageProperty>create()
+                .where(PageProperty.SITE).equalsTo(site)
                 .where(PageProperty.HOMEPAGE).equalsTo(Boolean.TRUE)
                 .orderBy(PageProperty.ID.asc()))
                 .stream()
@@ -35,11 +55,12 @@ public class PageDaoImpl extends BaseDao<Page, PageProperty> implements PageDao 
     }
 
     @Override
-    public List<Page> findPublishedContentByIds(Collection<Long> pageIds) {
+    public List<Page> findPublishedContentBySiteAndIds(Site site, Collection<Long> pageIds) {
         if (pageIds == null || pageIds.isEmpty()) {
             return List.of();
         }
         return findAll(QuerySpec.<PageProperty>create()
+                .where(PageProperty.SITE).equalsTo(site)
                 .where(PageProperty.ID).in(pageIds)
                 .where(PageProperty.STATUS).equalsTo(PageStatus.PUBLISHED)
                 .where(PageProperty.PAGE_TYPE).equalsTo(PageType.CONTENT)

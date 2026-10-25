@@ -29,6 +29,15 @@ public abstract class PageBlockRequestBase {
         return pageId;
     }
 
+    /**
+     * Sets the owning page id when normalizing a nested administration route.
+     *
+     * @param pageId owning page id
+     */
+    public void setPageId(Long pageId) {
+        this.pageId = pageId;
+    }
+
     public String getBlockType() {
         return blockType;
     }

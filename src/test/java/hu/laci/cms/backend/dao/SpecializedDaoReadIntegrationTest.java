@@ -9,6 +9,7 @@ import hu.laci.cms.backend.dao.page.PageBlockDaoImpl;
 import hu.laci.cms.backend.dao.page.PageDaoImpl;
 import hu.laci.cms.backend.dao.settings.SiteSettingsDaoImpl;
 import hu.laci.cms.backend.dao.template.TemplateDaoImpl;
+import hu.laci.cms.backend.dao.site.SiteDaoImpl;
 import hu.laci.cms.backend.model.menu.Menu;
 import hu.laci.cms.backend.model.menu.MenuItem;
 import hu.laci.cms.backend.model.menu.MenuItemTargetType;
@@ -16,6 +17,7 @@ import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageBlock;
 import hu.laci.cms.backend.model.page.PageStatus;
 import hu.laci.cms.backend.model.page.PageType;
+import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -33,6 +35,8 @@ import java.util.List;
 
 /** Database-backed read tests for specialized DAO query methods backed by migrations. */
 class SpecializedDaoReadIntegrationTest {
+
+    private static Site site;
 
     private static final String HOME_CONTENT = String.join("\n",
             "<h1>AI Coding Workflow Hub</h1>",
@@ -60,6 +64,7 @@ class SpecializedDaoReadIntegrationTest {
     static void initializeDatabase() {
         DatabaseConfig.initialize(emptyServletContext());
         DatabaseMigrationRunner.runMigrations();
+        site = new SiteDaoImpl().findByCode("default").orElseThrow();
     }
 
     @AfterAll
@@ -75,13 +80,13 @@ class SpecializedDaoReadIntegrationTest {
         SiteSettingsDaoImpl settingsDao = new SiteSettingsDaoImpl();
         PageBlockDaoImpl pageBlockDao = new PageBlockDaoImpl();
 
-        Menu mainMenu = menuDao.findByCode("MAIN").orElseThrow();
+        Menu mainMenu = menuDao.findBySiteAndCode(site, "MAIN").orElseThrow();
         menuItemDao.findByMenuId(mainMenu.getId());
         Assertions.assertTrue(menuItemDao.findRootItems(mainMenu.getId()).stream()
                 .allMatch(item -> item.getParentId() == null));
         Assertions.assertTrue(templateDao.findByCode("STANDARD").isPresent());
         Assertions.assertFalse(templateDao.findActive().isEmpty());
-        Assertions.assertTrue(settingsDao.findSettings().isPresent());
+        Assertions.assertTrue(settingsDao.findBySite(site).isPresent());
         Assertions.assertTrue(pageBlockDao.findByPageId(-1L).isEmpty());
         Assertions.assertTrue(pageBlockDao.findVisibleByPageId(-1L).isEmpty());
     }
@@ -92,10 +97,10 @@ class SpecializedDaoReadIntegrationTest {
         MenuItemDaoImpl menuItemDao = new MenuItemDaoImpl();
         PageDaoImpl pageDao = new PageDaoImpl();
 
-        Menu mainMenu = menuDao.findByCode("MAIN").orElseThrow();
-        Menu footerMenu = menuDao.findByCode("FOOTER").orElseThrow();
-        Page home = pageDao.findBySlug("home").orElseThrow();
-        Page rolunk = pageDao.findBySlug("rolunk").orElseThrow();
+        Menu mainMenu = menuDao.findBySiteAndCode(site, "MAIN").orElseThrow();
+        Menu footerMenu = menuDao.findBySiteAndCode(site, "FOOTER").orElseThrow();
+        Page home = pageDao.findBySiteAndSlug(site, "home").orElseThrow();
+        Page rolunk = pageDao.findBySiteAndSlug(site, "rolunk").orElseThrow();
 
         Assertions.assertTrue(mainMenu.isActive());
         Assertions.assertTrue(footerMenu.isActive());
@@ -138,9 +143,9 @@ class SpecializedDaoReadIntegrationTest {
         TemplateDaoImpl templateDao = new TemplateDaoImpl();
         Long standardTemplateId = templateDao.findByCode("STANDARD").orElseThrow().getId();
 
-        Page home = pageDao.findBySlug("home").orElseThrow();
-        Page rolunk = pageDao.findBySlug("rolunk").orElseThrow();
-        Page blockDemo = pageDao.findBySlug("block-demo").orElseThrow();
+        Page home = pageDao.findBySiteAndSlug(site, "home").orElseThrow();
+        Page rolunk = pageDao.findBySiteAndSlug(site, "rolunk").orElseThrow();
+        Page blockDemo = pageDao.findBySiteAndSlug(site, "block-demo").orElseThrow();
 
         assertDemoContentPage(home, "AI Coding Workflow Hub", HOME_CONTENT, standardTemplateId);
         assertDemoContentPage(rolunk, "About the AI Agent Workflow", ROLUNK_CONTENT, standardTemplateId);
@@ -401,7 +406,7 @@ class SpecializedDaoReadIntegrationTest {
     }
 
     private static int countPages(PageDaoImpl pageDao, String slug) {
-        return pageDao.findBySlug(slug).isPresent() ? 1 : 0;
+        return pageDao.findBySiteAndSlug(site, slug).isPresent() ? 1 : 0;
     }
 
     private static void assertPublishedContentPage(Page page) {

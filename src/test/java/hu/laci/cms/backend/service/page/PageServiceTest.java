@@ -8,6 +8,7 @@ import hu.laci.cms.backend.dao.page.PageBlockDao;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.page.PageDaoImpl;
 import hu.laci.cms.backend.dao.template.TemplateDao;
+import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
 import hu.laci.cms.backend.dto.page.PageListResponse;
 import hu.laci.cms.backend.dto.page.PageResponse;
@@ -19,6 +20,7 @@ import hu.laci.cms.backend.model.page.PageBlock;
 import hu.laci.cms.backend.model.page.PageStatus;
 import hu.laci.cms.backend.model.page.PageType;
 import hu.laci.cms.backend.model.template.Template;
+import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -47,6 +49,7 @@ class PageServiceTest {
     private PageDao pageDao;
     private PageBlockDao pageBlockDao;
     private TemplateDao templateDao;
+    private Site site;
     private PageService pageService;
 
     @BeforeAll
@@ -68,6 +71,8 @@ class PageServiceTest {
         pageDao = new PageDaoImpl();
         pageBlockDao = DaoRegistry.getDao(PageBlock.class);
         templateDao = DaoRegistry.getDao(Template.class);
+        SiteDao siteDao = DaoRegistry.getDao(Site.class);
+        site = siteDao.findByCode("default").orElseThrow();
         pageService = new PageService(pageDao, templateDao, pageBlockDao);
         deleteTestPages();
     }
@@ -80,7 +85,7 @@ class PageServiceTest {
 
     @Test
     void createPagePersistsAndMapsResponse() {
-        PageResponse response = pageService.createPage(createRequest("alpha", PageStatus.PUBLISHED,
+        PageResponse response = pageService.createPage(site, createRequest("alpha", PageStatus.PUBLISHED,
                 true, true));
 
         assertNotNull(response.getId());
@@ -104,10 +109,10 @@ class PageServiceTest {
 
     @Test
     void updatePageChangesPageAndFindsBySlug() {
-        PageResponse createdPage = pageService.createPage(createRequest("before", PageStatus.DRAFT,
+        PageResponse createdPage = pageService.createPage(site, createRequest("before", PageStatus.DRAFT,
                 false, true));
 
-        PageResponse updatedPage = pageService.updatePage(createdPage.getId(),
+        PageResponse updatedPage = pageService.updatePage(site, createdPage.getId(),
                 updateRequest("after", PageStatus.ARCHIVED, false, false));
 
         assertEquals(createdPage.getId(), updatedPage.getId());
@@ -117,16 +122,16 @@ class PageServiceTest {
         assertFalse(updatedPage.getHomepage());
         assertFalse(updatedPage.getMenuVisible());
 
-        PageResponse bySlug = pageService.getBySlug(TEST_PREFIX + "after");
+        PageResponse bySlug = pageService.getBySlug(site, TEST_PREFIX + "after");
         assertEquals(createdPage.getId(), bySlug.getId());
     }
 
     @Test
     void createRejectsDuplicateSlug() {
-        pageService.createPage(createRequest("duplicate", PageStatus.DRAFT, false, true));
+        pageService.createPage(site, createRequest("duplicate", PageStatus.DRAFT, false, true));
 
         PageServiceException exception = assertThrows(PageServiceException.class,
-                () -> pageService.createPage(new CreatePageRequest(TEST_PREFIX + "other",
+                () -> pageService.createPage(site, new CreatePageRequest(TEST_PREFIX + "other",
                         TEST_PREFIX + "duplicate", TEST_PREFIX + "other content", PageStatus.DRAFT,
                         null, null, false, true)));
 
@@ -135,22 +140,22 @@ class PageServiceTest {
 
     @Test
     void homepagePageClearsOtherHomepageFlags() {
-        PageResponse first = pageService.createPage(createRequest("home-one", PageStatus.PUBLISHED,
+        PageResponse first = pageService.createPage(site, createRequest("home-one", PageStatus.PUBLISHED,
                 true, true));
-        PageResponse second = pageService.createPage(createRequest("home-two", PageStatus.PUBLISHED,
+        PageResponse second = pageService.createPage(site, createRequest("home-two", PageStatus.PUBLISHED,
                 true, true));
 
         assertFalse(pageDao.findById(first.getId()).orElseThrow().getHomepage());
         assertTrue(pageDao.findById(second.getId()).orElseThrow().getHomepage());
-        assertEquals(second.getId(), pageService.getHomepage().getId());
+        assertEquals(second.getId(), pageService.getHomepage(site).getId());
     }
 
     @Test
     void deletePageRemovesExistingPage() {
-        PageResponse createdPage = pageService.createPage(createRequest("delete", PageStatus.DRAFT,
+        PageResponse createdPage = pageService.createPage(site, createRequest("delete", PageStatus.DRAFT,
                 false, true));
 
-        boolean deleted = pageService.deletePage(createdPage.getId());
+        boolean deleted = pageService.deletePage(site, createdPage.getId());
 
         assertTrue(deleted);
         assertTrue(pageDao.findById(createdPage.getId()).isEmpty());
@@ -158,10 +163,10 @@ class PageServiceTest {
 
     @Test
     void listPagesOrdersByTitle() {
-        pageService.createPage(createRequest("bravo", PageStatus.DRAFT, false, true));
-        pageService.createPage(createRequest("alpha", PageStatus.DRAFT, false, true));
+        pageService.createPage(site, createRequest("bravo", PageStatus.DRAFT, false, true));
+        pageService.createPage(site, createRequest("alpha", PageStatus.DRAFT, false, true));
 
-        List<PageListResponse> pages = pageService.listPages().stream()
+        List<PageListResponse> pages = pageService.listPages(site).stream()
                 .filter(page -> page.getSlug().startsWith(TEST_PREFIX))
                 .toList();
 
@@ -172,7 +177,7 @@ class PageServiceTest {
     @Test
     void createRejectsMissingRequiredFields() {
         PageServiceException exception = assertThrows(PageServiceException.class,
-                () -> pageService.createPage(new CreatePageRequest(" ", " ", " ", null,
+                () -> pageService.createPage(site, new CreatePageRequest(" ", " ", " ", null,
                         null, null, false, true)));
 
         assertEquals(PageService.VALIDATION_ERROR, exception.getCode());
@@ -182,7 +187,7 @@ class PageServiceTest {
     void createPageUsesRequestedTemplate() {
         Long templateId = templateDao.findByCode("LANDING").orElseThrow().getId();
 
-        PageResponse response = pageService.createPage(new CreatePageRequest(
+        PageResponse response = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "landing", TEST_PREFIX + "landing", TEST_PREFIX + "landing content",
                 PageStatus.PUBLISHED, null, null, false, true, templateId));
 
@@ -193,7 +198,7 @@ class PageServiceTest {
     @Test
     void createPageRejectsUnknownTemplate() {
         PageServiceException exception = assertThrows(PageServiceException.class,
-                () -> pageService.createPage(new CreatePageRequest(
+                () -> pageService.createPage(site, new CreatePageRequest(
                         TEST_PREFIX + "invalid-template", TEST_PREFIX + "invalid-template",
                         TEST_PREFIX + "invalid-template content", PageStatus.DRAFT,
                         null, null, false, true, Long.MAX_VALUE)));
@@ -203,7 +208,7 @@ class PageServiceTest {
 
     @Test
     void blockPageAllowsMissingContent() {
-        PageResponse response = pageService.createPage(new CreatePageRequest(
+        PageResponse response = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "block", TEST_PREFIX + "block", null, PageType.BLOCK,
                 PageStatus.PUBLISHED, null, null, false, true, null));
 
@@ -217,7 +222,7 @@ class PageServiceTest {
     @Test
     void contentPageStillRequiresContent() {
         PageServiceException exception = assertThrows(PageServiceException.class,
-                () -> pageService.createPage(new CreatePageRequest(
+                () -> pageService.createPage(site, new CreatePageRequest(
                         TEST_PREFIX + "content-required", TEST_PREFIX + "content-required", " ",
                         PageType.CONTENT, PageStatus.DRAFT, null, null, false, true, null)));
 
@@ -227,11 +232,11 @@ class PageServiceTest {
     @Test
     void publicPageReturnsPublishedContentWithTemplateCode() {
         Long templateId = templateDao.findByCode("LANDING").orElseThrow().getId();
-        PageResponse created = pageService.createPage(new CreatePageRequest(
+        PageResponse created = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "public", TEST_PREFIX + "public", TEST_PREFIX + "public content",
                 PageType.CONTENT, PageStatus.PUBLISHED, null, null, false, true, templateId));
 
-        PublicPageResponse response = pageService.getPublicPageBySlug(created.getSlug());
+        PublicPageResponse response = pageService.getPublicPageBySlug(site, created.getSlug());
 
         assertEquals(created.getId(), response.getId());
         assertEquals(created.getTitle(), response.getTitle());
@@ -248,10 +253,10 @@ class PageServiceTest {
         PageBlockDao contentPageBlockDao = Mockito.mock(PageBlockDao.class);
         Page contentPage = new Page(15L, "Content", "content", "Public content", PageType.CONTENT,
                 PageStatus.PUBLISHED, null, null, false, true, null);
-        Mockito.when(contentPageDao.findBySlug("content")).thenReturn(java.util.Optional.of(contentPage));
+        Mockito.when(contentPageDao.findBySiteAndSlug(site, "content")).thenReturn(java.util.Optional.of(contentPage));
         PageService contentPageService = new PageService(contentPageDao, contentTemplateDao, contentPageBlockDao);
 
-        PublicPageResponse response = contentPageService.getPublicPageBySlug("content");
+        PublicPageResponse response = contentPageService.getPublicPageBySlug(site, "content");
 
         assertEquals("Public content", response.getContent());
         assertNull(response.getBlocks());
@@ -267,11 +272,11 @@ class PageServiceTest {
                 null, null, false, true, null);
         PageBlock first = new PageBlock(17L, 16L, "HERO", "First", 1, true, "{\"headline\":\"Hi\"}");
         PageBlock second = new PageBlock(18L, 16L, "CTA", "Second", 2, true, "{\"label\":\"Go\"}");
-        Mockito.when(blockPageDao.findBySlug("blocks")).thenReturn(java.util.Optional.of(blockPage));
+        Mockito.when(blockPageDao.findBySiteAndSlug(site, "blocks")).thenReturn(java.util.Optional.of(blockPage));
         Mockito.when(blockPageBlockDao.findVisibleByPageId(16L)).thenReturn(List.of(first, second));
         PageService blockPageService = new PageService(blockPageDao, blockTemplateDao, blockPageBlockDao);
 
-        PublicPageResponse response = blockPageService.getPublicPageBySlug("blocks");
+        PublicPageResponse response = blockPageService.getPublicPageBySlug(site, "blocks");
 
         assertNull(response.getContent());
         assertEquals(List.of(17L, 18L), response.getBlocks().stream().map(PublicPageBlockResponse::getId).toList());
@@ -281,16 +286,16 @@ class PageServiceTest {
 
     @Test
     void publicPageTreatsDraftAndArchivedPagesAsNotFound() {
-        PageResponse draft = pageService.createPage(new CreatePageRequest(
+        PageResponse draft = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "draft", TEST_PREFIX + "draft", TEST_PREFIX + "draft content",
                 PageType.CONTENT, PageStatus.DRAFT, null, null, false, true, null));
-        PageResponse archived = pageService.createPage(new CreatePageRequest(
+        PageResponse archived = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "archived", TEST_PREFIX + "archived", TEST_PREFIX + "archived content",
                 PageType.CONTENT, PageStatus.ARCHIVED, null, null, false, true, null));
-        PageResponse draftBlock = pageService.createPage(new CreatePageRequest(
+        PageResponse draftBlock = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "draft-block", TEST_PREFIX + "draft-block", null,
                 PageType.BLOCK, PageStatus.DRAFT, null, null, false, true, null));
-        PageResponse archivedBlock = pageService.createPage(new CreatePageRequest(
+        PageResponse archivedBlock = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "archived-block", TEST_PREFIX + "archived-block", null,
                 PageType.BLOCK, PageStatus.ARCHIVED, null, null, false, true, null));
         assertPublicPageNotFound(draft.getSlug());
@@ -301,7 +306,7 @@ class PageServiceTest {
 
     @Test
     void publicBlockPageReturnsOnlyVisibleOrderedBlocks() {
-        PageResponse blockPage = pageService.createPage(new CreatePageRequest(
+        PageResponse blockPage = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "block-public", TEST_PREFIX + "block-public", null,
                 PageType.BLOCK, PageStatus.PUBLISHED, null, null, false, true, null));
         PageBlock later = pageBlockDao.create(new PageBlock(null, blockPage.getId(), "CTA", "Later", 20, true,
@@ -311,7 +316,7 @@ class PageServiceTest {
         PageBlock first = pageBlockDao.create(new PageBlock(null, blockPage.getId(), "HERO", "First", 10, true,
                 "{\"headline\":\"Welcome\"}"));
 
-        PublicPageResponse response = pageService.getPublicPageBySlug(blockPage.getSlug());
+        PublicPageResponse response = pageService.getPublicPageBySlug(site, blockPage.getSlug());
 
         assertEquals(PageType.BLOCK, response.getPageType());
         assertEquals(null, response.getContent());
@@ -324,11 +329,13 @@ class PageServiceTest {
 
     @Test
     void publicBlockPageOmitsPersistedLegacyContent() {
-        Page legacyBlockPage = pageDao.create(new Page(null, TEST_PREFIX + "legacy-block",
+        Page legacyBlockPage = new Page(null, TEST_PREFIX + "legacy-block",
                 TEST_PREFIX + "legacy-block", "Legacy BLOCK content", PageType.BLOCK, PageStatus.PUBLISHED,
-                null, null, false, true, null));
+                null, null, false, true, null);
+        legacyBlockPage.setSite(site);
+        legacyBlockPage = pageDao.create(legacyBlockPage);
 
-        PublicPageResponse response = pageService.getPublicPageBySlug(legacyBlockPage.getSlug());
+        PublicPageResponse response = pageService.getPublicPageBySlug(site, legacyBlockPage.getSlug());
 
         assertEquals(PageType.BLOCK, response.getPageType());
         assertNull(response.getContent());
@@ -337,11 +344,11 @@ class PageServiceTest {
 
     @Test
     void publicBlockPageReturnsEmptyBlocksWhenNoneAreVisible() {
-        PageResponse blockPage = pageService.createPage(new CreatePageRequest(
+        PageResponse blockPage = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "block-empty", TEST_PREFIX + "block-empty", null,
                 PageType.BLOCK, PageStatus.PUBLISHED, null, null, false, true, null));
 
-        PublicPageResponse response = pageService.getPublicPageBySlug(blockPage.getSlug());
+        PublicPageResponse response = pageService.getPublicPageBySlug(site, blockPage.getSlug());
 
         assertEquals(PageType.BLOCK, response.getPageType());
         assertEquals(List.of(), response.getBlocks());
@@ -349,7 +356,7 @@ class PageServiceTest {
 
     @Test
     void publicPageLookupIsCaseSensitiveAndUnknownPagesAreNotFound() {
-        PageResponse created = pageService.createPage(new CreatePageRequest(
+        PageResponse created = pageService.createPage(site, new CreatePageRequest(
                 TEST_PREFIX + "case", TEST_PREFIX + "Case", TEST_PREFIX + "case content",
                 PageType.CONTENT, PageStatus.PUBLISHED, null, null, false, true, null));
 
@@ -359,18 +366,20 @@ class PageServiceTest {
 
     @Test
     void publicPageMapsMissingLegacyTemplateToNullTemplateCode() {
-        Page legacyPage = pageDao.create(new Page(null, TEST_PREFIX + "legacy", TEST_PREFIX + "legacy",
+        Page legacyPage = new Page(null, TEST_PREFIX + "legacy", TEST_PREFIX + "legacy",
                 TEST_PREFIX + "legacy content", PageType.CONTENT, PageStatus.PUBLISHED,
-                null, null, false, true, null));
+                null, null, false, true, null);
+        legacyPage.setSite(site);
+        legacyPage = pageDao.create(legacyPage);
 
-        PublicPageResponse response = pageService.getPublicPageBySlug(legacyPage.getSlug());
+        PublicPageResponse response = pageService.getPublicPageBySlug(site, legacyPage.getSlug());
 
         assertEquals(null, response.getTemplateCode());
     }
 
     private void assertPublicPageNotFound(String slug) {
         PageServiceException exception = assertThrows(PageServiceException.class,
-                () -> pageService.getPublicPageBySlug(slug));
+                () -> pageService.getPublicPageBySlug(site, slug));
 
         assertEquals(PageService.PAGE_NOT_FOUND, exception.getCode());
     }

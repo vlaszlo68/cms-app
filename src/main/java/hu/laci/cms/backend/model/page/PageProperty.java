@@ -6,6 +6,7 @@ import hu.laci.cms.backend.model.common.BaseProperty;
 public final class PageProperty extends AuditableProperty {
 
     public static final PageProperty ID = new PageProperty(BaseProperty.ID.getPropertyName());
+    public static final PageProperty SITE = new PageProperty("site");
     public static final PageProperty TITLE = new PageProperty("title");
     public static final PageProperty SLUG = new PageProperty("slug");
     public static final PageProperty CONTENT = new PageProperty("content");

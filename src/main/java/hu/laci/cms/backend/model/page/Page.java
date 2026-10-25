@@ -3,9 +3,16 @@ package hu.laci.cms.backend.model.page;
 import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.AuditableEntity;
+import hu.laci.cms.backend.model.site.Site;
 
+/**
+ * Site-owned CMS page with either content or ordered block rendering.
+ */
 @DbTable("pages")
 public class Page extends AuditableEntity {
+
+    @DbColumn("site_id")
+    private Site site;
 
     @DbColumn("title")
     private String title;
@@ -64,6 +71,18 @@ public class Page extends AuditableEntity {
         this.homepage = homepage;
         this.menuVisible = menuVisible;
         this.templateId = templateId;
+    }
+
+    /** @return Site that owns this page */
+    /** @return Site that owns this page */
+    public Site getSite() {
+        return site;
+    }
+
+    /** @param site Site that owns this page */
+    /** @param site Site that owns this page */
+    public void setSite(Site site) {
+        this.site = site;
     }
 
     public String getTitle() {

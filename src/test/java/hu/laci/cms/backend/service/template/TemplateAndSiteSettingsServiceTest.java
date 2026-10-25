@@ -5,6 +5,8 @@ import hu.laci.cms.backend.config.database.migration.DatabaseMigrationRunner;
 import hu.laci.cms.backend.config.session.SessionContext;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
+import hu.laci.cms.backend.dao.media.MediaDao;
+import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dto.settings.SaveSiteSettingsRequest;
 import hu.laci.cms.backend.dto.settings.SiteSettingsResponse;
@@ -12,6 +14,8 @@ import hu.laci.cms.backend.dto.template.CreateTemplateRequest;
 import hu.laci.cms.backend.dto.template.TemplateResponse;
 import hu.laci.cms.backend.dto.template.UpdateTemplateRequest;
 import hu.laci.cms.backend.model.settings.SiteSettings;
+import hu.laci.cms.backend.model.media.Media;
+import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.template.Template;
 import hu.laci.cms.backend.service.settings.SiteSettingsService;
 import org.junit.jupiter.api.AfterAll;
@@ -40,6 +44,7 @@ class TemplateAndSiteSettingsServiceTest {
 
     private TemplateService templateService;
     private SiteSettingsService siteSettingsService;
+    private Site site;
 
     @BeforeAll
     static void initializeDatabase() {
@@ -59,8 +64,11 @@ class TemplateAndSiteSettingsServiceTest {
         SessionContext.clear();
         TemplateDao templateDao = DaoRegistry.getDao(Template.class);
         SiteSettingsDao siteSettingsDao = DaoRegistry.getDao(SiteSettings.class);
+        MediaDao mediaDao = DaoRegistry.getDao(Media.class);
+        SiteDao siteDao = DaoRegistry.getDao(Site.class);
+        site = siteDao.findByCode("default").orElseThrow();
         templateService = new TemplateService(templateDao);
-        siteSettingsService = new SiteSettingsService(siteSettingsDao);
+        siteSettingsService = new SiteSettingsService(siteSettingsDao, mediaDao);
         deleteTestTemplates();
     }
 
@@ -68,7 +76,7 @@ class TemplateAndSiteSettingsServiceTest {
     void tearDown() throws SQLException {
         SessionContext.clear();
         deleteTestTemplates();
-        siteSettingsService.saveSettings(new SaveSiteSettingsRequest(null, null, null, null,
+        siteSettingsService.saveSettings(site, new SaveSiteSettingsRequest(null, null, null, null,
                 null, null, null));
     }
 
@@ -110,14 +118,14 @@ class TemplateAndSiteSettingsServiceTest {
 
     @Test
     void siteSettingsSaveUpdatesSingletonRecord() throws SQLException {
-        SiteSettingsResponse before = siteSettingsService.getSettings();
-        SiteSettingsResponse saved = siteSettingsService.saveSettings(new SaveSiteSettingsRequest(
-                " CMS Site ", 15L, " Footer ", " info@example.com ", " +36 1 234 ",
+        SiteSettingsResponse before = siteSettingsService.getSettings(site);
+        SiteSettingsResponse saved = siteSettingsService.saveSettings(site, new SaveSiteSettingsRequest(
+                " CMS Site ", null, " Footer ", " info@example.com ", " +36 1 234 ",
                 " https://facebook.com/example ", " https://linkedin.com/company/example "));
 
         assertEquals(before.getId(), saved.getId());
         assertEquals("CMS Site", saved.getSiteName());
-        assertEquals(15L, saved.getLogoMediaId());
+        assertEquals(null, saved.getLogoMediaId());
         assertEquals("Footer", saved.getFooterText());
         assertEquals("info@example.com", saved.getContactEmail());
         assertEquals("+36 1 234", saved.getPhone());

@@ -7,6 +7,7 @@ import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.menu.MenuDao;
 import hu.laci.cms.backend.dao.menu.MenuItemDao;
 import hu.laci.cms.backend.dao.page.PageDao;
+import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dto.menu.CreateMenuItemRequest;
 import hu.laci.cms.backend.dto.menu.CreateMenuRequest;
 import hu.laci.cms.backend.dto.menu.MenuItemResponse;
@@ -18,6 +19,7 @@ import hu.laci.cms.backend.model.menu.MenuItem;
 import hu.laci.cms.backend.model.menu.MenuItemTargetType;
 import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageStatus;
+import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -44,6 +46,7 @@ class MenuServiceTest {
     private MenuItemService menuItemService;
     private MenuItemDao menuItemDao;
     private PageDao pageDao;
+    private Site site;
 
     @BeforeAll
     static void initializeDatabase() {
@@ -64,6 +67,8 @@ class MenuServiceTest {
         MenuDao menuDao = DaoRegistry.getDao(Menu.class);
         menuItemDao = DaoRegistry.getDao(MenuItem.class);
         pageDao = DaoRegistry.getDao(Page.class);
+        SiteDao siteDao = DaoRegistry.getDao(Site.class);
+        site = siteDao.findByCode("default").orElseThrow();
         menuService = new MenuService(menuDao);
         menuItemService = new MenuItemService(menuDao, menuItemDao, pageDao);
         cleanTestData();
@@ -77,36 +82,36 @@ class MenuServiceTest {
 
     @Test
     void createAndFindMenuRejectsDuplicateCode() {
-        MenuResponse created = menuService.createMenu(new CreateMenuRequest("Main", PREFIX + "MAIN", true));
+        MenuResponse created = menuService.createMenu(site, new CreateMenuRequest("Main", PREFIX + "MAIN", true));
 
-        assertEquals(created.getId(), menuService.findByCode(PREFIX + "MAIN").getId());
+        assertEquals(created.getId(), menuService.findByCode(site, PREFIX + "MAIN").getId());
         MenuServiceException exception = assertThrows(MenuServiceException.class,
-                () -> menuService.createMenu(new CreateMenuRequest("Other", PREFIX + "MAIN", true)));
+                () -> menuService.createMenu(site, new CreateMenuRequest("Other", PREFIX + "MAIN", true)));
         assertEquals(MenuService.DUPLICATE_CODE, exception.getCode());
     }
 
     @Test
     void migrationCreatesDefaultMenus() {
-        assertNotNull(menuService.findByCode("MAIN").getId());
-        assertNotNull(menuService.findByCode("FOOTER").getId());
+        assertNotNull(menuService.findByCode(site, "MAIN").getId());
+        assertNotNull(menuService.findByCode(site, "FOOTER").getId());
     }
 
     @Test
     void publicMenuBuildsSortedVisibleTree() {
         Page page = createPage("tree");
         Long pageId = page.getId();
-        MenuResponse menu = menuService.createMenu(new CreateMenuRequest("Main", PREFIX + "TREE", true));
+        MenuResponse menu = menuService.createMenu(site, new CreateMenuRequest("Main", PREFIX + "TREE", true));
 
-        MenuItemResponse second = menuItemService.createItem(
+        MenuItemResponse second = menuItemService.createItem(site,
                 new CreateMenuItemRequest(menu.getId(), null, pageId, "Second", 20, true));
-        MenuItemResponse first = menuItemService.createItem(
+        MenuItemResponse first = menuItemService.createItem(site,
                 new CreateMenuItemRequest(menu.getId(), null, pageId, "First", 10, true));
-        menuItemService.createItem(
+        menuItemService.createItem(site,
                 new CreateMenuItemRequest(menu.getId(), first.getId(), pageId, "Child", 0, true));
-        menuItemService.createItem(
+        menuItemService.createItem(site,
                 new CreateMenuItemRequest(menu.getId(), null, pageId, "Hidden", 0, false));
 
-        List<PublicMenuItemResponse> tree = menuItemService.getPublicMenu(PREFIX + "TREE");
+        List<PublicMenuItemResponse> tree = menuItemService.getPublicMenu(site, PREFIX + "TREE");
 
         assertEquals(List.of("First", "Second"), tree.stream().map(PublicMenuItemResponse::getTitle).toList());
         assertEquals(List.of("Child"), tree.get(0).getChildren().stream()
@@ -117,15 +122,15 @@ class MenuServiceTest {
         assertEquals("/" + page.getSlug(), tree.get(0).getPath());
         assertEquals(first.getId(), tree.get(0).getId());
         assertNull(tree.get(0).getTargetUrl());
-        List<MenuItemResponse> flatItems = menuItemService.listItems(menu.getId());
+        List<MenuItemResponse> flatItems = menuItemService.listItems(site, menu.getId());
         assertEquals(second.getId(), flatItems.get(flatItems.size() - 1).getId());
     }
 
     @Test
     void urlTargetPersistsAndAppearsInPublicTree() {
-        MenuResponse menu = menuService.createMenu(new CreateMenuRequest("Links", PREFIX + "LINKS", true));
+        MenuResponse menu = menuService.createMenu(site, new CreateMenuRequest("Links", PREFIX + "LINKS", true));
 
-        MenuItemResponse created = menuItemService.createItem(new CreateMenuItemRequest(
+        MenuItemResponse created = menuItemService.createItem(site, new CreateMenuItemRequest(
                 menu.getId(), null, null, MenuItemTargetType.URL, " https://github.com ",
                 "GitHub", 0, true));
 
@@ -138,12 +143,12 @@ class MenuServiceTest {
         assertNull(persisted.getPageId());
         assertEquals("https://github.com", persisted.getTargetUrl());
 
-        MenuItemResponse listed = menuItemService.listItems(menu.getId()).getFirst();
+        MenuItemResponse listed = menuItemService.listItems(site, menu.getId()).getFirst();
         assertEquals(MenuItemTargetType.URL, listed.getTargetType());
         assertNull(listed.getPageId());
         assertEquals("https://github.com", listed.getTargetUrl());
 
-        PublicMenuItemResponse publicItem = menuItemService.getPublicMenu(PREFIX + "LINKS").getFirst();
+        PublicMenuItemResponse publicItem = menuItemService.getPublicMenu(site, PREFIX + "LINKS").getFirst();
         assertEquals(MenuItemTargetType.URL, publicItem.getTargetType());
         assertNull(publicItem.getPageId());
         assertNull(publicItem.getPageSlug());
@@ -154,9 +159,9 @@ class MenuServiceTest {
     @Test
     void pageTargetDiscardsTargetUrlAndRoundTripsThroughDao() {
         Long pageId = createPage("page-target").getId();
-        MenuResponse menu = menuService.createMenu(new CreateMenuRequest("Pages", PREFIX + "PAGES", true));
+        MenuResponse menu = menuService.createMenu(site, new CreateMenuRequest("Pages", PREFIX + "PAGES", true));
 
-        MenuItemResponse created = menuItemService.createItem(new CreateMenuItemRequest(
+        MenuItemResponse created = menuItemService.createItem(site, new CreateMenuItemRequest(
                 menu.getId(), null, pageId, MenuItemTargetType.PAGE, "https://ignored.example",
                 "Page", 0, true));
 
@@ -173,11 +178,11 @@ class MenuServiceTest {
     @Test
     void updateChangesPageTargetToUrlTarget() {
         Long pageId = createPage("page-to-url").getId();
-        MenuResponse menu = menuService.createMenu(new CreateMenuRequest("Switch", PREFIX + "PAGE_URL", true));
-        MenuItemResponse created = menuItemService.createItem(new CreateMenuItemRequest(
+        MenuResponse menu = menuService.createMenu(site, new CreateMenuRequest("Switch", PREFIX + "PAGE_URL", true));
+        MenuItemResponse created = menuItemService.createItem(site, new CreateMenuItemRequest(
                 menu.getId(), null, pageId, MenuItemTargetType.PAGE, null, "Target", 0, true));
 
-        MenuItemResponse updated = menuItemService.updateItem(created.getId(), new UpdateMenuItemRequest(
+        MenuItemResponse updated = menuItemService.updateItem(site, created.getId(), new UpdateMenuItemRequest(
                 menu.getId(), null, pageId, MenuItemTargetType.URL, " https://example.com ",
                 "Target", 0, true));
 
@@ -192,12 +197,12 @@ class MenuServiceTest {
     @Test
     void updateChangesUrlTargetToPageTarget() {
         Long pageId = createPage("url-to-page").getId();
-        MenuResponse menu = menuService.createMenu(new CreateMenuRequest("Switch", PREFIX + "URL_PAGE", true));
-        MenuItemResponse created = menuItemService.createItem(new CreateMenuItemRequest(
+        MenuResponse menu = menuService.createMenu(site, new CreateMenuRequest("Switch", PREFIX + "URL_PAGE", true));
+        MenuItemResponse created = menuItemService.createItem(site, new CreateMenuItemRequest(
                 menu.getId(), null, null, MenuItemTargetType.URL, "https://example.com",
                 "Target", 0, true));
 
-        MenuItemResponse updated = menuItemService.updateItem(created.getId(), new UpdateMenuItemRequest(
+        MenuItemResponse updated = menuItemService.updateItem(site, created.getId(), new UpdateMenuItemRequest(
                 menu.getId(), null, pageId, MenuItemTargetType.PAGE, "https://ignored.example",
                 "Target", 0, true));
 
@@ -211,14 +216,14 @@ class MenuServiceTest {
 
     @Test
     void targetValidationDependsOnTargetType() {
-        MenuResponse menu = menuService.createMenu(new CreateMenuRequest("Targets", PREFIX + "TARGETS", true));
+        MenuResponse menu = menuService.createMenu(site, new CreateMenuRequest("Targets", PREFIX + "TARGETS", true));
 
         MenuServiceException missingPage = assertThrows(MenuServiceException.class,
-                () -> menuItemService.createItem(new CreateMenuItemRequest(
+                () -> menuItemService.createItem(site, new CreateMenuItemRequest(
                         menu.getId(), null, null, MenuItemTargetType.PAGE, null,
                         "Page", 0, true)));
         MenuServiceException missingUrl = assertThrows(MenuServiceException.class,
-                () -> menuItemService.createItem(new CreateMenuItemRequest(
+                () -> menuItemService.createItem(site, new CreateMenuItemRequest(
                         menu.getId(), null, null, MenuItemTargetType.URL, " ",
                         "URL", 0, true)));
 
@@ -229,21 +234,23 @@ class MenuServiceTest {
     @Test
     void itemRejectsParentFromAnotherMenu() {
         Long pageId = createPage("parent").getId();
-        MenuResponse firstMenu = menuService.createMenu(new CreateMenuRequest("First", PREFIX + "FIRST", true));
-        MenuResponse secondMenu = menuService.createMenu(new CreateMenuRequest("Second", PREFIX + "SECOND", true));
-        MenuItemResponse parent = menuItemService.createItem(
+        MenuResponse firstMenu = menuService.createMenu(site, new CreateMenuRequest("First", PREFIX + "FIRST", true));
+        MenuResponse secondMenu = menuService.createMenu(site, new CreateMenuRequest("Second", PREFIX + "SECOND", true));
+        MenuItemResponse parent = menuItemService.createItem(site,
                 new CreateMenuItemRequest(firstMenu.getId(), null, pageId, "Parent", 0, true));
 
         MenuServiceException exception = assertThrows(MenuServiceException.class,
-                () -> menuItemService.createItem(
+                () -> menuItemService.createItem(site,
                         new CreateMenuItemRequest(secondMenu.getId(), parent.getId(), pageId, "Invalid", 0, true)));
 
         assertEquals(MenuItemService.INVALID_PARENT, exception.getCode());
     }
 
     private Page createPage(String suffix) {
-        return pageDao.create(new Page(null, PREFIX + suffix, PREFIX + suffix, "content", PageStatus.PUBLISHED,
-                null, null, false, true));
+        Page page = new Page(null, PREFIX + suffix, PREFIX + suffix, "content", PageStatus.PUBLISHED,
+                null, null, false, true);
+        page.setSite(site);
+        return pageDao.create(page);
     }
 
     private static void cleanTestData() throws SQLException {

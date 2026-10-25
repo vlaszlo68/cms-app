@@ -7,6 +7,7 @@ import hu.laci.cms.backend.dto.page.PageBlockRequestBase;
 import hu.laci.cms.backend.dto.page.PageBlockResponse;
 import hu.laci.cms.backend.dto.page.UpdatePageBlockRequest;
 import hu.laci.cms.backend.model.page.PageBlock;
+import hu.laci.cms.backend.model.site.Site;
 
 import java.util.List;
 import java.util.Objects;
@@ -28,34 +29,37 @@ public class PageBlockService {
         this.pageBlockDao = Objects.requireNonNull(pageBlockDao, "pageBlockDao must not be null");
     }
 
-    public List<PageBlockResponse> listBlocks(Long pageId) {
-        requirePage(pageId);
+    public List<PageBlockResponse> listBlocks(Site site, Long pageId) {
+        requirePage(site, pageId);
         return pageBlockDao.findByPageId(pageId).stream().map(this::toResponse).toList();
     }
 
-    public List<PageBlockResponse> listVisibleBlocks(Long pageId) {
-        requirePage(pageId);
+    public List<PageBlockResponse> listVisibleBlocks(Site site, Long pageId) {
+        requirePage(site, pageId);
         return pageBlockDao.findVisibleByPageId(pageId).stream().map(this::toResponse).toList();
     }
 
-    public PageBlockResponse getBlock(Long id) {
-        return toResponse(loadBlock(id));
+    public PageBlockResponse getBlock(Site site, Long pageId, Long id) {
+        requirePage(site, pageId);
+        return toResponse(loadBlock(pageId, id));
     }
 
-    public PageBlockResponse createBlock(CreatePageBlockRequest request) {
+    public PageBlockResponse createBlock(Site site, Long pageId, CreatePageBlockRequest request) {
         validate(request);
-        requirePage(request.getPageId());
-        PageBlock block = new PageBlock(null, request.getPageId(), request.getBlockType().trim(),
+        requirePathPage(request.getPageId(), pageId);
+        requirePage(site, pageId);
+        PageBlock block = new PageBlock(null, pageId, request.getBlockType().trim(),
                 trimToNull(request.getTitle()), defaultOrder(request.getSortOrder()),
                 request.getVisible() == null || request.getVisible(), trimToNull(request.getConfigJson()));
         return toResponse(pageBlockDao.create(block));
     }
 
-    public PageBlockResponse updateBlock(Long id, UpdatePageBlockRequest request) {
+    public PageBlockResponse updateBlock(Site site, Long pageId, Long id, UpdatePageBlockRequest request) {
         validate(request);
-        PageBlock block = loadBlock(id);
-        requirePage(request.getPageId());
-        block.setPageId(request.getPageId());
+        requirePathPage(request.getPageId(), pageId);
+        requirePage(site, pageId);
+        PageBlock block = loadBlock(pageId, id);
+        block.setPageId(pageId);
         block.setBlockType(request.getBlockType().trim());
         block.setTitle(trimToNull(request.getTitle()));
         block.setSortOrder(defaultOrder(request.getSortOrder()));
@@ -64,24 +68,35 @@ public class PageBlockService {
         return toResponse(pageBlockDao.update(block));
     }
 
-    public boolean deleteBlock(Long id) {
-        return pageBlockDao.delete(loadBlock(id));
+    public boolean deleteBlock(Site site, Long pageId, Long id) {
+        requirePage(site, pageId);
+        return pageBlockDao.delete(loadBlock(pageId, id));
     }
 
-    private PageBlock loadBlock(Long id) {
+    private PageBlock loadBlock(Long pageId, Long id) {
         if (id == null) {
             throw new PageBlockServiceException(VALIDATION_ERROR, "Page block id is required.");
         }
-        return pageBlockDao.findById(id)
+        PageBlock block = pageBlockDao.findById(id)
                 .orElseThrow(() -> new PageBlockServiceException(PAGE_BLOCK_NOT_FOUND, "Page block not found."));
+        if (!pageId.equals(block.getPageId())) {
+            throw new PageBlockServiceException(PAGE_BLOCK_NOT_FOUND, "Page block not found.");
+        }
+        return block;
     }
 
-    private void requirePage(Long pageId) {
+    private void requirePage(Site site, Long pageId) {
         if (pageId == null) {
             throw new PageBlockServiceException(VALIDATION_ERROR, "pageId is required.");
         }
-        if (pageDao.findById(pageId).isEmpty()) {
+        if (site == null || site.getId() == null || pageDao.findBySiteAndId(site, pageId).isEmpty()) {
             throw new PageBlockServiceException(PAGE_NOT_FOUND, "Page not found.");
+        }
+    }
+
+    private static void requirePathPage(Long requestPageId, Long pathPageId) {
+        if (pathPageId == null || requestPageId == null || !pathPageId.equals(requestPageId)) {
+            throw new PageBlockServiceException(VALIDATION_ERROR, "pageId must match the page path.");
         }
     }
 

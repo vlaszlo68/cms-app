@@ -7,6 +7,7 @@ import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.media.Media;
 import hu.laci.cms.backend.model.media.MediaProperty;
 import hu.laci.cms.backend.model.media.MediaStorageType;
+import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -18,13 +19,15 @@ import java.util.Optional;
 
 class MediaServiceTest {
 
+    private static final Site SITE = new Site(1L, "site-a", "Site A", true);
+
     @Test
     void getMediaReturnsMetadataWithoutLoadingContent() {
         FakeMediaStorageService storageService = new FakeMediaStorageService("hello".getBytes());
         MediaService mediaService = new MediaService(new FakeMediaDao(testMedia()), storageService,
                 MediaStorageType.DATABASE);
 
-        MediaResponse response = mediaService.getMedia(42L);
+        MediaResponse response = mediaService.getMedia(SITE, 42L);
 
         Assertions.assertEquals(42L, response.getId());
         Assertions.assertEquals("sample.txt", response.getOriginalFileName());
@@ -39,7 +42,7 @@ class MediaServiceTest {
         MediaService mediaService = new MediaService(new FakeMediaDao(testMedia()), storageService,
                 MediaStorageType.DATABASE);
 
-        MediaContent response = mediaService.getMediaContent(42L);
+        MediaContent response = mediaService.getMediaContent(SITE, 42L);
 
         Assertions.assertEquals("sample.txt", response.getOriginalFileName());
         Assertions.assertEquals("text/plain", response.getMimeType());
@@ -65,7 +68,7 @@ class MediaServiceTest {
         Mockito.when(mediaDao.update(Mockito.any())).thenAnswer(invocation -> invocation.getArgument(0, Media.class));
         MediaService service = new MediaService(mediaDao, storage, MediaStorageType.DATABASE);
 
-        UploadMediaResponse response = service.uploadMedia("photo.png", new ByteArrayInputStream(new byte[]{1, 2, 3}),
+        UploadMediaResponse response = service.uploadMedia(SITE, "photo.png", new ByteArrayInputStream(new byte[]{1, 2, 3}),
                 "image/png", " Cover ");
 
         Assertions.assertEquals(33L, response.getId());
@@ -84,7 +87,7 @@ class MediaServiceTest {
         MediaService service = new MediaService(mediaDao, storage, MediaStorageType.DATABASE);
 
         MediaServiceException exception = Assertions.assertThrows(MediaServiceException.class,
-                () -> service.uploadMedia("photo.png", new ByteArrayInputStream(new byte[]{1}), "image/png", null));
+                () -> service.uploadMedia(SITE, "photo.png", new ByteArrayInputStream(new byte[]{1}), "image/png", null));
 
         Assertions.assertEquals(MediaService.STORAGE_ERROR, exception.getCode());
         Mockito.verify(storage).delete("temp:1");
@@ -95,11 +98,11 @@ class MediaServiceTest {
         MediaDao mediaDao = Mockito.mock(MediaDao.class);
         MediaStorageService storage = Mockito.mock(MediaStorageService.class);
         Media media = testMedia();
-        Mockito.when(mediaDao.findById(42L)).thenReturn(Optional.of(media));
+        Mockito.when(mediaDao.findBySiteAndId(SITE, 42L)).thenReturn(Optional.of(media));
         Mockito.when(mediaDao.delete(media)).thenReturn(true);
         MediaService service = new MediaService(mediaDao, storage, MediaStorageType.DATABASE);
 
-        Assertions.assertTrue(service.deleteMedia(42L));
+        Assertions.assertTrue(service.deleteMedia(SITE, 42L));
 
         Mockito.verify(storage).delete("database:42");
         Mockito.verify(mediaDao).delete(media);
@@ -110,12 +113,12 @@ class MediaServiceTest {
         MediaDao mediaDao = Mockito.mock(MediaDao.class);
         MediaStorageService storage = Mockito.mock(MediaStorageService.class);
         Media media = testMedia();
-        Mockito.when(mediaDao.findById(42L)).thenReturn(Optional.of(media));
+        Mockito.when(mediaDao.findBySiteAndId(SITE, 42L)).thenReturn(Optional.of(media));
         Mockito.doThrow(new IllegalStateException("storage unavailable")).when(storage).delete("database:42");
         MediaService service = new MediaService(mediaDao, storage, MediaStorageType.DATABASE);
 
         MediaServiceException exception = Assertions.assertThrows(MediaServiceException.class,
-                () -> service.deleteMedia(42L));
+                () -> service.deleteMedia(SITE, 42L));
 
         Assertions.assertEquals(MediaService.STORAGE_ERROR, exception.getCode());
         Mockito.verify(mediaDao, Mockito.never()).delete(Mockito.any());
@@ -127,7 +130,7 @@ class MediaServiceTest {
                 MediaStorageType.DATABASE);
 
         MediaServiceException exception = Assertions.assertThrows(MediaServiceException.class,
-                () -> service.uploadMedia(" ", null, "", null));
+                () -> service.uploadMedia(SITE, " ", null, "", null));
 
         Assertions.assertEquals(MediaService.VALIDATION_ERROR, exception.getCode());
     }
@@ -135,6 +138,7 @@ class MediaServiceTest {
     private static Media testMedia() {
         Media media = new Media(42L, "sample.txt", "42", "text/plain", 5L,
                 "database:42", "Sample", MediaStorageType.DATABASE, Boolean.TRUE);
+        media.setSite(SITE);
         return media;
     }
 
@@ -147,8 +151,18 @@ class MediaServiceTest {
         }
 
         @Override
-        public List<Media> findActive() {
+        public List<Media> findAllBySite(Site site) {
             return List.of(media);
+        }
+
+        @Override
+        public List<Media> findActiveBySite(Site site) {
+            return List.of(media);
+        }
+
+        @Override
+        public Optional<Media> findBySiteAndId(Site site, Long id) {
+            return media.getId().equals(id) ? Optional.of(media) : Optional.empty();
         }
 
         @Override

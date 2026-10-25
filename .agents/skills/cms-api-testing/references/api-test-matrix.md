@@ -2,6 +2,8 @@
 
 Base URL for local standalone Tomcat: `http://localhost:8080/cms-app`.
 
+The migrated development Site code is `default`. Every Site-owned request carries a Site code explicitly; the smoke script accepts `-SiteCode` and defaults it to `default`.
+
 ## Strictness
 
 Standard checks verify expected HTTP status codes and the basic login/session/CSRF flow.
@@ -17,11 +19,12 @@ Strict checks are optional and must be selected before the test starts. Strict m
 | Unauthenticated session | `GET /api/auth/me` | `401` |
 | Login | `POST /api/auth/login` | `200`, `data.loginName`, `data.role`, `data.csrfToken` |
 | Session restore | `GET /api/auth/me` with session cookie | `200`, same auth shape as login |
-| Pages read | `GET /api/pages` | `200` for admin |
+| Sites read | `GET /api/admin/sites` | `200` for admin, including inactive Sites |
+| Pages read | `GET /api/admin/sites/{siteCode}/pages` | `200` for admin |
 | Templates read | `GET /api/templates` | `200` for admin |
-| Menus read | `GET /api/menus` | `200` for admin |
-| Media metadata read | `GET /api/media` | `200` for admin |
-| Site settings read | `GET /api/site-settings` | `200` for admin |
+| Menus read | `GET /api/admin/sites/{siteCode}/menus` | `200` for admin |
+| Media metadata read | `GET /api/admin/sites/{siteCode}/media` | `200` for admin |
+| Site settings read | `GET /api/admin/sites/{siteCode}/site-settings` | `200` for admin |
 | Logout | `POST /api/auth/logout` with `X-CSRF-Token` | `200`, message `Logged out` |
 
 Strict non-destructive assertions:
@@ -38,11 +41,13 @@ Strict non-destructive assertions:
 
 ## Public Page Read
 
-`GET /api/public/pages/{slug}` is unauthenticated and performs an exact, case-sensitive slug lookup. It returns a common success envelope only for a `PUBLISHED` `CONTENT` or `BLOCK` page. A CONTENT `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and `content`; it omits `blocks`. A BLOCK `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and a non-null `blocks` list; it omits `content`. Each public block contains `id`, `blockType`, `title`, `sortOrder`, `visible`, and `configJson`, never `pageId`; only visible blocks are returned in `sortOrder`, then id order, so every returned `visible` value is `true`. Unknown, draft, and archived pages return `404` with `PAGE_NOT_FOUND`. Missing or multi-segment slug paths return `400` with `INVALID_REQUEST`.
+`GET /api/public/sites/{siteCode}/pages/{slug}` is unauthenticated and performs an exact, case-sensitive slug lookup. It returns a common success envelope only for a `PUBLISHED` `CONTENT` or `BLOCK` page. A CONTENT `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and `content`; it omits `blocks`. A BLOCK `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and a non-null `blocks` list; it omits `content`. Each public block contains `id`, `blockType`, `title`, `sortOrder`, `visible`, and `configJson`, never `pageId`; only visible blocks are returned in `sortOrder`, then id order, so every returned `visible` value is `true`. Unknown, draft, and archived pages return `404` with `PAGE_NOT_FOUND`. Missing or multi-segment slug paths return `400` with `INVALID_REQUEST`.
 
-`GET /api/public/site-settings` is unauthenticated and returns the common success envelope with exactly `siteName`, `logoMediaId`, `footerText`, `contactEmail`, `phone`, `facebookUrl`, and `linkedinUrl`. If the singleton settings record is absent, every field is present with a `null` value and the request does not create a record.
+`GET /api/public/sites/{siteCode}/site-settings` is unauthenticated and returns the selected Site's common success envelope with exactly `siteName`, `logoMediaId`, `footerText`, `contactEmail`, `phone`, `facebookUrl`, and `linkedinUrl`. If that Site's settings record is absent, every field is present with a `null` value and the request does not create a record.
 
-`GET /api/public/menus/MAIN` and `GET /api/public/menus/FOOTER` are unauthenticated and return active, visible, ordered menu trees. PAGE items contain `id`, `title`, `targetType`, `pageId`, `pageSlug`, `path`, and `children`; only PUBLISHED CONTENT page targets are included. URL items contain `id`, `title`, `targetType`, `targetUrl`, and `children`. Inactive or unknown menu codes return `404 MENU_NOT_FOUND`.
+`GET /api/public/sites/{siteCode}/menus/MAIN` and `GET /api/public/sites/{siteCode}/menus/FOOTER` are unauthenticated and return active, visible, ordered menu trees. PAGE items contain `id`, `title`, `targetType`, `pageId`, `pageSlug`, `path`, and `children`; only PUBLISHED CONTENT page targets are included. URL items contain `id`, `title`, `targetType`, `targetUrl`, and `children`. Inactive or unknown menu codes return `404 MENU_NOT_FOUND`.
+
+Unknown Site codes and inactive Sites return `404 SITE_NOT_FOUND` for public page, menu, and settings routes. Public routing never selects a Site from a session, host name, first row, or implicit fallback.
 
 The repeatable smoke script verifies this endpoint in destructive mode using a published `CONTENT` fixture created within the same run, then deletes that fixture during cleanup. Strict destructive mode additionally verifies the limited field set and the public `404` after cleanup.
 
@@ -55,13 +60,15 @@ The script should create test entities with a unique `codex-api-test-*` prefix a
 | Surface | Create | Read | Update | Delete/Cleanup | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Users | `POST /api/users` | `GET /api/users/{id}` | `PUT /api/users/{id}` | API `DELETE`, then permanent database removal by current-run ID | Admin only, use `USER` role for created test users; API delete soft-deactivates, so the test script must physically remove only its own row |
-| Pages | `POST /api/pages` | `GET /api/pages/{id}` | `PUT /api/pages/{id}` | `DELETE /api/pages/{id}` | Use `BLOCK` when also testing page blocks |
-| Page blocks | `POST /api/page-blocks` | `GET /api/page-blocks/{id}` | `PUT /api/page-blocks/{id}` | `DELETE /api/page-blocks/{id}` | Requires a page id |
-| Menus | `POST /api/menus` | `GET /api/menus/{id}` | `PUT /api/menus/{id}` | `DELETE /api/menus/{id}` | Deleting a menu deletes its items |
-| Menu items | `POST /api/menu-items` | `GET /api/menus/{menuId}/items` | `PUT /api/menu-items/{id}` | `DELETE /api/menu-items/{id}` | Prefer `URL` target to avoid page coupling |
+| Pages | `POST /api/admin/sites/{siteCode}/pages` | `GET /api/admin/sites/{siteCode}/pages/{id}` | `PUT /api/admin/sites/{siteCode}/pages/{id}` | `DELETE /api/admin/sites/{siteCode}/pages/{id}` | Use `BLOCK` when also testing page blocks |
+| Page blocks | `POST /api/admin/sites/{siteCode}/pages/{pageId}/blocks` | `GET /api/admin/sites/{siteCode}/pages/{pageId}/blocks/{id}` | `PUT /api/admin/sites/{siteCode}/pages/{pageId}/blocks/{id}` | `DELETE /api/admin/sites/{siteCode}/pages/{pageId}/blocks/{id}` | Parent Page and block id are both ownership-checked |
+| Menus | `POST /api/admin/sites/{siteCode}/menus` | `GET /api/admin/sites/{siteCode}/menus/{id}` | `PUT /api/admin/sites/{siteCode}/menus/{id}` | `DELETE /api/admin/sites/{siteCode}/menus/{id}` | Deleting a menu deletes its items |
+| Menu items | `POST /api/admin/sites/{siteCode}/menus/{menuId}/items` | `GET /api/admin/sites/{siteCode}/menus/{menuId}/items` | `PUT /api/admin/sites/{siteCode}/menus/{menuId}/items/{id}` | `DELETE /api/admin/sites/{siteCode}/menus/{menuId}/items/{id}` | Prefer `URL` target to avoid page coupling |
 | Templates | `POST /api/templates` | `GET /api/templates/{id}` | `PUT /api/templates/{id}` | API `DELETE`, then permanent database removal by current-run ID | API delete deactivates templates, so the test script must physically remove only its own row after verifying no page reference |
-| Media | `POST /api/media` multipart | `GET /api/media/{id}` and `/content` | Not exposed | `DELETE /api/media/{id}` | API exposes create/read/delete, not update |
-| Site settings | Not exposed | `GET /api/site-settings` | Not run by default | Not run by default | Singleton settings record, not normal CRUD; do not update it during standard destructive mode because the row was not created by the test |
+| Media | `POST /api/admin/sites/{siteCode}/media` multipart | `GET /api/admin/sites/{siteCode}/media/{id}` and `/content` | Not exposed | `DELETE /api/admin/sites/{siteCode}/media/{id}` | API exposes create/read/delete, not update |
+| Site settings | Not exposed | `GET /api/admin/sites/{siteCode}/site-settings` | Not run by default | Not run by default | One settings row per Site; do not update existing settings during standard destructive mode |
+
+Site management is `GET/POST /api/admin/sites` and `GET/PUT /api/admin/sites/{siteCode}`. There is intentionally no Site delete endpoint. The live smoke script reads Sites but does not create disposable Sites; two-Site isolation fixtures belong in automated tests or an isolated disposable database.
 
 Strict destructive assertions:
 
@@ -71,7 +78,7 @@ Strict destructive assertions:
 | Read-after-create bodies | returned `data.id` matches the created id |
 | Update bodies | returned `data.id` matches the updated id, and updated fields match where the endpoint returns them |
 | Media content | response body is non-empty |
-| Cleanup verification | after delete, `GET /api/pages/{id}`, `/api/page-blocks/{id}`, `/api/menus/{id}`, and `/api/media/{id}` return `404`; deleted menu item is absent from `GET /api/menus/{menuId}/items` when the menu still exists; user and template API deletes first return `data.active=false`, then the script permanently removes only the current-run IDs and verifies their database row counts are zero |
+| Cleanup verification | after delete, Site-scoped Page, nested PageBlock, Menu, and Media reads return `404`; deleted menu item is absent from its Site-scoped Menu item list; user and template API deletes first return `data.active=false`, then the script permanently removes only the current-run IDs and verifies their database row counts are zero |
 
 ## Auth And CAPTCHA Rules
 

@@ -8,6 +8,7 @@ import hu.laci.cms.backend.dao.menu.MenuDaoImpl;
 import hu.laci.cms.backend.dao.menu.MenuItemDaoImpl;
 import hu.laci.cms.backend.dao.settings.SiteSettingsDaoImpl;
 import hu.laci.cms.backend.dao.template.TemplateDaoImpl;
+import hu.laci.cms.backend.dao.site.SiteDaoImpl;
 import hu.laci.cms.backend.model.common.BaseEntity;
 import hu.laci.cms.backend.model.common.BaseProperty;
 import hu.laci.cms.backend.model.media.Media;
@@ -17,6 +18,7 @@ import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageBlock;
 import hu.laci.cms.backend.model.settings.SiteSettings;
 import hu.laci.cms.backend.model.template.Template;
+import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.user.User;
 
 import java.util.HashMap;
@@ -52,6 +54,7 @@ public final class DaoRegistry {
         register(MenuItem.class, new MenuItemDaoImpl());
         register(Template.class, new TemplateDaoImpl());
         register(SiteSettings.class, new SiteSettingsDaoImpl());
+        register(Site.class, new SiteDaoImpl());
     }
 
     /**
