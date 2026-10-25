@@ -41,3 +41,6 @@ build/
 
 ### Local HTTP client artifacts ###
 /curl-cookies.txt
+
+### Local CMS runtime ###
+/start_cms_local.bat
