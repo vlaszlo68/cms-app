@@ -1,8 +1,10 @@
 package hu.laci.cms.backend.service.settings;
 
 import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
+import hu.laci.cms.backend.dao.media.MediaDao;
 import hu.laci.cms.backend.dto.settings.PublicSiteSettingsResponse;
 import hu.laci.cms.backend.model.settings.SiteSettings;
+import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -14,12 +16,16 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 /** Unit tests for anonymous site-settings fallback behavior. */
 class SiteSettingsServicePublicSettingsTest {
 
+    private static final Site SITE = new Site(1L, "site-a", "Site A", true);
+
     @Test
     void publicSettingsReturnsAllNullFallbackWithoutCreatingSingleton() {
         SiteSettingsDao siteSettingsDao = Mockito.mock(SiteSettingsDao.class);
-        Mockito.when(siteSettingsDao.findSettings()).thenReturn(Optional.empty());
+        MediaDao mediaDao = Mockito.mock(MediaDao.class);
+        Mockito.when(siteSettingsDao.findBySite(SITE)).thenReturn(Optional.empty());
 
-        PublicSiteSettingsResponse response = new SiteSettingsService(siteSettingsDao).getPublicSettings();
+        PublicSiteSettingsResponse response = new SiteSettingsService(siteSettingsDao, mediaDao)
+                .getPublicSettings(SITE);
 
         assertNull(response.getSiteName());
         assertNull(response.getLogoMediaId());
@@ -28,7 +34,7 @@ class SiteSettingsServicePublicSettingsTest {
         assertNull(response.getPhone());
         assertNull(response.getFacebookUrl());
         assertNull(response.getLinkedinUrl());
-        Mockito.verify(siteSettingsDao).findSettings();
+        Mockito.verify(siteSettingsDao).findBySite(SITE);
         Mockito.verify(siteSettingsDao, Mockito.never()).create(Mockito.any(SiteSettings.class));
         Mockito.verify(siteSettingsDao, Mockito.never()).update(Mockito.any(SiteSettings.class));
     }
@@ -36,6 +42,7 @@ class SiteSettingsServicePublicSettingsTest {
     @Test
     void publicSettingsContainsOnlyLayoutValues() {
         SiteSettingsDao siteSettingsDao = Mockito.mock(SiteSettingsDao.class);
+        MediaDao mediaDao = Mockito.mock(MediaDao.class);
         SiteSettings settings = new SiteSettings();
         settings.setSiteName("CMS");
         settings.setLogoMediaId(8L);
@@ -44,9 +51,10 @@ class SiteSettingsServicePublicSettingsTest {
         settings.setPhone("+36 1 234");
         settings.setFacebookUrl("https://facebook.example");
         settings.setLinkedinUrl("https://linkedin.example");
-        Mockito.when(siteSettingsDao.findSettings()).thenReturn(Optional.of(settings));
+        Mockito.when(siteSettingsDao.findBySite(SITE)).thenReturn(Optional.of(settings));
 
-        PublicSiteSettingsResponse response = new SiteSettingsService(siteSettingsDao).getPublicSettings();
+        PublicSiteSettingsResponse response = new SiteSettingsService(siteSettingsDao, mediaDao)
+                .getPublicSettings(SITE);
 
         assertEquals("CMS", response.getSiteName());
         assertEquals(8L, response.getLogoMediaId());

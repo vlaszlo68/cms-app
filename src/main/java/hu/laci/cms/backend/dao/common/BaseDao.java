@@ -1434,6 +1434,10 @@ public abstract class BaseDao<T extends BaseEntity, P extends BaseProperty>
     }
 
     private static Object getSqlValue(Object value) {
+        if (value instanceof BaseEntity entity) {
+            requireEntityId(entity);
+            return entity.getId();
+        }
         if (value instanceof Boolean booleanValue) {
             return booleanValue ? "T" : "F";
         }

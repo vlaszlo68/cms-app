@@ -10,6 +10,7 @@ import hu.laci.cms.backend.model.menu.MenuItemTargetType;
 import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageStatus;
 import hu.laci.cms.backend.model.page.PageType;
+import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -24,12 +25,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /** Unit tests for public menu eligibility and route mapping. */
 class MenuItemServicePublicMenuTest {
 
+    private static final Site SITE = new Site(1L, "site-a", "Site A", true);
+
     @Test
     void publicMenuIncludesOnlyEligiblePageTargetsAndPreservesHierarchy() {
         MenuDao menuDao = Mockito.mock(MenuDao.class);
         MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
         PageDao pageDao = Mockito.mock(PageDao.class);
-        Mockito.when(menuDao.findByCode("MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
+        Mockito.when(menuDao.findBySiteAndCode(SITE, "MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
         Mockito.when(menuItemDao.findByMenuId(10L)).thenReturn(List.of(
                 pageItem(1L, null, 100L, "Home", 10, true),
                 urlItem(2L, 1L, "Docs", "https://example.com/docs", 20, true),
@@ -39,11 +42,11 @@ class MenuItemServicePublicMenuTest {
                 pageItem(6L, null, 100L, "Invisible", 60, false)
         ));
         Page homepage = page(100L, "home", false);
-        Mockito.when(pageDao.findPublishedContentByIds(Set.of(100L, 101L, 102L))).thenReturn(List.of(homepage));
+        Mockito.when(pageDao.findPublishedContentBySiteAndIds(SITE, Set.of(100L, 101L, 102L))).thenReturn(List.of(homepage));
 
         MenuItemService service = new MenuItemService(menuDao, menuItemDao, pageDao);
 
-        List<PublicMenuItemResponse> result = service.getPublicMenu("MAIN");
+        List<PublicMenuItemResponse> result = service.getPublicMenu(SITE, "MAIN");
 
         assertEquals(1, result.size());
         PublicMenuItemResponse home = result.getFirst();
@@ -61,7 +64,7 @@ class MenuItemServicePublicMenuTest {
         assertNull(docs.getPageSlug());
         assertNull(docs.getPath());
         assertEquals("https://example.com/docs", docs.getTargetUrl());
-        Mockito.verify(pageDao).findPublishedContentByIds(Set.of(100L, 101L, 102L));
+        Mockito.verify(pageDao).findPublishedContentBySiteAndIds(SITE, Set.of(100L, 101L, 102L));
         Mockito.verifyNoMoreInteractions(pageDao);
     }
 
@@ -70,11 +73,11 @@ class MenuItemServicePublicMenuTest {
         MenuDao menuDao = Mockito.mock(MenuDao.class);
         MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
         PageDao pageDao = Mockito.mock(PageDao.class);
-        Mockito.when(menuDao.findByCode("MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", false)));
+        Mockito.when(menuDao.findBySiteAndCode(SITE, "MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", false)));
         MenuItemService service = new MenuItemService(menuDao, menuItemDao, pageDao);
 
         MenuServiceException exception = assertThrows(MenuServiceException.class,
-                () -> service.getPublicMenu("MAIN"));
+                () -> service.getPublicMenu(SITE, "MAIN"));
 
         assertEquals(MenuService.MENU_NOT_FOUND, exception.getCode());
         Mockito.verifyNoInteractions(menuItemDao, pageDao);
@@ -85,14 +88,14 @@ class MenuItemServicePublicMenuTest {
         MenuDao menuDao = Mockito.mock(MenuDao.class);
         MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
         PageDao pageDao = Mockito.mock(PageDao.class);
-        Mockito.when(menuDao.findByCode("MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
+        Mockito.when(menuDao.findBySiteAndCode(SITE, "MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
         Mockito.when(menuItemDao.findByMenuId(10L)).thenReturn(List.of(
                 urlItem(1L, null, "Hidden parent", "https://example.com/hidden", 1, false),
                 urlItem(2L, 1L, "Visible child", "https://example.com/visible", 2, true)
         ));
         MenuItemService service = new MenuItemService(menuDao, menuItemDao, pageDao);
 
-        List<PublicMenuItemResponse> result = service.getPublicMenu("MAIN");
+        List<PublicMenuItemResponse> result = service.getPublicMenu(SITE, "MAIN");
 
         assertEquals(List.of(), result);
     }

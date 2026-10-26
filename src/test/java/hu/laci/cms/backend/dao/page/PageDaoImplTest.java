@@ -4,11 +4,14 @@ import hu.laci.cms.backend.config.database.DatabaseConfig;
 import hu.laci.cms.backend.config.database.migration.DatabaseMigrationRunner;
 import hu.laci.cms.backend.config.session.SessionContext;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
+import hu.laci.cms.backend.dao.site.SiteDao;
+import hu.laci.cms.backend.dao.site.SiteDaoImpl;
 import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageProperty;
 import hu.laci.cms.backend.model.page.PageStatus;
 import hu.laci.cms.backend.model.page.PageType;
+import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -37,7 +40,8 @@ class PageDaoImplTest {
     private static final String TEST_PREFIX = "page_dao_test_";
 
     private PageDao pageDao;
-    private List<String> suspendedHomepageSlugs = List.of();
+    private SiteDao siteDao;
+    private Site site;
 
     @BeforeAll
     static void initializeDatabase() {
@@ -56,15 +60,17 @@ class PageDaoImplTest {
     void setUp() throws SQLException {
         SessionContext.clear();
         pageDao = new PageDaoImpl();
+        siteDao = new SiteDaoImpl();
+        site = siteDao.findByCode("page-dao-tests")
+                .orElseGet(() -> siteDao.create(new Site(null, "page-dao-tests", "Page DAO Tests", true)));
         deleteTestPages();
-        suspendedHomepageSlugs = suspendExternalHomepages();
     }
 
     @AfterEach
     void tearDown() throws SQLException {
         SessionContext.clear();
-        restoreExternalHomepages(suspendedHomepageSlugs);
         deleteTestPages();
+        siteDao.delete(site);
     }
 
     @Test
@@ -91,7 +97,7 @@ class PageDaoImplTest {
     void findBySlugReturnsPage() throws SQLException {
         long pageId = insertPage("slug", PageStatus.DRAFT, false, true);
 
-        Optional<Page> page = pageDao.findBySlug(TEST_PREFIX + "slug");
+        Optional<Page> page = pageDao.findBySiteAndSlug(site, TEST_PREFIX + "slug");
 
         assertTrue(page.isPresent());
         assertEquals(pageId, page.get().getId());
@@ -102,7 +108,7 @@ class PageDaoImplTest {
         insertPage("regular", PageStatus.DRAFT, false, true);
         long homepageId = insertPage("home", PageStatus.PUBLISHED, true, true);
 
-        Optional<Page> page = pageDao.findHomepage();
+        Optional<Page> page = pageDao.findHomepageBySite(site);
 
         assertTrue(page.isPresent());
         assertEquals(homepageId, page.get().getId());
@@ -112,7 +118,7 @@ class PageDaoImplTest {
     void findHomepageReturnsEmptyWhenNoHomepageExists() throws SQLException {
         insertPage("regular", PageStatus.DRAFT, false, true);
 
-        Optional<Page> page = pageDao.findHomepage();
+        Optional<Page> page = pageDao.findHomepageBySite(site);
 
         assertTrue(page.isEmpty());
     }
@@ -179,7 +185,7 @@ class PageDaoImplTest {
         Page archivedContent = pageDao.create(createPage("archived", PageType.CONTENT, PageStatus.ARCHIVED));
         Page publishedBlock = pageDao.create(createPage("block", PageType.BLOCK, PageStatus.PUBLISHED));
 
-        List<Page> pages = pageDao.findPublishedContentByIds(List.of(
+        List<Page> pages = pageDao.findPublishedContentBySiteAndIds(site, List.of(
                 publishedContent.getId(), archivedContent.getId(), publishedBlock.getId()));
 
         assertEquals(List.of(publishedContent.getId()), pages.stream().map(Page::getId).toList());
@@ -201,8 +207,8 @@ class PageDaoImplTest {
                 () -> pageDao.update(createPage("missing-id", PageStatus.DRAFT, false, true)));
     }
 
-    private static Page createPage(String suffix, PageStatus status, Boolean homepage, Boolean menuVisible) {
-        return new Page(
+    private Page createPage(String suffix, PageStatus status, Boolean homepage, Boolean menuVisible) {
+        Page page = new Page(
                 null,
                 TEST_PREFIX + suffix,
                 TEST_PREFIX + suffix,
@@ -213,10 +219,12 @@ class PageDaoImplTest {
                 homepage,
                 menuVisible
         );
+        page.setSite(site);
+        return page;
     }
 
-    private static Page createPage(String suffix, PageType pageType, PageStatus status) {
-        return new Page(
+    private Page createPage(String suffix, PageType pageType, PageStatus status) {
+        Page page = new Page(
                 null,
                 TEST_PREFIX + suffix,
                 TEST_PREFIX + suffix,
@@ -229,25 +237,28 @@ class PageDaoImplTest {
                 true,
                 null
         );
+        page.setSite(site);
+        return page;
     }
 
-    private static long insertPage(String suffix, PageStatus status, boolean homepage, boolean menuVisible)
+    private long insertPage(String suffix, PageStatus status, boolean homepage, boolean menuVisible)
             throws SQLException {
         try (Connection connection = DatabaseConfig.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     INSERT INTO pages (title, slug, content, status, meta_title, meta_description, homepage,
+                     INSERT INTO pages (site_id, title, slug, content, status, meta_title, meta_description, homepage,
                                         menu_visible, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                      RETURNING id
                      """)) {
-            statement.setString(1, TEST_PREFIX + suffix);
+            statement.setLong(1, site.getId());
             statement.setString(2, TEST_PREFIX + suffix);
-            statement.setString(3, TEST_PREFIX + suffix + " content");
-            statement.setString(4, status.name());
-            statement.setString(5, TEST_PREFIX + suffix + " meta");
-            statement.setString(6, TEST_PREFIX + suffix + " description");
-            statement.setString(7, homepage ? "T" : "F");
-            statement.setString(8, menuVisible ? "T" : "F");
+            statement.setString(3, TEST_PREFIX + suffix);
+            statement.setString(4, TEST_PREFIX + suffix + " content");
+            statement.setString(5, status.name());
+            statement.setString(6, TEST_PREFIX + suffix + " meta");
+            statement.setString(7, TEST_PREFIX + suffix + " description");
+            statement.setString(8, homepage ? "T" : "F");
+            statement.setString(9, menuVisible ? "T" : "F");
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 resultSet.next();

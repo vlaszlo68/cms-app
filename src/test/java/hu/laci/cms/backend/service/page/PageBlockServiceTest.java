@@ -7,6 +7,7 @@ import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.page.PageBlockDao;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.template.TemplateDao;
+import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dto.page.CreatePageBlockRequest;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
 import hu.laci.cms.backend.dto.page.PageBlockResponse;
@@ -17,6 +18,7 @@ import hu.laci.cms.backend.model.page.PageBlock;
 import hu.laci.cms.backend.model.page.PageStatus;
 import hu.laci.cms.backend.model.page.PageType;
 import hu.laci.cms.backend.model.template.Template;
+import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -42,6 +44,7 @@ class PageBlockServiceTest {
     private PageBlockDao pageBlockDao;
     private PageService pageService;
     private PageBlockService pageBlockService;
+    private Site site;
 
     @BeforeAll
     static void initializeDatabase() {
@@ -62,6 +65,8 @@ class PageBlockServiceTest {
         PageDao pageDao = DaoRegistry.getDao(Page.class);
         pageBlockDao = DaoRegistry.getDao(PageBlock.class);
         TemplateDao templateDao = DaoRegistry.getDao(Template.class);
+        SiteDao siteDao = DaoRegistry.getDao(Site.class);
+        site = siteDao.findByCode("default").orElseThrow();
         pageService = new PageService(pageDao, templateDao, pageBlockDao);
         pageBlockService = new PageBlockService(pageDao, pageBlockDao);
         deleteTestPages();
@@ -76,45 +81,46 @@ class PageBlockServiceTest {
     @Test
     void createListGetUpdateAndDeleteBlock() {
         PageResponse page = createBlockPage("crud");
-        PageBlockResponse second = pageBlockService.createBlock(new CreatePageBlockRequest(
+        PageBlockResponse second = pageBlockService.createBlock(site, page.getId(), new CreatePageBlockRequest(
                 page.getId(), "TEXT", "Second", 20, true, "{\"body\":\"text\"}"));
-        PageBlockResponse first = pageBlockService.createBlock(new CreatePageBlockRequest(
+        PageBlockResponse first = pageBlockService.createBlock(site, page.getId(), new CreatePageBlockRequest(
                 page.getId(), "HERO", " First ", 10, true,
                 "{\"headline\":\"Welcome\"}"));
 
-        List<PageBlockResponse> blocks = pageBlockService.listBlocks(page.getId());
+        List<PageBlockResponse> blocks = pageBlockService.listBlocks(site, page.getId());
         assertEquals(List.of(first.getId(), second.getId()), blocks.stream().map(PageBlockResponse::getId).toList());
-        assertEquals("{\"headline\":\"Welcome\"}", pageBlockService.getBlock(first.getId()).getConfigJson());
+        assertEquals("{\"headline\":\"Welcome\"}", pageBlockService.getBlock(site, page.getId(), first.getId()).getConfigJson());
 
-        PageBlockResponse updated = pageBlockService.updateBlock(first.getId(), new UpdatePageBlockRequest(
+        PageBlockResponse updated = pageBlockService.updateBlock(site, page.getId(), first.getId(), new UpdatePageBlockRequest(
                 page.getId(), "CTA", null, 30, false, "{invalid-json-is-stored}"));
         assertEquals("CTA", updated.getBlockType());
         assertFalse(updated.isVisible());
         assertEquals("{invalid-json-is-stored}", updated.getConfigJson());
 
-        assertTrue(pageBlockService.deleteBlock(second.getId()));
+        assertTrue(pageBlockService.deleteBlock(site, page.getId(), second.getId()));
         assertTrue(pageBlockDao.findById(second.getId()).isEmpty());
     }
 
     @Test
     void visibleQueryExcludesHiddenBlocks() {
         PageResponse page = createBlockPage("visible");
-        pageBlockService.createBlock(new CreatePageBlockRequest(
+        pageBlockService.createBlock(site, page.getId(), new CreatePageBlockRequest(
                 page.getId(), "HERO", null, 0, true, null));
-        pageBlockService.createBlock(new CreatePageBlockRequest(
+        pageBlockService.createBlock(site, page.getId(), new CreatePageBlockRequest(
                 page.getId(), "CONTACT", null, 1, false, null));
 
-        assertEquals(1, pageBlockService.listVisibleBlocks(page.getId()).size());
+        assertEquals(1, pageBlockService.listVisibleBlocks(site, page.getId()).size());
     }
 
     @Test
     void createRejectsMissingPageAndBlockType() {
         PageBlockServiceException missingPage = assertThrows(PageBlockServiceException.class,
-                () -> pageBlockService.createBlock(
+                () -> pageBlockService.createBlock(site, Long.MAX_VALUE,
                         new CreatePageBlockRequest(Long.MAX_VALUE, "HERO", null, 0, true, null)));
+        PageResponse validationPage = createBlockPage("validation");
         PageBlockServiceException missingType = assertThrows(PageBlockServiceException.class,
-                () -> pageBlockService.createBlock(
-                        new CreatePageBlockRequest(createBlockPage("validation").getId(), " ", null,
+                () -> pageBlockService.createBlock(site, validationPage.getId(),
+                        new CreatePageBlockRequest(validationPage.getId(), " ", null,
                                 0, true, null)));
 
         assertEquals(PageBlockService.PAGE_NOT_FOUND, missingPage.getCode());
@@ -124,16 +130,16 @@ class PageBlockServiceTest {
     @Test
     void deletingPageCascadesBlocks() {
         PageResponse page = createBlockPage("cascade");
-        PageBlockResponse block = pageBlockService.createBlock(new CreatePageBlockRequest(
+        PageBlockResponse block = pageBlockService.createBlock(site, page.getId(), new CreatePageBlockRequest(
                 page.getId(), "GALLERY", null, 0, true, null));
 
-        pageService.deletePage(page.getId());
+        pageService.deletePage(site, page.getId());
 
         assertTrue(pageBlockDao.findById(block.getId()).isEmpty());
     }
 
     private PageResponse createBlockPage(String suffix) {
-        return pageService.createPage(new CreatePageRequest(
+        return pageService.createPage(site, new CreatePageRequest(
                 PREFIX + suffix, PREFIX + suffix, null, PageType.BLOCK, PageStatus.PUBLISHED,
                 null, null, false, true, null));
     }

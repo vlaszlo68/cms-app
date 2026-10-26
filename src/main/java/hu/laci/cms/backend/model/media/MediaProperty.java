@@ -6,6 +6,7 @@ import hu.laci.cms.backend.model.common.BaseProperty;
 public final class MediaProperty extends AuditableProperty {
 
     public static final MediaProperty ID = new MediaProperty(BaseProperty.ID.getPropertyName());
+    public static final MediaProperty SITE = new MediaProperty("site");
     public static final MediaProperty ORIGINAL_FILE_NAME = new MediaProperty("originalFileName");
     public static final MediaProperty STORED_FILE_NAME = new MediaProperty("storedFileName");
     public static final MediaProperty MIME_TYPE = new MediaProperty("mimeType");

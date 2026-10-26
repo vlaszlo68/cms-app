@@ -4,6 +4,8 @@ param(
 
     [string] $BaseUrl = "http://localhost:8080/cms-app",
 
+    [string] $SiteCode = "default",
+
     [string] $LoginName = "tester",
 
     [string] $Password = "pw",
@@ -32,6 +34,8 @@ if ($Mode -eq "Destructive" -and -not $ConfirmDestructive) {
 }
 
 $BaseUrl = $BaseUrl.TrimEnd("/")
+$adminSiteBase = "/api/admin/sites/$SiteCode"
+$publicSiteBase = "/api/public/sites/$SiteCode"
 $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $results = New-Object System.Collections.Generic.List[object]
 $csrfToken = $null
@@ -531,7 +535,7 @@ function Test-NonDestructive {
     Test-SuccessEnvelope "Strict auth config envelope" $config
     Test-StrictCondition "Strict auth config fields" ($null -ne $config.data.loginCaptchaEnabled -and $null -ne $config.data.registrationCaptchaEnabled -and $null -ne $config.data.passwordPolicy) "Expected CAPTCHA flags and passwordPolicy."
 
-    $publicSettings = Invoke-CmsApi "Read public site settings" "GET" "/api/public/site-settings" 200
+    $publicSettings = Invoke-CmsApi "Read public site settings" "GET" "$script:publicSiteBase/site-settings" 200
     Test-SuccessEnvelope "Strict public site settings envelope" $publicSettings
     $publicSettingsFields = @($publicSettings.data.PSObject.Properties.Name)
     $expectedPublicSettingsFields = @("siteName", "logoMediaId", "footerText", "contactEmail", "phone", "facebookUrl", "linkedinUrl")
@@ -540,7 +544,7 @@ function Test-NonDestructive {
     Test-StrictCondition "Strict public site settings fields" $hasExpectedPublicSettingsFields "Expected the seven public site settings fields."
 
     foreach ($publicMenuCode in @("MAIN", "FOOTER")) {
-        $publicMenu = Invoke-CmsApi "Read public menu $publicMenuCode" "GET" "/api/public/menus/$publicMenuCode" 200
+        $publicMenu = Invoke-CmsApi "Read public menu $publicMenuCode" "GET" "$script:publicSiteBase/menus/$publicMenuCode" 200
         Test-ListEnvelope "Strict public menu $publicMenuCode envelope" $publicMenu
         $validPublicMenuItems = @($publicMenu.data | Where-Object {
                 $null -ne $_.id -and -not [string]::IsNullOrWhiteSpace([string] $_.title) -and
@@ -580,15 +584,18 @@ function Test-NonDestructive {
     Test-SuccessEnvelope "Strict authenticated /me envelope" $me
     Test-StrictCondition "Strict authenticated /me identity" ($me.data.loginName -eq $script:LoginName -and $me.data.role -eq "ADMIN" -and -not [string]::IsNullOrWhiteSpace([string] $me.data.csrfToken)) "Expected matching admin session with csrfToken."
 
-    $pages = Invoke-CmsApi "Read pages" "GET" "/api/pages" 200
+    $sites = Invoke-CmsApi "Read sites" "GET" "/api/admin/sites" 200
+    Test-ListEnvelope "Strict sites list envelope" $sites
+
+    $pages = Invoke-CmsApi "Read pages" "GET" "$script:adminSiteBase/pages" 200
     Test-ListEnvelope "Strict pages list envelope" $pages
     $templates = Invoke-CmsApi "Read templates" "GET" "/api/templates" 200
     Test-ListEnvelope "Strict templates list envelope" $templates
-    $menus = Invoke-CmsApi "Read menus" "GET" "/api/menus" 200
+    $menus = Invoke-CmsApi "Read menus" "GET" "$script:adminSiteBase/menus" 200
     Test-ListEnvelope "Strict menus list envelope" $menus
-    $media = Invoke-CmsApi "Read media" "GET" "/api/media" 200
+    $media = Invoke-CmsApi "Read media" "GET" "$script:adminSiteBase/media" 200
     Test-ListEnvelope "Strict media list envelope" $media
-    $siteSettings = Invoke-CmsApi "Read site settings" "GET" "/api/site-settings" 200
+    $siteSettings = Invoke-CmsApi "Read site settings" "GET" "$script:adminSiteBase/site-settings" 200
     Test-SuccessEnvelope "Strict site settings envelope" $siteSettings
 }
 
@@ -645,13 +652,13 @@ function Test-Destructive {
         menuVisible = $false
         templateId = $null
     }
-    $page = Invoke-CmsApi "Create page" "POST" "/api/pages" 201 $pageBody $headers
+    $page = Invoke-CmsApi "Create page" "POST" "$script:adminSiteBase/pages" 201 $pageBody $headers
     $script:created.PageId = Get-DataId $page
     Test-SuccessEnvelope "Strict create page envelope" $page
-    $readPage = Invoke-CmsApi "Read page" "GET" "/api/pages/$($script:created.PageId)" 200
+    $readPage = Invoke-CmsApi "Read page" "GET" "$script:adminSiteBase/pages/$($script:created.PageId)" 200
     Test-ResponseId "Strict read page id" $readPage $script:created.PageId
     $pageBody.title = "$script:runId page updated"
-    $updatedPage = Invoke-CmsApi "Update page" "PUT" "/api/pages/$($script:created.PageId)" 200 $pageBody $headers
+    $updatedPage = Invoke-CmsApi "Update page" "PUT" "$script:adminSiteBase/pages/$($script:created.PageId)" 200 $pageBody $headers
     Test-ResponseId "Strict update page id" $updatedPage $script:created.PageId
     Test-StrictCondition "Strict update page value" ($updatedPage.data.title -eq $pageBody.title) "Expected updated page title."
 
@@ -667,11 +674,11 @@ function Test-Destructive {
         menuVisible = $false
         templateId = $null
     }
-    $publicPage = Invoke-CmsApi "Create public page fixture" "POST" "/api/pages" 201 $publicPageBody $headers
+    $publicPage = Invoke-CmsApi "Create public page fixture" "POST" "$script:adminSiteBase/pages" 201 $publicPageBody $headers
     $script:created.PublicPageId = Get-DataId $publicPage
     $script:created.PublicPageSlug = $publicPageBody.slug
     Test-SuccessEnvelope "Strict create public page fixture envelope" $publicPage
-    $readPublicPage = Invoke-CmsApi "Read public page" "GET" "/api/public/pages/$($script:created.PublicPageSlug)" 200
+    $readPublicPage = Invoke-CmsApi "Read public page" "GET" "$script:publicSiteBase/pages/$($script:created.PublicPageSlug)" 200
     Test-SuccessEnvelope "Strict public page envelope" $readPublicPage
     $publicPageFields = @($readPublicPage.data.PSObject.Properties.Name)
     $expectedPublicPageFields = @("id", "title", "slug", "pageType", "templateCode", "content")
@@ -694,19 +701,19 @@ function Test-Destructive {
         menuVisible = $false
         templateId = $null
     }
-    $publicBlockPage = Invoke-CmsApi "Create public block page fixture" "POST" "/api/pages" 201 $publicBlockPageBody $headers
+    $publicBlockPage = Invoke-CmsApi "Create public block page fixture" "POST" "$script:adminSiteBase/pages" 201 $publicBlockPageBody $headers
     $script:created.PublicBlockPageId = Get-DataId $publicBlockPage
     $script:created.PublicBlockPageSlug = $publicBlockPageBody.slug
-    $publicBlockFirst = Invoke-CmsApi "Create first public block fixture" "POST" "/api/page-blocks" 201 @{
+    $publicBlockFirst = Invoke-CmsApi "Create first public block fixture" "POST" "$script:adminSiteBase/pages/$($script:created.PublicBlockPageId)/blocks" 201 @{
         pageId = $script:created.PublicBlockPageId; blockType = "HERO"; title = "First"; sortOrder = 10; visible = $true; configJson = "{`"headline`":`"First`"}"
     } $headers
-    $publicBlockHidden = Invoke-CmsApi "Create hidden public block fixture" "POST" "/api/page-blocks" 201 @{
+    $publicBlockHidden = Invoke-CmsApi "Create hidden public block fixture" "POST" "$script:adminSiteBase/pages/$($script:created.PublicBlockPageId)/blocks" 201 @{
         pageId = $script:created.PublicBlockPageId; blockType = "HIDDEN"; title = "Hidden"; sortOrder = 15; visible = $false; configJson = "{`"headline`":`"Hidden`"}"
     } $headers
-    $publicBlockSecond = Invoke-CmsApi "Create second public block fixture" "POST" "/api/page-blocks" 201 @{
+    $publicBlockSecond = Invoke-CmsApi "Create second public block fixture" "POST" "$script:adminSiteBase/pages/$($script:created.PublicBlockPageId)/blocks" 201 @{
         pageId = $script:created.PublicBlockPageId; blockType = "CTA"; title = "Second"; sortOrder = 20; visible = $true; configJson = "{`"label`":`"Second`"}"
     } $headers
-    $readPublicBlockPage = Invoke-CmsApi "Read public block page" "GET" "/api/public/pages/$($script:created.PublicBlockPageSlug)" 200
+    $readPublicBlockPage = Invoke-CmsApi "Read public block page" "GET" "$script:publicSiteBase/pages/$($script:created.PublicBlockPageSlug)" 200
     Test-SuccessEnvelope "Strict public block page envelope" $readPublicBlockPage
     $publicBlockFields = @($readPublicBlockPage.data.PSObject.Properties.Name)
     $expectedPublicBlockFields = @("id", "title", "slug", "pageType", "templateCode", "blocks")
@@ -734,13 +741,13 @@ function Test-Destructive {
         visible = $true
         configJson = "{`"text`":`"Temporary API test block`"}"
     }
-    $block = Invoke-CmsApi "Create page block" "POST" "/api/page-blocks" 201 $blockBody $headers
+    $block = Invoke-CmsApi "Create page block" "POST" "$script:adminSiteBase/pages/$($script:created.PageId)/blocks" 201 $blockBody $headers
     $script:created.PageBlockId = Get-DataId $block
     Test-SuccessEnvelope "Strict create page block envelope" $block
-    $readBlock = Invoke-CmsApi "Read page block" "GET" "/api/page-blocks/$($script:created.PageBlockId)" 200
+    $readBlock = Invoke-CmsApi "Read page block" "GET" "$script:adminSiteBase/pages/$($script:created.PageId)/blocks/$($script:created.PageBlockId)" 200
     Test-ResponseId "Strict read page block id" $readBlock $script:created.PageBlockId
     $blockBody.title = "$script:runId block updated"
-    $updatedBlock = Invoke-CmsApi "Update page block" "PUT" "/api/page-blocks/$($script:created.PageBlockId)" 200 $blockBody $headers
+    $updatedBlock = Invoke-CmsApi "Update page block" "PUT" "$script:adminSiteBase/pages/$($script:created.PageId)/blocks/$($script:created.PageBlockId)" 200 $blockBody $headers
     Test-ResponseId "Strict update page block id" $updatedBlock $script:created.PageBlockId
     Test-StrictCondition "Strict update page block value" ($updatedBlock.data.title -eq $blockBody.title) "Expected updated page block title."
 
@@ -749,13 +756,13 @@ function Test-Destructive {
         code = ($script:runId + "-menu").ToUpperInvariant().Replace("-", "_")
         active = $true
     }
-    $menu = Invoke-CmsApi "Create menu" "POST" "/api/menus" 201 $menuBody $headers
+    $menu = Invoke-CmsApi "Create menu" "POST" "$script:adminSiteBase/menus" 201 $menuBody $headers
     $script:created.MenuId = Get-DataId $menu
     Test-SuccessEnvelope "Strict create menu envelope" $menu
-    $readMenu = Invoke-CmsApi "Read menu" "GET" "/api/menus/$($script:created.MenuId)" 200
+    $readMenu = Invoke-CmsApi "Read menu" "GET" "$script:adminSiteBase/menus/$($script:created.MenuId)" 200
     Test-ResponseId "Strict read menu id" $readMenu $script:created.MenuId
     $menuBody.name = "$script:runId menu updated"
-    $updatedMenu = Invoke-CmsApi "Update menu" "PUT" "/api/menus/$($script:created.MenuId)" 200 $menuBody $headers
+    $updatedMenu = Invoke-CmsApi "Update menu" "PUT" "$script:adminSiteBase/menus/$($script:created.MenuId)" 200 $menuBody $headers
     Test-ResponseId "Strict update menu id" $updatedMenu $script:created.MenuId
     Test-StrictCondition "Strict update menu value" ($updatedMenu.data.name -eq $menuBody.name) "Expected updated menu name."
 
@@ -769,25 +776,25 @@ function Test-Destructive {
         sortOrder = 1
         visible = $true
     }
-    $menuItem = Invoke-CmsApi "Create menu item" "POST" "/api/menu-items" 201 $menuItemBody $headers
+    $menuItem = Invoke-CmsApi "Create menu item" "POST" "$script:adminSiteBase/menus/$($script:created.MenuId)/items" 201 $menuItemBody $headers
     $script:created.MenuItemId = Get-DataId $menuItem
     Test-SuccessEnvelope "Strict create menu item envelope" $menuItem
-    $readMenuItems = Invoke-CmsApi "Read menu items" "GET" "/api/menus/$($script:created.MenuId)/items" 200
+    $readMenuItems = Invoke-CmsApi "Read menu items" "GET" "$script:adminSiteBase/menus/$($script:created.MenuId)/items" 200
     Test-ListEnvelope "Strict read menu items envelope" $readMenuItems
     $createdMenuItemId = $script:created.MenuItemId
     $hasMenuItem = @($readMenuItems.data | Where-Object { [long] $_.id -eq $createdMenuItemId }).Count -gt 0
     Test-StrictCondition "Strict read menu item presence" $hasMenuItem "Expected created menu item in menu item list."
     $menuItemBody.title = "$script:runId link updated"
-    $updatedMenuItem = Invoke-CmsApi "Update menu item" "PUT" "/api/menu-items/$($script:created.MenuItemId)" 200 $menuItemBody $headers
+    $updatedMenuItem = Invoke-CmsApi "Update menu item" "PUT" "$script:adminSiteBase/menus/$($script:created.MenuId)/items/$($script:created.MenuItemId)" 200 $menuItemBody $headers
     Test-ResponseId "Strict update menu item id" $updatedMenuItem $script:created.MenuItemId
     Test-StrictCondition "Strict update menu item value" ($updatedMenuItem.data.title -eq $menuItemBody.title) "Expected updated menu item title."
 
-    $media = Invoke-CmsMultipartUpload "Create media" "/api/media" 201 "$script:runId.txt" "Temporary CMS API test media." "$script:runId media" $headers
+    $media = Invoke-CmsMultipartUpload "Create media" "$script:adminSiteBase/media" 201 "$script:runId.txt" "Temporary CMS API test media." "$script:runId media" $headers
     $script:created.MediaId = Get-DataId $media
     Test-SuccessEnvelope "Strict create media envelope" $media
-    $readMedia = Invoke-CmsApi "Read media item" "GET" "/api/media/$($script:created.MediaId)" 200
+    $readMedia = Invoke-CmsApi "Read media item" "GET" "$script:adminSiteBase/media/$($script:created.MediaId)" 200
     Test-ResponseId "Strict read media id" $readMedia $script:created.MediaId
-    $mediaContent = Invoke-CmsApi "Read media content" "GET" "/api/media/$($script:created.MediaId)/content" 200
+    $mediaContent = Invoke-CmsApi "Read media content" "GET" "$script:adminSiteBase/media/$($script:created.MediaId)/content" 200
     Test-StrictCondition "Strict media content body" (-not [string]::IsNullOrWhiteSpace([string] $mediaContent)) "Expected non-empty media content body."
 
 }
@@ -797,54 +804,54 @@ function Cleanup-Destructive {
 
     if ($null -ne $script:created.MediaId) {
         $deletedId = $script:created.MediaId
-        Invoke-CmsApi "Delete media" "DELETE" "/api/media/$($script:created.MediaId)" 200 $null $headers | Out-Null
+        Invoke-CmsApi "Delete media" "DELETE" "$script:adminSiteBase/media/$($script:created.MediaId)" 200 $null $headers | Out-Null
         if ($script:Strict) {
-            Invoke-CmsApi "Strict verify media deleted" "GET" "/api/media/$deletedId" 404 | Out-Null
+            Invoke-CmsApi "Strict verify media deleted" "GET" "$script:adminSiteBase/media/$deletedId" 404 | Out-Null
         }
     }
     if ($null -ne $script:created.MenuItemId) {
         $deletedId = $script:created.MenuItemId
         $menuId = $script:created.MenuId
-        Invoke-CmsApi "Delete menu item" "DELETE" "/api/menu-items/$($script:created.MenuItemId)" 200 $null $headers | Out-Null
+        Invoke-CmsApi "Delete menu item" "DELETE" "$script:adminSiteBase/menus/$($script:created.MenuId)/items/$($script:created.MenuItemId)" 200 $null $headers | Out-Null
         if ($script:Strict -and $null -ne $menuId) {
-            $remainingItems = Invoke-CmsApi "Strict verify menu item deleted" "GET" "/api/menus/$menuId/items" 200
+            $remainingItems = Invoke-CmsApi "Strict verify menu item deleted" "GET" "$script:adminSiteBase/menus/$menuId/items" 200
             $stillPresent = @($remainingItems.data | Where-Object { [long] $_.id -eq $deletedId }).Count -gt 0
             Test-StrictCondition "Strict menu item absent after delete" (-not $stillPresent) "Expected deleted menu item to be absent from menu item list."
         }
     }
     if ($null -ne $script:created.MenuId) {
         $deletedId = $script:created.MenuId
-        Invoke-CmsApi "Delete menu" "DELETE" "/api/menus/$($script:created.MenuId)" 200 $null $headers | Out-Null
+        Invoke-CmsApi "Delete menu" "DELETE" "$script:adminSiteBase/menus/$($script:created.MenuId)" 200 $null $headers | Out-Null
         if ($script:Strict) {
-            Invoke-CmsApi "Strict verify menu deleted" "GET" "/api/menus/$deletedId" 404 | Out-Null
+            Invoke-CmsApi "Strict verify menu deleted" "GET" "$script:adminSiteBase/menus/$deletedId" 404 | Out-Null
         }
     }
     if ($null -ne $script:created.PageBlockId) {
         $deletedId = $script:created.PageBlockId
-        Invoke-CmsApi "Delete page block" "DELETE" "/api/page-blocks/$($script:created.PageBlockId)" 200 $null $headers | Out-Null
+        Invoke-CmsApi "Delete page block" "DELETE" "$script:adminSiteBase/pages/$($script:created.PageId)/blocks/$($script:created.PageBlockId)" 200 $null $headers | Out-Null
         if ($script:Strict) {
-            Invoke-CmsApi "Strict verify page block deleted" "GET" "/api/page-blocks/$deletedId" 404 | Out-Null
+            Invoke-CmsApi "Strict verify page block deleted" "GET" "$script:adminSiteBase/pages/$($script:created.PageId)/blocks/$deletedId" 404 | Out-Null
         }
     }
     if ($null -ne $script:created.PageId) {
         $deletedId = $script:created.PageId
-        Invoke-CmsApi "Delete page" "DELETE" "/api/pages/$($script:created.PageId)" 200 $null $headers | Out-Null
+        Invoke-CmsApi "Delete page" "DELETE" "$script:adminSiteBase/pages/$($script:created.PageId)" 200 $null $headers | Out-Null
         if ($script:Strict) {
-            Invoke-CmsApi "Strict verify page deleted" "GET" "/api/pages/$deletedId" 404 | Out-Null
+            Invoke-CmsApi "Strict verify page deleted" "GET" "$script:adminSiteBase/pages/$deletedId" 404 | Out-Null
         }
     }
     if ($null -ne $script:created.PublicPageId) {
         $deletedSlug = $script:created.PublicPageSlug
-        Invoke-CmsApi "Delete public page fixture" "DELETE" "/api/pages/$($script:created.PublicPageId)" 200 $null $headers | Out-Null
+        Invoke-CmsApi "Delete public page fixture" "DELETE" "$script:adminSiteBase/pages/$($script:created.PublicPageId)" 200 $null $headers | Out-Null
         if ($script:Strict) {
-            Invoke-CmsApi "Strict verify public page deleted" "GET" "/api/public/pages/$deletedSlug" 404 | Out-Null
+            Invoke-CmsApi "Strict verify public page deleted" "GET" "$script:publicSiteBase/pages/$deletedSlug" 404 | Out-Null
         }
     }
     if ($null -ne $script:created.PublicBlockPageId) {
         $deletedSlug = $script:created.PublicBlockPageSlug
-        Invoke-CmsApi "Delete public block page fixture" "DELETE" "/api/pages/$($script:created.PublicBlockPageId)" 200 $null $headers | Out-Null
+        Invoke-CmsApi "Delete public block page fixture" "DELETE" "$script:adminSiteBase/pages/$($script:created.PublicBlockPageId)" 200 $null $headers | Out-Null
         if ($script:Strict) {
-            Invoke-CmsApi "Strict verify public block page deleted" "GET" "/api/public/pages/$deletedSlug" 404 | Out-Null
+            Invoke-CmsApi "Strict verify public block page deleted" "GET" "$script:publicSiteBase/pages/$deletedSlug" 404 | Out-Null
         }
     }
     if ($null -ne $script:created.TemplateId) {

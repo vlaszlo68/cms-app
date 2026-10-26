@@ -9,13 +9,12 @@ import hu.laci.cms.backend.dto.page.PublicPageBlockResponse;
 import hu.laci.cms.backend.dto.page.PublicPageResponse;
 import hu.laci.cms.backend.dto.page.PageResponse;
 import hu.laci.cms.backend.dto.page.UpdatePageRequest;
-import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.page.Page;
 import hu.laci.cms.backend.model.page.PageBlock;
-import hu.laci.cms.backend.model.page.PageProperty;
 import hu.laci.cms.backend.model.page.PageStatus;
 import hu.laci.cms.backend.model.page.PageType;
 import hu.laci.cms.backend.model.template.Template;
+import hu.laci.cms.backend.model.site.Site;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,23 +53,25 @@ public class PageService {
         this.pageBlockDao = Objects.requireNonNull(pageBlockDao, "pageBlockDao must not be null");
     }
 
-    public List<PageListResponse> listPages() {
-        return pageDao.findAll(QuerySpec.<PageProperty>create().orderBy(PageProperty.TITLE.asc()))
+    public List<PageListResponse> listPages(Site site) {
+        requireSite(site);
+        return pageDao.findAllBySite(site)
                 .stream()
                 .map(this::toListResponse)
                 .toList();
     }
 
-    public PageResponse getPage(Long id) {
-        return toResponse(loadPage(id));
+    public PageResponse getPage(Site site, Long id) {
+        return toResponse(loadPage(site, id));
     }
 
-    public PageResponse getBySlug(String slug) {
+    public PageResponse getBySlug(Site site, String slug) {
+        requireSite(site);
         if (isBlank(slug)) {
             throw new PageServiceException(VALIDATION_ERROR, "slug is required.");
         }
 
-        return pageDao.findBySlug(trim(slug))
+        return pageDao.findBySiteAndSlug(site, trim(slug))
                 .map(this::toResponse)
                 .orElseThrow(() -> new PageServiceException(PAGE_NOT_FOUND, "Page not found."));
     }
@@ -85,12 +86,13 @@ public class PageService {
      * @return the public page representation
      * @throws PageServiceException when the slug is blank or does not identify a published content page
      */
-    public PublicPageResponse getPublicPageBySlug(String slug) {
+    public PublicPageResponse getPublicPageBySlug(Site site, String slug) {
+        requireSite(site);
         if (isBlank(slug)) {
             throw new PageServiceException(VALIDATION_ERROR, "slug is required.");
         }
 
-        Page page = pageDao.findBySlug(slug)
+        Page page = pageDao.findBySiteAndSlug(site, slug)
                 .filter(this::isPublicPage)
                 .orElseThrow(() -> new PageServiceException(PAGE_NOT_FOUND, "Page not found."));
 
@@ -119,17 +121,19 @@ public class PageService {
         );
     }
 
-    public PageResponse getHomepage() {
-        return pageDao.findHomepage()
+    public PageResponse getHomepage(Site site) {
+        requireSite(site);
+        return pageDao.findHomepageBySite(site)
                 .map(this::toResponse)
                 .orElseThrow(() -> new PageServiceException(PAGE_NOT_FOUND, "Homepage not found."));
     }
 
-    public PageResponse createPage(CreatePageRequest request) {
+    public PageResponse createPage(Site site, CreatePageRequest request) {
+        requireSite(site);
         validateCreateRequest(request);
 
         String slug = trim(request.getSlug());
-        ensureSlugAvailable(slug, null);
+        ensureSlugAvailable(site, slug, null);
 
         Page page = new Page(
                 null,
@@ -144,6 +148,7 @@ public class PageService {
                 request.getMenuVisible() == null ? Boolean.TRUE : request.getMenuVisible(),
                 resolveTemplateId(request.getTemplateId())
         );
+        page.setSite(site);
 
         Page createdPage = pageDao.create(page);
         normalizeHomepage(createdPage);
@@ -151,12 +156,13 @@ public class PageService {
         return toResponse(createdPage);
     }
 
-    public PageResponse updatePage(Long id, UpdatePageRequest request) {
+    public PageResponse updatePage(Site site, Long id, UpdatePageRequest request) {
+        requireSite(site);
         validateUpdateRequest(request);
 
-        Page page = loadPage(id);
+        Page page = loadPage(site, id);
         String slug = trim(request.getSlug());
-        ensureSlugAvailable(slug, id);
+        ensureSlugAvailable(site, slug, id);
 
         page.setTitle(trim(request.getTitle()));
         page.setSlug(slug);
@@ -175,19 +181,20 @@ public class PageService {
         return toResponse(updatedPage);
     }
 
-    public boolean deletePage(Long id) {
-        Page page = loadPage(id);
+    public boolean deletePage(Site site, Long id) {
+        Page page = loadPage(site, id);
         boolean deleted = pageDao.delete(page);
         LOGGER.info("Deleted page id={}, deleted={}", id, deleted);
         return deleted;
     }
 
-    private Page loadPage(Long id) {
+    private Page loadPage(Site site, Long id) {
+        requireSite(site);
         if (id == null) {
             throw new PageServiceException(VALIDATION_ERROR, "Page id is required.");
         }
 
-        return pageDao.findById(id)
+        return pageDao.findBySiteAndId(site, id)
                 .orElseThrow(() -> new PageServiceException(PAGE_NOT_FOUND, "Page not found."));
     }
 
@@ -225,8 +232,8 @@ public class PageService {
         }
     }
 
-    private void ensureSlugAvailable(String slug, Long currentPageId) {
-        Optional<Page> existingPage = pageDao.findBySlug(slug);
+    private void ensureSlugAvailable(Site site, String slug, Long currentPageId) {
+        Optional<Page> existingPage = pageDao.findBySiteAndSlug(site, slug);
         if (existingPage.isPresent() && !existingPage.get().getId().equals(currentPageId)) {
             throw new PageServiceException(DUPLICATE_SLUG, "slug is already used.");
         }
@@ -237,8 +244,9 @@ public class PageService {
             return;
         }
 
-        List<Page> homepagePages = pageDao.findAll(QuerySpec.<PageProperty>create()
-                .where(PageProperty.HOMEPAGE).equalsTo(Boolean.TRUE));
+        List<Page> homepagePages = pageDao.findAllBySite(selectedPage.getSite()).stream()
+                .filter(page -> Boolean.TRUE.equals(page.getHomepage()))
+                .toList();
         for (Page page : homepagePages) {
             if (page.getId().equals(selectedPage.getId())) {
                 continue;
@@ -338,5 +346,11 @@ public class PageService {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static void requireSite(Site site) {
+        if (site == null || site.getId() == null) {
+            throw new PageServiceException(VALIDATION_ERROR, "Site is required.");
+        }
     }
 }

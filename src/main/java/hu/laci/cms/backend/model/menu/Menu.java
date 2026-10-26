@@ -3,9 +3,16 @@ package hu.laci.cms.backend.model.menu;
 import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.AuditableEntity;
+import hu.laci.cms.backend.model.site.Site;
 
+/**
+ * Site-owned navigation menu identified by a code unique within its Site.
+ */
 @DbTable("menus")
 public class Menu extends AuditableEntity {
+
+    @DbColumn("site_id")
+    private Site site;
 
     @DbColumn("name")
     private String name;
@@ -24,6 +31,18 @@ public class Menu extends AuditableEntity {
         this.name = name;
         this.code = code;
         this.active = active;
+    }
+
+    /** @return Site that owns this menu */
+    /** @return Site that owns this menu */
+    public Site getSite() {
+        return site;
+    }
+
+    /** @param site Site that owns this menu */
+    /** @param site Site that owns this menu */
+    public void setSite(Site site) {
+        this.site = site;
     }
 
     public String getName() {

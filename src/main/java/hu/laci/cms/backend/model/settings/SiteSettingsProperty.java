@@ -4,11 +4,12 @@ import hu.laci.cms.backend.model.common.AuditableProperty;
 import hu.laci.cms.backend.model.common.BaseProperty;
 
 /**
- * Query properties available for the singleton {@link SiteSettings} entity.
+ * Query properties available for the per-Site {@link SiteSettings} entity.
  */
 public final class SiteSettingsProperty extends AuditableProperty {
 
     public static final SiteSettingsProperty ID = new SiteSettingsProperty(BaseProperty.ID.getPropertyName());
+    public static final SiteSettingsProperty SITE = new SiteSettingsProperty("site");
     public static final SiteSettingsProperty SITE_NAME = new SiteSettingsProperty("siteName");
     public static final SiteSettingsProperty LOGO_MEDIA_ID = new SiteSettingsProperty("logoMediaId");
     public static final SiteSettingsProperty FOOTER_TEXT = new SiteSettingsProperty("footerText");

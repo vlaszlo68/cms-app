@@ -7,6 +7,7 @@ import hu.laci.cms.backend.model.common.QuerySpec;
 import hu.laci.cms.backend.model.media.Media;
 import hu.laci.cms.backend.model.media.MediaProperty;
 import hu.laci.cms.backend.model.media.MediaStorageType;
+import hu.laci.cms.backend.model.site.Site;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,19 +34,20 @@ public class MediaService {
         this.storageType = Objects.requireNonNull(storageType, "storageType must not be null");
     }
 
-    public List<MediaResponse> listMedia(boolean activeOnly) {
+    public List<MediaResponse> listMedia(Site site, boolean activeOnly) {
+        requireSite(site);
         List<Media> mediaItems = activeOnly
-                ? mediaDao.findActive()
-                : mediaDao.findAll(QuerySpec.<MediaProperty>create().orderBy(MediaProperty.CREATED_AT.desc()));
+                ? mediaDao.findActiveBySite(site)
+                : mediaDao.findAllBySite(site);
         return mediaItems.stream().map(this::toResponse).toList();
     }
 
-    public MediaResponse getMedia(Long id) {
-        return toResponse(loadMedia(id));
+    public MediaResponse getMedia(Site site, Long id) {
+        return toResponse(loadMedia(site, id));
     }
 
-    public MediaContent getMediaContent(Long id) {
-        Media media = loadMedia(id);
+    public MediaContent getMediaContent(Site site, Long id) {
+        Media media = loadMedia(site, id);
         try {
             byte[] content = mediaStorageService.load(media.getStoragePath());
             return new MediaContent(media.getOriginalFileName(), media.getMimeType(), content.length, content);
@@ -54,8 +56,9 @@ public class MediaService {
         }
     }
 
-    public UploadMediaResponse uploadMedia(String originalFileName, InputStream inputStream, String mimeType,
+    public UploadMediaResponse uploadMedia(Site site, String originalFileName, InputStream inputStream, String mimeType,
                                            String description) {
+        requireSite(site);
         validateUpload(originalFileName, inputStream, mimeType);
 
         StoredMediaFile storedMediaFile = null;
@@ -73,6 +76,7 @@ public class MediaService {
                     storageType,
                     Boolean.TRUE
             );
+            media.setSite(site);
 
             createdMedia = mediaDao.create(media);
             storedMediaFile = mediaStorageService.completeStore(createdMedia.getId(), storedMediaFile);
@@ -89,8 +93,8 @@ public class MediaService {
         }
     }
 
-    public boolean deleteMedia(Long id) {
-        Media media = loadMedia(id);
+    public boolean deleteMedia(Site site, Long id) {
+        Media media = loadMedia(site, id);
         try {
             mediaStorageService.delete(media.getStoragePath());
             boolean deleted = mediaDao.delete(media);
@@ -101,12 +105,13 @@ public class MediaService {
         }
     }
 
-    private Media loadMedia(Long id) {
+    private Media loadMedia(Site site, Long id) {
+        requireSite(site);
         if (id == null) {
             throw new MediaServiceException(VALIDATION_ERROR, "Media id is required.");
         }
 
-        return mediaDao.findById(id)
+        return mediaDao.findBySiteAndId(site, id)
                 .orElseThrow(() -> new MediaServiceException(MEDIA_NOT_FOUND, "Media not found."));
     }
 
@@ -182,5 +187,11 @@ public class MediaService {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    private static void requireSite(Site site) {
+        if (site == null || site.getId() == null) {
+            throw new MediaServiceException(VALIDATION_ERROR, "Site is required.");
+        }
     }
 }

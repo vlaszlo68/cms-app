@@ -5,6 +5,8 @@ import hu.laci.cms.backend.config.database.migration.DatabaseMigrationRunner;
 import hu.laci.cms.backend.config.session.SessionContext;
 import hu.laci.cms.backend.model.media.Media;
 import hu.laci.cms.backend.model.media.MediaStorageType;
+import hu.laci.cms.backend.dao.site.SiteDaoImpl;
+import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
@@ -25,6 +27,7 @@ class MediaDaoIntegrationTest {
     private static final String PREFIX = "media_dao_test_";
     private MediaDao mediaDao;
     private MediaContentDao contentDao;
+    private Site site;
 
     @BeforeAll
     static void initializeDatabase() {
@@ -43,6 +46,7 @@ class MediaDaoIntegrationTest {
         deleteTestMedia();
         mediaDao = new MediaDaoImpl();
         contentDao = new MediaContentDaoImpl();
+        site = new SiteDaoImpl().findByCode("default").orElseThrow();
     }
 
     @AfterEach
@@ -59,7 +63,7 @@ class MediaDaoIntegrationTest {
         mediaDao.update(active);
 
         Media loaded = mediaDao.findById(active.getId()).orElseThrow();
-        List<Media> activeMedia = mediaDao.findActive();
+        List<Media> activeMedia = mediaDao.findActiveBySite(site);
 
         Assertions.assertEquals("updated description", loaded.getDescription());
         Assertions.assertEquals(MediaStorageType.DATABASE, loaded.getStorageType());
@@ -79,8 +83,10 @@ class MediaDaoIntegrationTest {
     }
 
     private Media media(String suffix, boolean active) {
-        return new Media(null, PREFIX + suffix + ".txt", suffix, "text/plain", 3L,
+        Media media = new Media(null, PREFIX + suffix + ".txt", suffix, "text/plain", 3L,
                 "database:" + suffix, "test media", MediaStorageType.DATABASE, active);
+        media.setSite(site);
+        return media;
     }
 
     private void deleteTestMedia() throws SQLException {

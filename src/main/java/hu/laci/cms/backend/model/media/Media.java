@@ -3,9 +3,16 @@ package hu.laci.cms.backend.model.media;
 import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.AuditableEntity;
+import hu.laci.cms.backend.model.site.Site;
 
+/**
+ * Site-owned media metadata; binary storage remains delegated to a storage service.
+ */
 @DbTable("media")
 public class Media extends AuditableEntity {
+
+    @DbColumn("site_id")
+    private Site site;
 
     @DbColumn("original_file_name")
     private String originalFileName;
@@ -45,6 +52,16 @@ public class Media extends AuditableEntity {
         this.description = description;
         this.storageType = storageType;
         this.active = active;
+    }
+
+    /** @return Site that owns this media metadata */
+    public Site getSite() {
+        return site;
+    }
+
+    /** @param site Site that owns this media metadata */
+    public void setSite(Site site) {
+        this.site = site;
     }
 
     public String getOriginalFileName() {

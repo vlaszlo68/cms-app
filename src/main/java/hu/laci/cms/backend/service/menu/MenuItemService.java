@@ -12,6 +12,7 @@ import hu.laci.cms.backend.model.menu.Menu;
 import hu.laci.cms.backend.model.menu.MenuItem;
 import hu.laci.cms.backend.model.menu.MenuItemTargetType;
 import hu.laci.cms.backend.model.page.Page;
+import hu.laci.cms.backend.model.site.Site;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,6 +28,7 @@ public class MenuItemService {
     public static final String MENU_NOT_FOUND = "MENU_NOT_FOUND";
     public static final String MENU_ITEM_NOT_FOUND = "MENU_ITEM_NOT_FOUND";
     public static final String INVALID_PARENT = "INVALID_PARENT";
+    public static final String INVALID_PAGE_TARGET = "INVALID_PAGE_TARGET";
 
     private final MenuDao menuDao;
     private final MenuItemDao menuItemDao;
@@ -45,30 +47,37 @@ public class MenuItemService {
         this.pageDao = Objects.requireNonNull(pageDao, "pageDao must not be null");
     }
 
-    public List<MenuItemResponse> listItems(Long menuId) {
-        loadMenu(menuId);
+    public List<MenuItemResponse> listItems(Site site, Long menuId) {
+        loadMenu(site, menuId);
         return menuItemDao.findByMenuId(menuId).stream().map(this::toResponse).toList();
     }
 
-    public MenuItemResponse createItem(CreateMenuItemRequest request) {
+    public MenuItemResponse createItem(Site site, CreateMenuItemRequest request) {
+        Long menuId = request == null ? null : request.getMenuId();
+        return createItem(site, menuId, request);
+    }
+
+    public MenuItemResponse createItem(Site site, Long menuId, CreateMenuItemRequest request) {
         validate(request);
-        loadMenu(request.getMenuId());
-        validateParent(request.getParentId(), request.getMenuId(), null);
-        Target target = normalizeTarget(request);
-        MenuItem item = new MenuItem(null, request.getMenuId(), request.getParentId(), target.pageId(),
+        requirePathMenu(request.getMenuId(), menuId);
+        loadMenu(site, menuId);
+        validateParent(request.getParentId(), menuId, null);
+        Target target = normalizeTarget(site, request);
+        MenuItem item = new MenuItem(null, menuId, request.getParentId(), target.pageId(),
                 target.type(), target.url(), request.getTitle().trim(),
                 defaultOrder(request.getSortOrder()),
                 request.getVisible() == null || request.getVisible());
         return toResponse(menuItemDao.create(item));
     }
 
-    public MenuItemResponse updateItem(Long id, UpdateMenuItemRequest request) {
+    public MenuItemResponse updateItem(Site site, Long menuId, Long id, UpdateMenuItemRequest request) {
         validate(request);
-        MenuItem item = loadItem(id);
-        loadMenu(request.getMenuId());
-        validateParent(request.getParentId(), request.getMenuId(), id);
-        Target target = normalizeTarget(request);
-        item.setMenuId(request.getMenuId());
+        requirePathMenu(request.getMenuId(), menuId);
+        loadMenu(site, menuId);
+        MenuItem item = loadItem(menuId, id);
+        validateParent(request.getParentId(), menuId, id);
+        Target target = normalizeTarget(site, request);
+        item.setMenuId(menuId);
         item.setParentId(request.getParentId());
         item.setPageId(target.pageId());
         item.setTargetType(target.type());
@@ -79,15 +88,32 @@ public class MenuItemService {
         return toResponse(menuItemDao.update(item));
     }
 
-    public boolean deleteItem(Long id) {
-        return menuItemDao.delete(loadItem(id));
+    public MenuItemResponse updateItem(Site site, Long id, UpdateMenuItemRequest request) {
+        Long menuId = request == null ? null : request.getMenuId();
+        return updateItem(site, menuId, id, request);
     }
 
-    public List<PublicMenuItemResponse> getPublicMenu(String code) {
+    public boolean deleteItem(Site site, Long menuId, Long id) {
+        loadMenu(site, menuId);
+        return menuItemDao.delete(loadItem(menuId, id));
+    }
+
+    public boolean deleteItem(Site site, Long id) {
+        if (id == null) {
+            throw new MenuServiceException(VALIDATION_ERROR, "Menu item id is required.");
+        }
+        MenuItem item = menuItemDao.findById(id)
+                .orElseThrow(() -> new MenuServiceException(MENU_ITEM_NOT_FOUND, "Menu item not found."));
+        loadMenu(site, item.getMenuId());
+        return menuItemDao.delete(item);
+    }
+
+    public List<PublicMenuItemResponse> getPublicMenu(Site site, String code) {
+        requireSite(site);
         if (code == null || code.isBlank()) {
             throw new MenuServiceException(MenuService.VALIDATION_ERROR, "code is required.");
         }
-        Menu menu = menuDao.findByCode(code.trim())
+        Menu menu = menuDao.findBySiteAndCode(site, code.trim())
                 .filter(Menu::isActive)
                 .orElseThrow(() -> new MenuServiceException(MenuService.MENU_NOT_FOUND, "Menu not found."));
 
@@ -97,7 +123,7 @@ public class MenuItemService {
                 .map(MenuItem::getPageId)
                 .filter(Objects::nonNull)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        Map<Long, Page> publicPages = pageDao.findPublishedContentByIds(pageIds).stream()
+        Map<Long, Page> publicPages = pageDao.findPublishedContentBySiteAndIds(site, pageIds).stream()
                 .collect(java.util.stream.Collectors.toUnmodifiableMap(Page::getId, page -> page));
         Map<Long, List<MenuItem>> children = new HashMap<>();
         for (MenuItem item : items) {
@@ -158,20 +184,25 @@ public class MenuItemService {
         }
     }
 
-    private Menu loadMenu(Long id) {
+    private Menu loadMenu(Site site, Long id) {
+        requireSite(site);
         if (id == null) {
             throw new MenuServiceException(VALIDATION_ERROR, "menuId is required.");
         }
-        return menuDao.findById(id)
+        return menuDao.findBySiteAndId(site, id)
                 .orElseThrow(() -> new MenuServiceException(MENU_NOT_FOUND, "Menu not found."));
     }
 
-    private MenuItem loadItem(Long id) {
+    private MenuItem loadItem(Long menuId, Long id) {
         if (id == null) {
             throw new MenuServiceException(VALIDATION_ERROR, "Menu item id is required.");
         }
-        return menuItemDao.findById(id)
+        MenuItem item = menuItemDao.findById(id)
                 .orElseThrow(() -> new MenuServiceException(MENU_ITEM_NOT_FOUND, "Menu item not found."));
+        if (!menuId.equals(item.getMenuId())) {
+            throw new MenuServiceException(MENU_ITEM_NOT_FOUND, "Menu item not found.");
+        }
+        return item;
     }
 
     private static void validate(MenuItemRequestBase request) {
@@ -213,12 +244,30 @@ public class MenuItemService {
         return value.trim();
     }
 
-    private static Target normalizeTarget(MenuItemRequestBase request) {
+    private Target normalizeTarget(Site site, MenuItemRequestBase request) {
         MenuItemTargetType targetType = defaultTargetType(request.getTargetType());
         return switch (targetType) {
-            case PAGE -> new Target(targetType, request.getPageId(), null);
+            case PAGE -> {
+                if (pageDao.findBySiteAndId(site, request.getPageId()).isEmpty()) {
+                    throw new MenuServiceException(INVALID_PAGE_TARGET,
+                            "Target page must belong to the requested Site.");
+                }
+                yield new Target(targetType, request.getPageId(), null);
+            }
             case URL -> new Target(targetType, null, trimToNull(request.getTargetUrl()));
         };
+    }
+
+    private static void requirePathMenu(Long requestMenuId, Long pathMenuId) {
+        if (pathMenuId == null || requestMenuId == null || !pathMenuId.equals(requestMenuId)) {
+            throw new MenuServiceException(VALIDATION_ERROR, "menuId must match the menu path.");
+        }
+    }
+
+    private static void requireSite(Site site) {
+        if (site == null || site.getId() == null) {
+            throw new MenuServiceException(VALIDATION_ERROR, "Site is required.");
+        }
     }
 
     private record Target(MenuItemTargetType type, Long pageId, String url) {

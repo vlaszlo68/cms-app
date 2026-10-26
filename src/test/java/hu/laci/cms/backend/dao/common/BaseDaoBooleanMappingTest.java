@@ -187,6 +187,34 @@ class BaseDaoBooleanMappingTest {
     }
 
     @Test
+    void findAllConvertsEntityReferenceFilterToItsId() throws SQLException {
+        ChildEntityDao childDao = new ChildEntityDao();
+        long grandParentId = insertJoinGrandParent("entity-filter-grand-parent");
+        long matchingParentId = insertJoinParent(grandParentId, "entity-filter-parent");
+        long otherParentId = insertJoinParent(grandParentId, "entity-filter-other-parent");
+        long matchingChildId = insertJoinChild(matchingParentId, "entity-filter-child");
+        insertJoinChild(otherParentId, "entity-filter-other-child");
+        ParentEntity parentReference = new ParentEntity();
+        parentReference.setId(matchingParentId);
+
+        List<ChildEntity> children = childDao.findAll(QuerySpec.<ChildProperty>create()
+                .where(ChildProperty.PARENT).equalsTo(parentReference));
+
+        assertEquals(1, children.size());
+        assertEquals(matchingChildId, children.get(0).getId());
+    }
+
+    @Test
+    void findAllRejectsEntityReferenceFilterWithoutId() {
+        ChildEntityDao childDao = new ChildEntityDao();
+
+        QuerySpec<ChildProperty> querySpec = QuerySpec.<ChildProperty>create()
+                .where(ChildProperty.PARENT).equalsTo(new ParentEntity());
+
+        assertThrows(IllegalArgumentException.class, () -> childDao.findAll(querySpec));
+    }
+
+    @Test
     void findAllRejectsDuplicateJoinAlias() throws SQLException {
         ChildEntityDao childDao = new ChildEntityDao();
 

@@ -37,6 +37,15 @@ public abstract class MenuItemRequestBase {
         return menuId;
     }
 
+    /**
+     * Sets the owning menu id when normalizing a nested administration route.
+     *
+     * @param menuId owning menu id
+     */
+    public void setMenuId(Long menuId) {
+        this.menuId = menuId;
+    }
+
     public Long getParentId() {
         return parentId;
     }

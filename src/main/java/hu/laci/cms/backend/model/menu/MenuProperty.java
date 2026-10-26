@@ -6,6 +6,7 @@ import hu.laci.cms.backend.model.common.BaseProperty;
 public final class MenuProperty extends AuditableProperty {
 
     public static final MenuProperty ID = new MenuProperty(BaseProperty.ID.getPropertyName());
+    public static final MenuProperty SITE = new MenuProperty("site");
     public static final MenuProperty NAME = new MenuProperty("name");
     public static final MenuProperty CODE = new MenuProperty("code");
     public static final MenuProperty ACTIVE = new MenuProperty("active");
