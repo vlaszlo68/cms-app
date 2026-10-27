@@ -9,6 +9,7 @@ public final class MenuItemProperty extends AuditableProperty {
     public static final MenuItemProperty MENU_ID = new MenuItemProperty("menuId");
     public static final MenuItemProperty PARENT_ID = new MenuItemProperty("parentId");
     public static final MenuItemProperty PAGE_ID = new MenuItemProperty("pageId");
+    public static final MenuItemProperty APPLICATION = new MenuItemProperty("application");
     public static final MenuItemProperty TARGET_TYPE = new MenuItemProperty("targetType");
     public static final MenuItemProperty TARGET_URL = new MenuItemProperty("targetUrl");
     public static final MenuItemProperty TITLE = new MenuItemProperty("title");

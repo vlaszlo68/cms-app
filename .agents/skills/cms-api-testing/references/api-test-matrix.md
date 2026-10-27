@@ -135,3 +135,22 @@ Menu item with URL target:
   "visible": true
 }
 ```
+
+## Application Platform Foundation
+
+Application administration is Site-scoped and requires the normal authenticated ADMIN session plus CSRF token:
+
+- `GET|POST /api/admin/sites/{siteCode}/applications`
+- `GET|PUT /api/admin/sites/{siteCode}/applications/{applicationId}`
+
+Application create/update payload: `{ "code": "SUPPORTED_CODE", "name": "Display name", "active": true }`.
+The code must be explicitly supported by the deployed application-definition registry; uniqueness is `(site_id, code)`.
+
+Menu item payloads accept `targetType: "APPLICATION"` with an `applicationId`. The application must be active and belong to the Site in the route. Cross-Site IDs must be rejected. Existing PAGE and URL target payloads remain valid.
+
+Anonymous public application checks:
+
+- `GET /api/public/sites/{siteCode}/applications/{applicationCode}` returns `{ success, data: { code, name } }` only for active Site, active Site Application, and supported code.
+- `POST /api/public/sites/{siteCode}/applications/{applicationCode}/functions/{functionCode}` accepts a JSON object and returns the common envelope. It is intentionally CSRF-exempt only for this exact anonymous public function path; the Site/Application/function registry whitelist remains mandatory.
+
+Do not run creation or dispatch checks against a shared runtime unless a test-only supported application definition and handler are explicitly available. No production demo function is part of this foundation.

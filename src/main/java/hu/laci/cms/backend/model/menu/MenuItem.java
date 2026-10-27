@@ -3,6 +3,7 @@ package hu.laci.cms.backend.model.menu;
 import hu.laci.cms.backend.dao.common.annotations.DbColumn;
 import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.AuditableEntity;
+import hu.laci.cms.backend.model.application.Application;
 
 @DbTable("menu_items")
 public class MenuItem extends AuditableEntity {
@@ -15,6 +16,9 @@ public class MenuItem extends AuditableEntity {
 
     @DbColumn("page_id")
     private Long pageId;
+
+    @DbColumn("application_id")
+    private Application application;
 
     @DbColumn("target_type")
     private MenuItemTargetType targetType = MenuItemTargetType.PAGE;
@@ -75,6 +79,12 @@ public class MenuItem extends AuditableEntity {
     public void setPageId(Long pageId) {
         this.pageId = pageId;
     }
+
+    /** @return Application targeted by an APPLICATION item, otherwise null */
+    public Application getApplication() { return application; }
+
+    /** @param application Site-owned Application targeted by this item */
+    public void setApplication(Application application) { this.application = application; }
 
     public MenuItemTargetType getTargetType() {
         return targetType;

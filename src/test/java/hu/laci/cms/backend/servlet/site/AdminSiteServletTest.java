@@ -2,6 +2,7 @@ package hu.laci.cms.backend.servlet.site;
 
 import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
+import hu.laci.cms.backend.dto.application.ApplicationResponse;
 import hu.laci.cms.backend.dto.page.CreatePageBlockRequest;
 import hu.laci.cms.backend.dto.settings.SiteSettingsResponse;
 import hu.laci.cms.backend.dto.site.SiteResponse;
@@ -17,6 +18,7 @@ import hu.laci.cms.backend.service.page.PageService;
 import hu.laci.cms.backend.service.page.PageServiceException;
 import hu.laci.cms.backend.service.settings.SiteSettingsService;
 import hu.laci.cms.backend.service.site.SiteService;
+import hu.laci.cms.backend.service.application.ApplicationService;
 import hu.laci.cms.backend.servlet.support.ServletTestSupport;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -150,6 +152,36 @@ class AdminSiteServletTest {
 
         assertEquals(HttpServletResponse.SC_NOT_FOUND, response.getStatus());
         assertTrue(response.getBody().contains(PageService.PAGE_NOT_FOUND));
+    }
+
+    @Test
+    void authenticatedAdministratorCanListAndCreateSiteApplications() throws Exception {
+        Site site = new Site(7L, "site-a", "Site A", true);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        ApplicationService applicationService = Mockito.mock(ApplicationService.class);
+        Mockito.when(siteService.requireSite("site-a")).thenReturn(site);
+        Mockito.when(applicationService.list(site)).thenReturn(List.of(
+                new ApplicationResponse(4L, "TEST_APP", "Test", true)));
+        Mockito.when(applicationService.create(Mockito.eq(site), Mockito.any())).thenReturn(
+                new ApplicationResponse(5L, "TEST_APP", "Created", true));
+        AdminSiteServlet servlet = servletWith(siteService, null, null, null, null, null, null);
+        ServletTestSupport.setField(servlet, "applicationService", applicationService);
+
+        ServletTestSupport.ResponseFixture listResponse = authenticatedGet(servlet, "/site-a/applications");
+        HttpServletRequest createRequest = ServletTestSupport.request()
+                .withPathInfo("/site-a/applications")
+                .withJsonBody("{\"code\":\"TEST_APP\",\"name\":\"Created\",\"active\":true}")
+                .build();
+        ServletTestSupport.ResponseFixture createResponse = ServletTestSupport.response();
+        ServletTestSupport.runAsAuthenticatedUser(createRequest, createResponse, admin(),
+                () -> servlet.doPost(createRequest, createResponse.build()));
+
+        assertEquals(HttpServletResponse.SC_OK, listResponse.getStatus());
+        assertTrue(listResponse.getBody().contains("TEST_APP"));
+        assertEquals(HttpServletResponse.SC_CREATED, createResponse.getStatus());
+        assertTrue(createResponse.getBody().contains("Created"));
+        Mockito.verify(applicationService).list(site);
+        Mockito.verify(applicationService).create(Mockito.eq(site), Mockito.any());
     }
 
     private static AdminSiteServlet servletWith(SiteService siteService, PageService pageService,

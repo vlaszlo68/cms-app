@@ -5,11 +5,15 @@ import com.google.gson.JsonParser;
 import hu.laci.cms.backend.dto.menu.PublicMenuItemResponse;
 import hu.laci.cms.backend.dto.page.PublicPageResponse;
 import hu.laci.cms.backend.dto.settings.PublicSiteSettingsResponse;
+import hu.laci.cms.backend.dto.application.PublicApplicationResponse;
 import hu.laci.cms.backend.model.page.PageType;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.service.menu.MenuItemService;
 import hu.laci.cms.backend.service.page.PageService;
 import hu.laci.cms.backend.service.settings.SiteSettingsService;
+import hu.laci.cms.backend.service.application.ApplicationService;
+import hu.laci.cms.backend.service.application.ApplicationServiceException;
+import hu.laci.cms.backend.model.application.Application;
 import hu.laci.cms.backend.service.site.SiteService;
 import hu.laci.cms.backend.service.site.SiteServiceException;
 import hu.laci.cms.backend.servlet.support.ServletTestSupport;
@@ -126,5 +130,61 @@ class PublicSiteServletTest {
         assertEquals(Set.of("siteName", "logoMediaId", "footerText", "contactEmail", "phone",
                 "facebookUrl", "linkedinUrl"), data.keySet());
         data.entrySet().forEach(entry -> assertTrue(entry.getValue().isJsonNull(), entry.getKey()));
+    }
+
+    @Test
+    void applicationDescriptorUsesActiveSiteAndReturnsPublicFieldsOnly() throws Exception {
+        Site site = new Site(10L, "site-a", "Site A", true);
+        Application application = new Application(12L, site, "TEST_APP", "Test application", true);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        ApplicationService applicationService = Mockito.mock(ApplicationService.class);
+        Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
+        Mockito.when(applicationService.requirePublic(site, "TEST_APP")).thenReturn(application);
+        Mockito.when(applicationService.publicResponse(application)).thenReturn(new PublicApplicationResponse("TEST_APP", "Test application"));
+        PublicSiteServlet servlet = new PublicSiteServlet();
+        ServletTestSupport.setField(servlet, "siteService", siteService);
+        ServletTestSupport.setField(servlet, "applicationService", applicationService);
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+
+        servlet.doGet(ServletTestSupport.request().withPathInfo("/site-a/applications/TEST_APP").build(), response.build());
+
+        assertEquals(HttpServletResponse.SC_OK, response.getStatus());
+        assertEquals("TEST_APP", JsonParser.parseString(response.getBody()).getAsJsonObject()
+                .getAsJsonObject("data").get("code").getAsString());
+    }
+
+    @Test
+    void unavailableApplicationDescriptorIsControlledNotFound() throws Exception {
+        Site site = new Site(10L, "site-a", "Site A", true);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        ApplicationService applicationService = Mockito.mock(ApplicationService.class);
+        Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
+        Mockito.when(applicationService.requirePublic(site, "UNKNOWN")).thenThrow(
+                new ApplicationServiceException(ApplicationService.APPLICATION_NOT_FOUND, "Application not found."));
+        PublicSiteServlet servlet = new PublicSiteServlet();
+        ServletTestSupport.setField(servlet, "siteService", siteService);
+        ServletTestSupport.setField(servlet, "applicationService", applicationService);
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+
+        servlet.doGet(ServletTestSupport.request().withPathInfo("/site-a/applications/UNKNOWN").build(), response.build());
+
+        assertEquals(HttpServletResponse.SC_NOT_FOUND, response.getStatus());
+        assertTrue(response.getBody().contains(ApplicationService.APPLICATION_NOT_FOUND));
+    }
+
+    @Test
+    void functionRouteDelegatesExplicitSiteApplicationAndFunctionContext() throws Exception {
+        PublicFunctionServlet dispatcher = Mockito.mock(PublicFunctionServlet.class);
+        PublicSiteServlet servlet = new PublicSiteServlet();
+        ServletTestSupport.setField(servlet, "publicFunctionServlet", dispatcher);
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+        Mockito.when(dispatcher.dispatch(Mockito.eq("site-a"), Mockito.eq("TEST_APP"), Mockito.eq("ECHO"), Mockito.any()))
+                .thenReturn(new PublicApplicationResponse("TEST_APP", "Result"));
+
+        servlet.doPost(ServletTestSupport.request().withPathInfo("/site-a/applications/TEST_APP/functions/ECHO")
+                .withJsonBody("{}").build(), response.build());
+
+        assertEquals(HttpServletResponse.SC_OK, response.getStatus());
+        assertTrue(response.getBody().contains("TEST_APP"));
     }
 }

@@ -12,6 +12,14 @@ import hu.laci.cms.backend.dao.page.PageBlockDao;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
+import hu.laci.cms.backend.dao.application.ApplicationDao;
+import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.service.application.ApplicationDefinitionRegistry;
+import hu.laci.cms.backend.service.application.ApplicationPlatformRegistry;
+import hu.laci.cms.backend.service.application.ApplicationService;
+import hu.laci.cms.backend.service.application.ApplicationServiceException;
+import hu.laci.cms.backend.dto.application.CreateApplicationRequest;
+import hu.laci.cms.backend.dto.application.UpdateApplicationRequest;
 import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.dto.menu.CreateMenuItemRequest;
@@ -81,6 +89,7 @@ public class AdminSiteServlet extends JsonServletSupport {
     private MenuItemService menuItemService;
     private SiteSettingsService siteSettingsService;
     private MediaService mediaService;
+    private ApplicationService applicationService;
 
     @Override
     public void init() throws ServletException {
@@ -92,6 +101,7 @@ public class AdminSiteServlet extends JsonServletSupport {
         MenuItemDao menuItemDao = DaoRegistry.getDao(MenuItem.class);
         SiteSettingsDao settingsDao = DaoRegistry.getDao(SiteSettings.class);
         MediaDao mediaDao = DaoRegistry.getDao(Media.class);
+        ApplicationDao applicationDao = DaoRegistry.getDao(Application.class);
         MediaStorageConfig storageConfig = MediaStorageConfig.getCurrent();
         MediaStorageService storageService = MediaStorageServiceFactory.create(storageConfig);
 
@@ -99,7 +109,10 @@ public class AdminSiteServlet extends JsonServletSupport {
         pageService = new PageService(pageDao, templateDao, pageBlockDao);
         pageBlockService = new PageBlockService(pageDao, pageBlockDao);
         menuService = new MenuService(menuDao);
-        menuItemService = new MenuItemService(menuDao, menuItemDao, pageDao);
+        ApplicationDefinitionRegistry applicationRegistry = ApplicationPlatformRegistry.production()
+                .getApplicationDefinitions();
+        menuItemService = new MenuItemService(menuDao, menuItemDao, pageDao, applicationDao, applicationRegistry);
+        applicationService = new ApplicationService(applicationDao, applicationRegistry);
         siteSettingsService = new SiteSettingsService(settingsDao, mediaDao);
         mediaService = new MediaService(mediaDao, storageService, storageConfig.getStorageType());
     }
@@ -154,6 +167,8 @@ public class AdminSiteServlet extends JsonServletSupport {
             writeSettingsError(response, e);
         } catch (MediaServiceException e) {
             writeMediaError(response, e);
+        } catch (ApplicationServiceException e) {
+            writeApplicationError(response, e);
         }
     }
 
@@ -183,7 +198,26 @@ public class AdminSiteServlet extends JsonServletSupport {
             case "menus" -> routeMenus(request, method, site, segments.subList(2, segments.size()));
             case "site-settings" -> routeSettings(request, method, site, segments.subList(2, segments.size()));
             case "media" -> routeMedia(request, method, site, segments.subList(2, segments.size()));
+            case "applications" -> routeApplications(request, method, site, segments.subList(2, segments.size()));
             default -> throw new BadRequestException("Unknown Site resource path.");
+        };
+    }
+
+    private ResponsePayload routeApplications(HttpServletRequest request, String method, Site site, List<String> path)
+            throws IOException {
+        if (path.isEmpty()) {
+            return switch (method) {
+                case "GET" -> ok(applicationService.list(site));
+                case "POST" -> created(applicationService.create(site, parseJson(request, CreateApplicationRequest.class)));
+                default -> throw unsupported();
+            };
+        }
+        if (path.size() != 1) { throw new BadRequestException("Invalid application path."); }
+        Long applicationId = parseId(path.get(0), "Application id");
+        return switch (method) {
+            case "GET" -> ok(applicationService.get(site, applicationId));
+            case "PUT" -> ok(applicationService.update(site, applicationId, parseJson(request, UpdateApplicationRequest.class)));
+            default -> throw unsupported();
         };
     }
 
@@ -439,9 +473,19 @@ public class AdminSiteServlet extends JsonServletSupport {
     private void writeMenuError(HttpServletResponse response, MenuServiceException e) throws IOException {
         int status = switch (e.getCode()) {
             case MenuService.VALIDATION_ERROR, MenuItemService.INVALID_PARENT,
-                    MenuItemService.INVALID_PAGE_TARGET -> HttpServletResponse.SC_BAD_REQUEST;
+                    MenuItemService.INVALID_PAGE_TARGET, MenuItemService.INVALID_APPLICATION_TARGET -> HttpServletResponse.SC_BAD_REQUEST;
             case MenuService.MENU_NOT_FOUND, MenuItemService.MENU_ITEM_NOT_FOUND -> HttpServletResponse.SC_NOT_FOUND;
             case MenuService.DUPLICATE_CODE -> HttpServletResponse.SC_CONFLICT;
+            default -> HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+        };
+        writeErrorResponse(response, status, e.getCode(), e.getMessage());
+    }
+
+    private void writeApplicationError(HttpServletResponse response, ApplicationServiceException e) throws IOException {
+        int status = switch (e.getCode()) {
+            case ApplicationService.VALIDATION_ERROR, ApplicationService.UNSUPPORTED_APPLICATION -> HttpServletResponse.SC_BAD_REQUEST;
+            case ApplicationService.APPLICATION_NOT_FOUND -> HttpServletResponse.SC_NOT_FOUND;
+            case ApplicationService.DUPLICATE_APPLICATION_CODE -> HttpServletResponse.SC_CONFLICT;
             default -> HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         };
         writeErrorResponse(response, status, e.getCode(), e.getMessage());

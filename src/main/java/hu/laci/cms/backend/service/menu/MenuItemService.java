@@ -3,6 +3,9 @@ package hu.laci.cms.backend.service.menu;
 import hu.laci.cms.backend.dao.menu.MenuDao;
 import hu.laci.cms.backend.dao.menu.MenuItemDao;
 import hu.laci.cms.backend.dao.page.PageDao;
+import hu.laci.cms.backend.dao.application.ApplicationDao;
+import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.service.application.ApplicationDefinitionRegistry;
 import hu.laci.cms.backend.dto.menu.CreateMenuItemRequest;
 import hu.laci.cms.backend.dto.menu.MenuItemRequestBase;
 import hu.laci.cms.backend.dto.menu.MenuItemResponse;
@@ -29,10 +32,13 @@ public class MenuItemService {
     public static final String MENU_ITEM_NOT_FOUND = "MENU_ITEM_NOT_FOUND";
     public static final String INVALID_PARENT = "INVALID_PARENT";
     public static final String INVALID_PAGE_TARGET = "INVALID_PAGE_TARGET";
+    public static final String INVALID_APPLICATION_TARGET = "INVALID_APPLICATION_TARGET";
 
     private final MenuDao menuDao;
     private final MenuItemDao menuItemDao;
     private final PageDao pageDao;
+    private final ApplicationDao applicationDao;
+    private final ApplicationDefinitionRegistry applicationRegistry;
 
     /**
      * Creates the menu-item service with the bounded public-page lookup used by anonymous navigation.
@@ -42,14 +48,21 @@ public class MenuItemService {
      * @param pageDao page persistence dependency for public PAGE target eligibility
      */
     public MenuItemService(MenuDao menuDao, MenuItemDao menuItemDao, PageDao pageDao) {
+        this(menuDao, menuItemDao, pageDao, null, ApplicationDefinitionRegistry.empty());
+    }
+
+    public MenuItemService(MenuDao menuDao, MenuItemDao menuItemDao, PageDao pageDao,
+                           ApplicationDao applicationDao, ApplicationDefinitionRegistry applicationRegistry) {
         this.menuDao = Objects.requireNonNull(menuDao, "menuDao must not be null");
         this.menuItemDao = Objects.requireNonNull(menuItemDao, "menuItemDao must not be null");
         this.pageDao = Objects.requireNonNull(pageDao, "pageDao must not be null");
+        this.applicationDao = applicationDao;
+        this.applicationRegistry = Objects.requireNonNull(applicationRegistry, "applicationRegistry must not be null");
     }
 
     public List<MenuItemResponse> listItems(Site site, Long menuId) {
         loadMenu(site, menuId);
-        return menuItemDao.findByMenuId(menuId).stream().map(this::toResponse).toList();
+        return menuItemDao.findByMenuId(menuId).stream().map(item -> toResponse(site, item)).toList();
     }
 
     public MenuItemResponse createItem(Site site, CreateMenuItemRequest request) {
@@ -67,7 +80,8 @@ public class MenuItemService {
                 target.type(), target.url(), request.getTitle().trim(),
                 defaultOrder(request.getSortOrder()),
                 request.getVisible() == null || request.getVisible());
-        return toResponse(menuItemDao.create(item));
+        item.setApplication(target.application());
+        return toResponse(site, menuItemDao.create(item));
     }
 
     public MenuItemResponse updateItem(Site site, Long menuId, Long id, UpdateMenuItemRequest request) {
@@ -80,12 +94,13 @@ public class MenuItemService {
         item.setMenuId(menuId);
         item.setParentId(request.getParentId());
         item.setPageId(target.pageId());
+        item.setApplication(target.application());
         item.setTargetType(target.type());
         item.setTargetUrl(target.url());
         item.setTitle(request.getTitle().trim());
         item.setSortOrder(defaultOrder(request.getSortOrder()));
         item.setVisible(request.getVisible() == null || request.getVisible());
-        return toResponse(menuItemDao.update(item));
+        return toResponse(site, menuItemDao.update(item));
     }
 
     public MenuItemResponse updateItem(Site site, Long id, UpdateMenuItemRequest request) {
@@ -125,15 +140,21 @@ public class MenuItemService {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         Map<Long, Page> publicPages = pageDao.findPublishedContentBySiteAndIds(site, pageIds).stream()
                 .collect(java.util.stream.Collectors.toUnmodifiableMap(Page::getId, page -> page));
+        Set<Long> applicationIds = items.stream().filter(item -> item.getTargetType() == MenuItemTargetType.APPLICATION)
+                .map(MenuItem::getApplication).filter(Objects::nonNull).map(Application::getId).filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        Map<Long, Application> publicApplications = applicationDao == null ? Map.of() : applicationDao.findAllBySite(site).stream()
+                .filter(Application::isActive).filter(app -> applicationRegistry.isSupported(app.getCode()))
+                .filter(app -> applicationIds.contains(app.getId())).collect(java.util.stream.Collectors.toUnmodifiableMap(Application::getId, app -> app));
         Map<Long, List<MenuItem>> children = new HashMap<>();
         for (MenuItem item : items) {
             children.computeIfAbsent(item.getParentId(), ignored -> new ArrayList<>()).add(item);
         }
-        return buildPublicChildren(null, children, publicPages, new HashSet<>());
+        return buildPublicChildren(null, children, publicPages, publicApplications, new HashSet<>());
     }
 
     private List<PublicMenuItemResponse> buildPublicChildren(Long parentId, Map<Long, List<MenuItem>> children,
-                                                              Map<Long, Page> publicPages, Set<Long> path) {
+                                                              Map<Long, Page> publicPages, Map<Long, Application> publicApplications, Set<Long> path) {
         List<PublicMenuItemResponse> result = new ArrayList<>();
         for (MenuItem item : children.getOrDefault(parentId, List.of())) {
             if (!item.isVisible() || !path.add(item.getId())) {
@@ -142,15 +163,23 @@ public class MenuItemService {
             Page page = item.getTargetType() == MenuItemTargetType.PAGE
                     ? publicPages.get(item.getPageId())
                     : null;
-            if (item.getTargetType() == MenuItemTargetType.PAGE && page == null) {
+            Application application = item.getTargetType() == MenuItemTargetType.APPLICATION ? item.getApplication() : null;
+            Application publicApplication = application == null ? null : publicApplications.get(application.getId());
+            if ((item.getTargetType() == MenuItemTargetType.PAGE && page == null)
+                    || (item.getTargetType() == MenuItemTargetType.APPLICATION && publicApplication == null)) {
                 path.remove(item.getId());
                 continue;
             }
-            List<PublicMenuItemResponse> publicChildren = buildPublicChildren(item.getId(), children, publicPages,
+            List<PublicMenuItemResponse> publicChildren = buildPublicChildren(item.getId(), children, publicPages, publicApplications,
                     path);
-            result.add(new PublicMenuItemResponse(item.getId(), item.getTitle(), item.getTargetType(),
-                    page == null ? null : page.getId(), page == null ? null : page.getSlug(),
-                    page == null ? null : publicPath(page), item.getTargetUrl(), publicChildren));
+            if (publicApplication != null) {
+                result.add(new PublicMenuItemResponse(item.getId(), item.getTitle(), item.getTargetType(),
+                        publicApplication.getCode(), "/app/" + publicApplication.getCode(), publicChildren));
+            } else {
+                result.add(new PublicMenuItemResponse(item.getId(), item.getTitle(), item.getTargetType(),
+                        page == null ? null : page.getId(), page == null ? null : page.getSlug(),
+                        page == null ? null : publicPath(page), item.getTargetUrl(), publicChildren));
+            }
             path.remove(item.getId());
         }
         return List.copyOf(result);
@@ -222,11 +251,33 @@ public class MenuItemService {
         if (targetType == MenuItemTargetType.URL && trimToNull(request.getTargetUrl()) == null) {
             throw new MenuServiceException(VALIDATION_ERROR, "targetUrl is required for URL target.");
         }
+        if (targetType == MenuItemTargetType.APPLICATION && request.getApplicationId() == null) {
+            throw new MenuServiceException(VALIDATION_ERROR, "applicationId is required for APPLICATION target.");
+        }
+        if (targetType == MenuItemTargetType.PAGE
+                && (trimToNull(request.getTargetUrl()) != null || request.getApplicationId() != null)) {
+            throw new MenuServiceException(VALIDATION_ERROR, "PAGE target cannot include URL or Application values.");
+        }
+        if (targetType == MenuItemTargetType.URL
+                && (request.getPageId() != null || request.getApplicationId() != null)) {
+            throw new MenuServiceException(VALIDATION_ERROR, "URL target cannot include Page or Application values.");
+        }
+        if (targetType == MenuItemTargetType.APPLICATION
+                && (request.getPageId() != null || trimToNull(request.getTargetUrl()) != null)) {
+            throw new MenuServiceException(VALIDATION_ERROR, "APPLICATION target cannot include Page or URL values.");
+        }
     }
 
-    private MenuItemResponse toResponse(MenuItem item) {
+    private MenuItemResponse toResponse(Site site, MenuItem item) {
+        Application application = item.getApplication();
+        if (application != null && application.getId() != null && applicationDao != null
+                && (application.getCode() == null || application.getName() == null)) {
+            application = applicationDao.findBySiteAndId(site, application.getId()).orElse(null);
+        }
         return new MenuItemResponse(item.getId(), item.getMenuId(), item.getParentId(), item.getPageId(),
-                item.getTargetType(), item.getTargetUrl(), item.getTitle(), item.getSortOrder(), item.isVisible());
+                application == null ? null : application.getId(), application == null ? null : application.getCode(),
+                application == null ? null : application.getName(), item.getTargetType(), item.getTargetUrl(),
+                item.getTitle(), item.getSortOrder(), item.isVisible());
     }
 
     private static int defaultOrder(Integer sortOrder) {
@@ -252,9 +303,21 @@ public class MenuItemService {
                     throw new MenuServiceException(INVALID_PAGE_TARGET,
                             "Target page must belong to the requested Site.");
                 }
-                yield new Target(targetType, request.getPageId(), null);
+                yield new Target(targetType, request.getPageId(), null, null);
             }
-            case URL -> new Target(targetType, null, trimToNull(request.getTargetUrl()));
+            case URL -> new Target(targetType, null, null, trimToNull(request.getTargetUrl()));
+            case APPLICATION -> {
+                if (applicationDao == null) {
+                    throw new MenuServiceException(INVALID_APPLICATION_TARGET, "Application targets are unavailable.");
+                }
+                Application application = applicationDao.findBySiteAndId(site, request.getApplicationId())
+                        .orElseThrow(() -> new MenuServiceException(INVALID_APPLICATION_TARGET,
+                                "Target application must belong to the requested Site."));
+                if (!application.isActive() || !applicationRegistry.isSupported(application.getCode())) {
+                    throw new MenuServiceException(INVALID_APPLICATION_TARGET, "Target application is not active and supported.");
+                }
+                yield new Target(targetType, null, application, null);
+            }
         };
     }
 
@@ -270,6 +333,6 @@ public class MenuItemService {
         }
     }
 
-    private record Target(MenuItemTargetType type, Long pageId, String url) {
+    private record Target(MenuItemTargetType type, Long pageId, Application application, String url) {
     }
 }

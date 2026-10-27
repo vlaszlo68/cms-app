@@ -11,6 +11,7 @@ public class PublicMenuItemResponse {
     private final MenuItemTargetType targetType;
     private final Long pageId;
     private final String pageSlug;
+    private final String applicationCode;
     private final String path;
     private final String targetUrl;
     private final List<PublicMenuItemResponse> children;
@@ -42,6 +43,13 @@ public class PublicMenuItemResponse {
         this.path = path;
         this.targetUrl = targetUrl;
         this.children = List.copyOf(children);
+        this.applicationCode = null;
+    }
+
+    public PublicMenuItemResponse(Long id, String title, MenuItemTargetType targetType, String applicationCode,
+                                  String path, List<PublicMenuItemResponse> children) {
+        this.id=id; this.title=title; this.targetType=targetType; this.pageId=null; this.pageSlug=null;
+        this.applicationCode=applicationCode; this.path=path; this.targetUrl=null; this.children=List.copyOf(children);
     }
 
     public Long getId() {
@@ -63,6 +71,7 @@ public class PublicMenuItemResponse {
     public String getPageSlug() {
         return pageSlug;
     }
+    public String getApplicationCode() { return applicationCode; }
 
     public String getPath() {
         return path;

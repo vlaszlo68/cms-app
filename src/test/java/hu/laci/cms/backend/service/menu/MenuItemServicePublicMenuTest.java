@@ -3,7 +3,12 @@ package hu.laci.cms.backend.service.menu;
 import hu.laci.cms.backend.dao.menu.MenuDao;
 import hu.laci.cms.backend.dao.menu.MenuItemDao;
 import hu.laci.cms.backend.dao.page.PageDao;
+import hu.laci.cms.backend.dao.application.ApplicationDao;
+import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.service.application.ApplicationDefinition;
+import hu.laci.cms.backend.service.application.ApplicationDefinitionRegistry;
 import hu.laci.cms.backend.dto.menu.PublicMenuItemResponse;
+import hu.laci.cms.backend.dto.menu.CreateMenuItemRequest;
 import hu.laci.cms.backend.model.menu.Menu;
 import hu.laci.cms.backend.model.menu.MenuItem;
 import hu.laci.cms.backend.model.menu.MenuItemTargetType;
@@ -98,6 +103,54 @@ class MenuItemServicePublicMenuTest {
         List<PublicMenuItemResponse> result = service.getPublicMenu(SITE, "MAIN");
 
         assertEquals(List.of(), result);
+    }
+
+    @Test
+    void publicMenuMapsOnlyActiveSupportedApplicationTargetsToApplicationPath() {
+        MenuDao menuDao = Mockito.mock(MenuDao.class);
+        MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
+        PageDao pageDao = Mockito.mock(PageDao.class);
+        ApplicationDao applicationDao = Mockito.mock(ApplicationDao.class);
+        Application active = new Application(50L, SITE, "TEST_APP", "Test", true);
+        Application inactive = new Application(51L, SITE, "TEST_APP", "Inactive", false);
+        MenuItem activeItem = new MenuItem(1L, 10L, null, null, MenuItemTargetType.APPLICATION, null,
+                "Application", 1, true);
+        activeItem.setApplication(active);
+        MenuItem inactiveItem = new MenuItem(2L, 10L, null, null, MenuItemTargetType.APPLICATION, null,
+                "Inactive", 2, true);
+        inactiveItem.setApplication(inactive);
+        Mockito.when(menuDao.findBySiteAndCode(SITE, "MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
+        Mockito.when(menuItemDao.findByMenuId(10L)).thenReturn(List.of(activeItem, inactiveItem));
+        Mockito.when(pageDao.findPublishedContentBySiteAndIds(SITE, Set.of())).thenReturn(List.of());
+        Mockito.when(applicationDao.findAllBySite(SITE)).thenReturn(List.of(active, inactive));
+        MenuItemService service = new MenuItemService(menuDao, menuItemDao, pageDao, applicationDao,
+                new ApplicationDefinitionRegistry(List.of(new ApplicationDefinition("TEST_APP"))));
+
+        List<PublicMenuItemResponse> result = service.getPublicMenu(SITE, "MAIN");
+
+        assertEquals(1, result.size());
+        assertEquals(MenuItemTargetType.APPLICATION, result.getFirst().getTargetType());
+        assertEquals("TEST_APP", result.getFirst().getApplicationCode());
+        assertEquals("/app/TEST_APP", result.getFirst().getPath());
+    }
+
+    @Test
+    void applicationTargetFromAnotherSiteIsRejected() {
+        MenuDao menuDao = Mockito.mock(MenuDao.class);
+        MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
+        PageDao pageDao = Mockito.mock(PageDao.class);
+        ApplicationDao applicationDao = Mockito.mock(ApplicationDao.class);
+        Mockito.when(menuDao.findBySiteAndId(SITE, 10L)).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
+        Mockito.when(applicationDao.findBySiteAndId(SITE, 99L)).thenReturn(Optional.empty());
+        MenuItemService service = new MenuItemService(menuDao, menuItemDao, pageDao, applicationDao,
+                new ApplicationDefinitionRegistry(List.of(new ApplicationDefinition("TEST_APP"))));
+        CreateMenuItemRequest request = new CreateMenuItemRequest(10L, null, null, 99L,
+                MenuItemTargetType.APPLICATION, null, "Cross Site", 0, true);
+
+        MenuServiceException error = assertThrows(MenuServiceException.class,
+                () -> service.createItem(SITE, 10L, request));
+
+        assertEquals(MenuItemService.INVALID_APPLICATION_TARGET, error.getCode());
     }
 
     private static MenuItem pageItem(Long id, Long parentId, Long pageId, String title, int sortOrder,
