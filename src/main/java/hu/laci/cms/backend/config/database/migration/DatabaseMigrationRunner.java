@@ -133,11 +133,18 @@ public final class DatabaseMigrationRunner {
             return;
         }
 
-        if (!migration.checksum().equals(appliedMigration.checksum())) {
-            throw new SQLException("Checksum mismatch for applied migration " + migration.scriptName()
-                    + ". Recorded checksum=" + appliedMigration.checksum()
-                    + ", current checksum=" + migration.checksum());
+        if (migration.canonicalChecksum().equals(appliedMigration.checksum())) {
+            return;
         }
+
+        if (migration.rawChecksum().equals(appliedMigration.checksum())) {
+            upgradeChecksumToCanonicalForm(connection, migration, appliedMigration.checksum());
+            return;
+        }
+
+        throw new SQLException("Checksum mismatch for applied migration " + migration.scriptName()
+                + ". Recorded checksum=" + appliedMigration.checksum()
+                + ", current checksum=" + migration.canonicalChecksum());
     }
 
     private static void backfillChecksum(Connection connection, Migration migration) throws SQLException {
@@ -146,10 +153,30 @@ public final class DatabaseMigrationRunner {
                 SET checksum = ?
                 WHERE version = ? AND checksum IS NULL
                 """)) {
-            statement.setString(1, migration.checksum());
+            statement.setString(1, migration.canonicalChecksum());
             statement.setInt(2, migration.version());
             statement.executeUpdate();
             LOGGER.info("Backfilled checksum for database migration {}", migration.scriptName());
+        }
+    }
+
+    private static void upgradeChecksumToCanonicalForm(Connection connection, Migration migration,
+                                                       String recordedChecksum) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE schema_migrations
+                SET checksum = ?
+                WHERE version = ? AND script_name = ? AND checksum = ?
+                """)) {
+            statement.setString(1, migration.canonicalChecksum());
+            statement.setInt(2, migration.version());
+            statement.setString(3, migration.scriptName());
+            statement.setString(4, recordedChecksum);
+            if (statement.executeUpdate() != 1) {
+                throw new SQLException("Could not upgrade legacy checksum for applied migration "
+                        + migration.scriptName());
+            }
+            LOGGER.info("Upgraded legacy checksum to canonical form for database migration {}",
+                    migration.scriptName());
         }
     }
 
@@ -171,7 +198,7 @@ public final class DatabaseMigrationRunner {
                 statement.setInt(1, migration.version());
                 statement.setString(2, migration.description());
                 statement.setString(3, migration.scriptName());
-                statement.setString(4, migration.checksum());
+                statement.setString(4, migration.canonicalChecksum());
                 statement.executeUpdate();
             }
 
@@ -242,7 +269,8 @@ public final class DatabaseMigrationRunner {
             int version = Integer.parseInt(matcher.group(1));
             String description = matcher.group(2).replace('_', ' ');
             String sql = Files.readString(path, StandardCharsets.UTF_8);
-            return new Migration(version, description, scriptName, sql, checksum(sql));
+            return new Migration(version, description, scriptName, sql, checksum(sql),
+                    checksum(MigrationChecksumCanonicalizer.canonicalize(sql)));
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read migration file: " + scriptName, e);
         }
@@ -267,7 +295,8 @@ public final class DatabaseMigrationRunner {
         return DatabaseMigrationRunner.class.getClassLoader();
     }
 
-    private record Migration(int version, String description, String scriptName, String sql, String checksum) {
+    private record Migration(int version, String description, String scriptName, String sql, String rawChecksum,
+                             String canonicalChecksum) {
     }
 
     private record AppliedMigration(int version, String scriptName, String checksum) {
