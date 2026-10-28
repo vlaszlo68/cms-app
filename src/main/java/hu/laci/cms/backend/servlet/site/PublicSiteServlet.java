@@ -100,6 +100,8 @@ public class PublicSiteServlet extends JsonServletSupport {
             Object data;
             if (path.size() == 3 && "auth".equals(path.get(1)) && "me".equals(path.get(2))) {
                 data = publicAuthState(request, response);
+                writeJsonResponseIncludingNulls(response, HttpServletResponse.SC_OK, data);
+                return;
             } else if (path.size() == 3 && "pages".equals(path.get(1))) {
                 data = pageService.getPublicPageBySlug(site, path.get(2));
             } else if (path.size() == 3 && "menus".equals(path.get(1))) {
