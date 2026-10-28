@@ -9,6 +9,8 @@ public interface PublicFunction {
     String getApplicationCode();
     /** @return function code unique within the owning application */
     String getFunctionCode();
+    /** @return trusted minimum policy required to invoke this handler */
+    default AccessPolicy getAccessPolicy() { return AccessPolicy.PUBLIC; }
     /**
      * Executes this function with validated Site/Application context.
      *

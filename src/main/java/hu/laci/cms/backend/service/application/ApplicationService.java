@@ -3,6 +3,7 @@ import hu.laci.cms.backend.dao.application.ApplicationDao;
 import hu.laci.cms.backend.dto.application.*;
 import hu.laci.cms.backend.model.application.Application;
 import hu.laci.cms.backend.model.site.Site;
+import hu.laci.cms.backend.service.function.AccessPolicy;
 import java.util.List;
 import java.util.Objects;
 /** Business layer for Site-owned application configuration and public eligibility. */
@@ -55,5 +56,7 @@ public class ApplicationService {
      * @param app public application resolved by this service
      * @return descriptor without audit or administration fields
      */
-    public PublicApplicationResponse publicResponse(Application app){return new PublicApplicationResponse(app.getCode(),app.getName());}
+    public PublicApplicationResponse publicResponse(Application app){return new PublicApplicationResponse(app.getCode(),app.getName(),registry.find(app.getCode()).orElseThrow().accessPolicy());}
+    /** @return trusted code-defined access policy for a previously resolved application */
+    public AccessPolicy accessPolicy(Application app){return registry.find(app.getCode()).orElseThrow().accessPolicy();}
 }

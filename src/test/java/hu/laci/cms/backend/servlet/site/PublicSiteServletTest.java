@@ -178,7 +178,8 @@ class PublicSiteServletTest {
         PublicSiteServlet servlet = new PublicSiteServlet();
         ServletTestSupport.setField(servlet, "publicFunctionServlet", dispatcher);
         ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
-        Mockito.when(dispatcher.dispatch(Mockito.eq("site-a"), Mockito.eq("TEST_APP"), Mockito.eq("ECHO"), Mockito.any()))
+        Mockito.when(dispatcher.dispatch(Mockito.eq("site-a"), Mockito.eq("TEST_APP"), Mockito.eq("ECHO"),
+                        Mockito.any(), Mockito.any(), Mockito.any()))
                 .thenReturn(new PublicApplicationResponse("TEST_APP", "Result"));
 
         servlet.doPost(ServletTestSupport.request().withPathInfo("/site-a/applications/TEST_APP/functions/ECHO")
