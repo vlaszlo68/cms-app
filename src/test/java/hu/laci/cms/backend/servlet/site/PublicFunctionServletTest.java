@@ -5,6 +5,8 @@ import hu.laci.cms.backend.model.application.Application;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.service.application.ApplicationService;
 import hu.laci.cms.backend.service.function.FunctionContext;
+import hu.laci.cms.backend.service.function.AccessPolicy;
+import hu.laci.cms.backend.service.function.FunctionAuthorizationService;
 import hu.laci.cms.backend.service.function.FunctionRegistry;
 import hu.laci.cms.backend.service.function.PublicFunction;
 import hu.laci.cms.backend.service.function.PublicFunctionException;
@@ -14,6 +16,7 @@ import org.mockito.Mockito;
 
 import java.io.StringReader;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -39,7 +42,7 @@ class PublicFunctionServletTest {
             }
         };
         PublicFunctionServlet dispatcher = new PublicFunctionServlet(siteService, applicationService,
-                new FunctionRegistry(List.of(handler)));
+                new FunctionRegistry(List.of(handler)), authorizationService());
 
         assertEquals("ok", dispatcher.dispatch("site-a", "TEST_APP", "ECHO", new StringReader("{\"value\":\"ok\"}")));
     }
@@ -58,7 +61,7 @@ class PublicFunctionServletTest {
             @Override public Object execute(FunctionContext context, JsonObject payload) { return null; }
         };
         PublicFunctionServlet dispatcher = new PublicFunctionServlet(siteService, applicationService,
-                new FunctionRegistry(List.of(onlyOtherApplication)));
+                new FunctionRegistry(List.of(onlyOtherApplication)), authorizationService());
 
         PublicFunctionException unknown = assertThrows(PublicFunctionException.class,
                 () -> dispatcher.dispatch("site-a", "APP_A", "ECHO", new StringReader("{}")));
@@ -79,7 +82,7 @@ class PublicFunctionServletTest {
             @Override public Object execute(FunctionContext context, JsonObject payload) { return null; }
         };
         PublicFunctionServlet dispatcher = new PublicFunctionServlet(siteService, applicationService,
-                new FunctionRegistry(List.of(knownFunction)));
+                new FunctionRegistry(List.of(knownFunction)), authorizationService());
 
         PublicFunctionException unknown = assertThrows(PublicFunctionException.class,
                 () -> dispatcher.dispatch("site-a", "APP_A", "UNKNOWN", new StringReader("{}")));
@@ -101,7 +104,7 @@ class PublicFunctionServletTest {
             @Override public Object execute(FunctionContext context, JsonObject payload) { return payload; }
         };
         PublicFunctionServlet dispatcher = new PublicFunctionServlet(siteService, applicationService,
-                new FunctionRegistry(List.of(handler)));
+                new FunctionRegistry(List.of(handler)), authorizationService());
 
         PublicFunctionException malformed = assertThrows(PublicFunctionException.class,
                 () -> dispatcher.dispatch("site-a", "APP_A", "ECHO", new StringReader("{")));
@@ -110,5 +113,12 @@ class PublicFunctionServletTest {
 
         assertEquals(PublicFunctionServlet.INVALID_FUNCTION_INPUT, malformed.getCode());
         assertEquals(PublicFunctionServlet.INVALID_FUNCTION_INPUT, nonObject.getCode());
+    }
+
+    private FunctionAuthorizationService authorizationService() {
+        FunctionAuthorizationService authorizationService = Mockito.mock(FunctionAuthorizationService.class);
+        Mockito.when(authorizationService.authorize(Mockito.eq(AccessPolicy.PUBLIC), Mockito.any()))
+                .thenAnswer(invocation -> invocation.getArgument(1, Optional.class));
+        return authorizationService;
     }
 }

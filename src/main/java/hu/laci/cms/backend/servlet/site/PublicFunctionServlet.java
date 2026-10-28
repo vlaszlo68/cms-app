@@ -3,12 +3,21 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import hu.laci.cms.backend.model.application.Application;
 import hu.laci.cms.backend.model.site.Site;
+import hu.laci.cms.backend.model.user.User;
+import hu.laci.cms.backend.dao.common.DaoRegistry;
+import hu.laci.cms.backend.config.session.AppSession;
+import hu.laci.cms.backend.config.session.AppSessionManager;
+import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
+import hu.laci.cms.backend.servlet.support.CsrfTokenSupport;
 import hu.laci.cms.backend.service.application.ApplicationService;
 import hu.laci.cms.backend.service.function.*;
 import hu.laci.cms.backend.service.site.SiteService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.Reader;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.util.Optional;
 import java.util.Objects;
 /**
  * Dispatcher component for the public function endpoint, intentionally without HTTP routing or business functions.
@@ -17,7 +26,7 @@ import java.util.Objects;
 public class PublicFunctionServlet {
     public static final String FUNCTION_NOT_FOUND="FUNCTION_NOT_FOUND", INVALID_FUNCTION_INPUT="INVALID_FUNCTION_INPUT", FUNCTION_EXECUTION_FAILED="FUNCTION_EXECUTION_FAILED";
     private static final Logger LOGGER=LoggerFactory.getLogger(PublicFunctionServlet.class);
-    private final SiteService siteService; private final ApplicationService applicationService; private final FunctionRegistry registry;
+    private final SiteService siteService; private final ApplicationService applicationService; private final FunctionRegistry registry; private final FunctionAuthorizationService authorizationService;
     /**
      * Creates a dispatcher using only trusted service and registry dependencies.
      *
@@ -25,7 +34,8 @@ public class PublicFunctionServlet {
      * @param applicationService resolves active supported Site Applications
      * @param registry resolves exact application/function handlers
      */
-    public PublicFunctionServlet(SiteService siteService,ApplicationService applicationService,FunctionRegistry registry){this.siteService=Objects.requireNonNull(siteService);this.applicationService=Objects.requireNonNull(applicationService);this.registry=Objects.requireNonNull(registry);}
+    public PublicFunctionServlet(SiteService siteService,ApplicationService applicationService,FunctionRegistry registry){this(siteService,applicationService,registry,new FunctionAuthorizationService(DaoRegistry.getDao(User.class)));}
+    public PublicFunctionServlet(SiteService siteService,ApplicationService applicationService,FunctionRegistry registry,FunctionAuthorizationService authorizationService){this.siteService=Objects.requireNonNull(siteService);this.applicationService=Objects.requireNonNull(applicationService);this.registry=Objects.requireNonNull(registry);this.authorizationService=Objects.requireNonNull(authorizationService);}
     /**
      * Resolves request context, validates a JSON object payload, and invokes an explicit handler.
      *
@@ -37,12 +47,29 @@ public class PublicFunctionServlet {
      * @throws PublicFunctionException for controlled input, lookup, or execution failures
      */
     public Object dispatch(String siteCode,String applicationCode,String functionCode,Reader body){
+        return dispatchInternal(siteCode, applicationCode, functionCode, body, Optional.empty(), null);
+    }
+    /** Dispatches with the server session principal and applies CSRF after authorization. */
+    public Object dispatch(String siteCode,String applicationCode,String functionCode,Reader body,HttpServletRequest request,HttpServletResponse response){
+        Optional<AppSession> session=AppSessionManager.findSession(request,response);
+        Optional<AuthenticatedUser> principal=session.flatMap(AppSession::getAuthenticatedUser);
+        return dispatchInternal(siteCode,applicationCode,functionCode,body,principal,session.orElse(null),request);
+    }
+    private Object dispatchInternal(String siteCode,String applicationCode,String functionCode,Reader body,Optional<AuthenticatedUser> principal,AppSession session){return dispatchInternal(siteCode,applicationCode,functionCode,body,principal,session,null);}
+    private Object dispatchInternal(String siteCode,String applicationCode,String functionCode,Reader body,Optional<AuthenticatedUser> principal,AppSession session,HttpServletRequest request){
         Site site=siteService.requireActiveSite(siteCode); Application application=applicationService.requirePublic(site,applicationCode);
-        PublicFunction function=registry.find(application.getCode(),functionCode).orElseThrow(()->new PublicFunctionException(FUNCTION_NOT_FOUND,"Function not found."));
+        FunctionRegistry.FunctionDefinition definition=registry.findDefinition(application.getCode(),functionCode).orElseThrow(()->new PublicFunctionException(FUNCTION_NOT_FOUND,"Function not found."));
+        AccessPolicy applicationPolicy=applicationService.accessPolicy(application);
+        if (applicationPolicy==null) applicationPolicy=AccessPolicy.PUBLIC;
+        authorizationService.authorize(applicationPolicy,principal);
+        Optional<AuthenticatedUser> authorized=authorizationService.authorize(definition.accessPolicy(),principal);
+        if ((applicationPolicy!=AccessPolicy.PUBLIC || definition.accessPolicy()!=AccessPolicy.PUBLIC)
+                && (session==null || request==null || !validCsrf(session,request))) throw new PublicFunctionException("CSRF_INVALID","Invalid CSRF token.");
         JsonObject payload=parseObject(body);
-        try { Object result=function.execute(new FunctionContext(site,application),payload); LOGGER.info("Public function siteCode={} applicationCode={} functionCode={} success=true",siteCode,applicationCode,functionCode);return result; }
+        try { Object result=definition.handler().execute(new FunctionContext(site,application,authorized),payload); LOGGER.info("Public function siteCode={} applicationCode={} functionCode={} userId={} success=true",siteCode,applicationCode,functionCode,authorized.map(AuthenticatedUser::getId).orElse(null));return result; }
         catch(PublicFunctionException e){LOGGER.info("Public function siteCode={} applicationCode={} functionCode={} success=false",siteCode,applicationCode,functionCode);throw e;}
         catch(RuntimeException e){LOGGER.warn("Public function siteCode={} applicationCode={} functionCode={} success=false",siteCode,applicationCode,functionCode);throw new PublicFunctionException(FUNCTION_EXECUTION_FAILED,"Function execution failed.");}
     }
+    private boolean validCsrf(AppSession session,HttpServletRequest request){String token=session.getCsrfToken();return token!=null&&!token.isBlank()&&token.equals(request.getHeader(CsrfTokenSupport.HEADER_NAME));}
     private JsonObject parseObject(Reader body){try{if(body==null)throw new IllegalArgumentException();com.google.gson.JsonElement value=JsonParser.parseReader(body);if(!value.isJsonObject())throw new IllegalArgumentException();return value.getAsJsonObject();}catch(RuntimeException e){throw new PublicFunctionException(INVALID_FUNCTION_INPUT,"Function payload must be a JSON object.");}}
 }

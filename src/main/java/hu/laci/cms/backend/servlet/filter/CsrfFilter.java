@@ -30,6 +30,7 @@ public class CsrfFilter implements Filter {
 
     private static final String LOGIN_PATH = "/api/auth/login";
     private static final String REGISTER_PATH = "/api/auth/register";
+    private static final String PUBLIC_LOGIN_SUFFIX = "/auth/login";
     private static final Set<String> SAFE_METHODS = Set.of("GET", "HEAD", "OPTIONS");
 
     private final Gson gson = new Gson();
@@ -76,7 +77,13 @@ public class CsrfFilter implements Filter {
         return SAFE_METHODS.contains(request.getMethod().toUpperCase())
                 || LOGIN_PATH.equals(request.getServletPath())
                 || REGISTER_PATH.equals(request.getServletPath())
+                || isPublicLogin(request)
                 || isPublicFunctionPost(request);
+    }
+
+    private boolean isPublicLogin(HttpServletRequest request) {
+        return "POST".equalsIgnoreCase(request.getMethod()) && "/api/public/sites".equals(request.getServletPath())
+                && request.getPathInfo() != null && request.getPathInfo().endsWith(PUBLIC_LOGIN_SUFFIX);
     }
 
     /**
