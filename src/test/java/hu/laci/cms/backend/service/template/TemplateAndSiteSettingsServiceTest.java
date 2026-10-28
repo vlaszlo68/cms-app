@@ -129,7 +129,7 @@ class TemplateAndSiteSettingsServiceTest {
         assertEquals("Footer", saved.getFooterText());
         assertEquals("info@example.com", saved.getContactEmail());
         assertEquals("+36 1 234", saved.getPhone());
-        assertEquals(1, countSettingsRows());
+        assertEquals(1, countSettingsRows(site));
     }
 
     @Test
@@ -152,12 +152,15 @@ class TemplateAndSiteSettingsServiceTest {
         }
     }
 
-    private static int countSettingsRows() throws SQLException {
+    private static int countSettingsRows(Site site) throws SQLException {
         try (Connection connection = DatabaseConfig.getConnection();
-             PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM site_settings");
-             ResultSet resultSet = statement.executeQuery()) {
-            resultSet.next();
-            return resultSet.getInt(1);
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT COUNT(*) FROM site_settings WHERE site_id = ?")) {
+            statement.setLong(1, site.getId());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                resultSet.next();
+                return resultSet.getInt(1);
+            }
         }
     }
 

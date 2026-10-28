@@ -157,12 +157,12 @@ class MenuServiceTest {
     }
 
     @Test
-    void pageTargetDiscardsTargetUrlAndRoundTripsThroughDao() {
+    void pageTargetRoundTripsThroughDao() {
         Long pageId = createPage("page-target").getId();
         MenuResponse menu = menuService.createMenu(site, new CreateMenuRequest("Pages", PREFIX + "PAGES", true));
 
         MenuItemResponse created = menuItemService.createItem(site, new CreateMenuItemRequest(
-                menu.getId(), null, pageId, MenuItemTargetType.PAGE, "https://ignored.example",
+                menu.getId(), null, pageId, MenuItemTargetType.PAGE, null,
                 "Page", 0, true));
 
         assertEquals(MenuItemTargetType.PAGE, created.getTargetType());
@@ -183,7 +183,7 @@ class MenuServiceTest {
                 menu.getId(), null, pageId, MenuItemTargetType.PAGE, null, "Target", 0, true));
 
         MenuItemResponse updated = menuItemService.updateItem(site, created.getId(), new UpdateMenuItemRequest(
-                menu.getId(), null, pageId, MenuItemTargetType.URL, " https://example.com ",
+                menu.getId(), null, null, MenuItemTargetType.URL, " https://example.com ",
                 "Target", 0, true));
 
         assertEquals(MenuItemTargetType.URL, updated.getTargetType());
@@ -203,7 +203,7 @@ class MenuServiceTest {
                 "Target", 0, true));
 
         MenuItemResponse updated = menuItemService.updateItem(site, created.getId(), new UpdateMenuItemRequest(
-                menu.getId(), null, pageId, MenuItemTargetType.PAGE, "https://ignored.example",
+                menu.getId(), null, pageId, MenuItemTargetType.PAGE, null,
                 "Target", 0, true));
 
         assertEquals(MenuItemTargetType.PAGE, updated.getTargetType());
@@ -226,9 +226,19 @@ class MenuServiceTest {
                 () -> menuItemService.createItem(site, new CreateMenuItemRequest(
                         menu.getId(), null, null, MenuItemTargetType.URL, " ",
                         "URL", 0, true)));
+        MenuServiceException pageWithUrl = assertThrows(MenuServiceException.class,
+                () -> menuItemService.createItem(site, new CreateMenuItemRequest(
+                        menu.getId(), null, createPage("validation-page").getId(), MenuItemTargetType.PAGE,
+                        "https://example.com", "Page", 0, true)));
+        MenuServiceException urlWithPage = assertThrows(MenuServiceException.class,
+                () -> menuItemService.createItem(site, new CreateMenuItemRequest(
+                        menu.getId(), null, createPage("validation-url").getId(), MenuItemTargetType.URL,
+                        "https://example.com", "URL", 0, true)));
 
         assertEquals(MenuItemService.VALIDATION_ERROR, missingPage.getCode());
         assertEquals(MenuItemService.VALIDATION_ERROR, missingUrl.getCode());
+        assertEquals(MenuItemService.VALIDATION_ERROR, pageWithUrl.getCode());
+        assertEquals(MenuItemService.VALIDATION_ERROR, urlWithPage.getCode());
     }
 
     @Test
