@@ -8,6 +8,9 @@ public class MenuItemResponse {
     private final Long menuId;
     private final Long parentId;
     private final Long pageId;
+    private final Long applicationId;
+    private final String applicationCode;
+    private final String applicationName;
     private final MenuItemTargetType targetType;
     private final String targetUrl;
     private final String title;
@@ -30,6 +33,17 @@ public class MenuItemResponse {
         this.title = title;
         this.sortOrder = sortOrder;
         this.visible = visible;
+        this.applicationId = null;
+        this.applicationCode = null;
+        this.applicationName = null;
+    }
+
+    public MenuItemResponse(Long id, Long menuId, Long parentId, Long pageId, Long applicationId,
+                            String applicationCode, String applicationName, MenuItemTargetType targetType,
+                            String targetUrl, String title, Integer sortOrder, boolean visible) {
+        this.id=id; this.menuId=menuId; this.parentId=parentId; this.pageId=pageId; this.applicationId=applicationId;
+        this.applicationCode=applicationCode; this.applicationName=applicationName; this.targetType=targetType;
+        this.targetUrl=targetUrl; this.title=title; this.sortOrder=sortOrder; this.visible=visible;
     }
 
     public Long getId() {
@@ -47,6 +61,9 @@ public class MenuItemResponse {
     public Long getPageId() {
         return pageId;
     }
+    public Long getApplicationId() { return applicationId; }
+    public String getApplicationCode() { return applicationCode; }
+    public String getApplicationName() { return applicationName; }
 
     public MenuItemTargetType getTargetType() {
         return targetType;

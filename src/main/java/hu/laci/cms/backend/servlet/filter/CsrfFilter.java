@@ -75,7 +75,23 @@ public class CsrfFilter implements Filter {
     private boolean shouldSkip(HttpServletRequest request) {
         return SAFE_METHODS.contains(request.getMethod().toUpperCase())
                 || LOGIN_PATH.equals(request.getServletPath())
-                || REGISTER_PATH.equals(request.getServletPath());
+                || REGISTER_PATH.equals(request.getServletPath())
+                || isPublicFunctionPost(request);
+    }
+
+    /**
+     * Public application functions are deliberately anonymous POSTs. The exact path shape is exempt so
+     * administrator mutations retain CSRF protection; availability is instead bounded by active Site/Application
+     * checks and the explicit function registry.
+     */
+    private boolean isPublicFunctionPost(HttpServletRequest request) {
+        if (!"POST".equalsIgnoreCase(request.getMethod()) || !"/api/public/sites".equals(request.getServletPath())) {
+            return false;
+        }
+        String pathInfo = request.getPathInfo();
+        if (pathInfo == null) { return false; }
+        String[] parts = pathInfo.split("/");
+        return parts.length == 6 && "applications".equals(parts[2]) && "functions".equals(parts[4]);
     }
 
     private void writeError(HttpServletResponse response, int status, String code, String message)

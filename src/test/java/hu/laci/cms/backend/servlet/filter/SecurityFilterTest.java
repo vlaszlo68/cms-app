@@ -113,6 +113,51 @@ class SecurityFilterTest {
     }
 
     @Test
+    void csrfFilterAllowsOnlyExactPublicFunctionPostWithoutSession() throws Exception {
+        CsrfFilter filter = new CsrfFilter();
+        HttpServletRequest request = ServletTestSupport.request().withMethod("POST")
+                .withServletPath("/api/public/sites")
+                .withPathInfo("/site-a/applications/TEST_APP/functions/ECHO").build();
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+        FilterChain chain = ServletTestSupport.filterChain();
+
+        filter.doFilter(request, response.build(), chain);
+
+        Mockito.verify(chain).doFilter(request, response.build());
+    }
+
+    @Test
+    void csrfFilterDoesNotExemptOtherPublicPostPaths() throws Exception {
+        CsrfFilter filter = new CsrfFilter();
+        HttpServletRequest request = ServletTestSupport.request().withMethod("POST")
+                .withServletPath("/api/public/sites").withPathInfo("/site-a/menus/MAIN").build();
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+        FilterChain chain = ServletTestSupport.filterChain();
+        try (MockedStatic<AppSessionManager> sessions = Mockito.mockStatic(AppSessionManager.class)) {
+            sessions.when(() -> AppSessionManager.findSession(request, response.build())).thenReturn(Optional.empty());
+            filter.doFilter(request, response.build(), chain);
+        }
+        Assertions.assertEquals(401, response.getStatus());
+        Mockito.verifyNoInteractions(chain);
+    }
+
+    @Test
+    void csrfFilterKeepsAdminApplicationPostProtected() throws Exception {
+        CsrfFilter filter = new CsrfFilter();
+        HttpServletRequest request = ServletTestSupport.request().withMethod("POST")
+                .withServletPath("/api/admin/sites").withPathInfo("/site-a/applications").build();
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+        FilterChain chain = ServletTestSupport.filterChain();
+        try (MockedStatic<AppSessionManager> sessions = Mockito.mockStatic(AppSessionManager.class)) {
+            sessions.when(() -> AppSessionManager.findSession(request, response.build())).thenReturn(Optional.empty());
+            filter.doFilter(request, response.build(), chain);
+        }
+        Assertions.assertEquals(401, response.getStatus());
+        Assertions.assertTrue(response.getBody().contains("AUTH_REQUIRED"));
+        Mockito.verifyNoInteractions(chain);
+    }
+
+    @Test
     void csrfFilterRejectsMissingSessionForStateChangingRequest() throws Exception {
         CsrfFilter filter = new CsrfFilter();
         HttpServletRequest request = ServletTestSupport.request()
