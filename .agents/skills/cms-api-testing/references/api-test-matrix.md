@@ -157,7 +157,15 @@ Anonymous public application checks:
 - `POST /api/public/sites/{siteCode}/applications/{applicationCode}/functions/{functionCode}` accepts a JSON object and returns the common envelope. Trusted application/function definitions use `PUBLIC`, `AUTHENTICATED`, or `ADMIN`: anonymous protected calls return `401 AUTH_REQUIRED`, USER calls to ADMIN return `403 FORBIDDEN`, and all protected calls require `X-CSRF-Token` (`403 CSRF_INVALID`). Anonymous PUBLIC calls remain usable without CSRF.
 Frontend-public must send `credentials: "include"` on every public auth and function request. Store `data.csrfToken` from a successful public login or authenticated public `me`, replace it whenever either response supplies a new value, and send it as `X-CSRF-Token` for public logout and protected function POSTs. Public logout returns the common success envelope with `data.message = "Logged out"`; after success, clear the locally stored principal and token. Production deployment must use HTTPS and secure, HttpOnly session cookies with an intentional SameSite policy. For cross-origin development, use the configured same-origin proxy or add only the required explicit frontend origin to CORS; do not broaden production CORS.
 
-Do not run creation or dispatch checks against a shared runtime unless a test-only supported application definition and handler are explicitly available. No production demo function is part of this foundation.
+`TEXT_ANALYZER` is the deployed production application type. When an active Site-owned Application row uses code `TEXT_ANALYZER`, its descriptor reports `accessPolicy: "AUTHENTICATED"` and its only current function is `ANALYZE_TEXT`:
+
+- `POST /api/public/sites/{siteCode}/applications/TEXT_ANALYZER/functions/ANALYZE_TEXT`
+- Request: `{ "text": "Java is great. Java is useful." }`, where `text` is a JSON string containing 1 through 50,000 Unicode code points after the required non-whitespace check.
+- Success data contains `characterCount`, `characterCountWithoutWhitespace`, `wordCount`, `uniqueWordCount`, `sentenceCount`, `paragraphCount`, two-decimal `averageWordLength`, and up to ten normalized `{ word, count }` frequency entries.
+- Character counts use Unicode code points; whitespace exclusion uses `Character.isWhitespace`. Word and sentence segmentation use `BreakIterator` with `Locale.ROOT`; words contain at least one Unicode letter or digit, and frequency keys are lower-cased with `Locale.ROOT`. Paragraphs are nonblank blocks separated by blank lines across Unix or Windows line endings. Frequency order is count descending, then word ascending.
+- An active authenticated USER or ADMIN plus `X-CSRF-Token` is required. Anonymous callers receive `401 AUTH_REQUIRED`; absent/invalid CSRF receives `403 CSRF_INVALID`; missing, blank, oversized, or non-string `text` receives `400 INVALID_FUNCTION_INPUT`; an unknown application/function pairing receives `404 FUNCTION_NOT_FOUND`.
+
+Do not run creation or dispatch checks against a shared runtime unless an active Site-owned `TEXT_ANALYZER` row and approved local test mode are available.
 
 ### Opt-in Local Public-Auth Fixtures
 
