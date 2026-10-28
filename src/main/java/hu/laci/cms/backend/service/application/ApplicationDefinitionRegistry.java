@@ -3,6 +3,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 /**
  * Immutable whitelist of application types explicitly deployed by backend code.
  * Database configuration can enable a definition, but cannot define executable behavior.
@@ -25,4 +26,6 @@ public class ApplicationDefinitionRegistry {
      * @return {@code true} when the code is explicitly supported
      */
     public boolean isSupported(String code) { return code != null && definitions.containsKey(code); }
+    /** @return trusted deployed metadata for the application code. */
+    public Optional<ApplicationDefinition> find(String code) { return Optional.ofNullable(definitions.get(code)); }
 }

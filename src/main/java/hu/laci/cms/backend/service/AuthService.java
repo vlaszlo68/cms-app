@@ -99,6 +99,23 @@ public class AuthService {
         }
     }
 
+    /** Authenticates by global email address while retaining the normal lockout and password rules. */
+    public Optional<User> loginByEmail(String email, String password, String ipAddress) {
+        String limiterKey = limiterKey(email, ipAddress);
+        if (loginAttemptLimiter.isLocked(limiterKey)) return Optional.empty();
+        try {
+            Optional<User> userOptional = userDao.findByEmail(email);
+            if (userOptional.isEmpty() || !Boolean.TRUE.equals(userOptional.get().getActive())
+                    || !BCrypt.checkpw(password, userOptional.get().getPasswordHash())) {
+                loginAttemptLimiter.recordFailure(limiterKey);
+                return Optional.empty();
+            }
+            loginAttemptLimiter.recordSuccess(limiterKey);
+            return userOptional;
+        } catch (DataAccessException e) { throw e;
+        } catch (Exception e) { throw new AuthServiceException("Failed to authenticate public user", e); }
+    }
+
     private static String limiterKey(String loginName, String ipAddress) {
         String normalizedLogin = loginName == null ? "" : loginName.trim().toLowerCase();
         String normalizedIp = ipAddress == null ? "" : ipAddress.trim();

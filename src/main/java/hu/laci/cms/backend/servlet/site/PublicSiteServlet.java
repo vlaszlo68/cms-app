@@ -10,6 +10,13 @@ import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dao.application.ApplicationDao;
+import hu.laci.cms.backend.dao.user.UserDao;
+import hu.laci.cms.backend.dto.auth.*;
+import hu.laci.cms.backend.config.session.AppSession;
+import hu.laci.cms.backend.config.session.AppSessionManager;
+import hu.laci.cms.backend.model.user.User;
+import hu.laci.cms.backend.service.AuthService;
+import hu.laci.cms.backend.service.AuthServiceException;
 import hu.laci.cms.backend.model.application.Application;
 import hu.laci.cms.backend.model.media.Media;
 import hu.laci.cms.backend.model.menu.Menu;
@@ -42,6 +49,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Anonymous dispatcher for published content belonging to one explicit active Site.
@@ -55,6 +63,7 @@ public class PublicSiteServlet extends JsonServletSupport {
     private SiteSettingsService siteSettingsService;
     private ApplicationService applicationService;
     private PublicFunctionServlet publicFunctionServlet;
+    private AuthService authService;
 
     @Override
     public void init() throws ServletException {
@@ -67,6 +76,7 @@ public class PublicSiteServlet extends JsonServletSupport {
         SiteSettingsDao settingsDao = DaoRegistry.getDao(SiteSettings.class);
         MediaDao mediaDao = DaoRegistry.getDao(Media.class);
         ApplicationDao applicationDao = DaoRegistry.getDao(Application.class);
+        UserDao userDao = DaoRegistry.getDao(User.class);
         ApplicationPlatformRegistry platformRegistry = ApplicationPlatformRegistry.production();
         ApplicationDefinitionRegistry applicationRegistry = platformRegistry.getApplicationDefinitions();
         siteService = new SiteService(siteDao);
@@ -76,6 +86,7 @@ public class PublicSiteServlet extends JsonServletSupport {
         applicationService = new ApplicationService(applicationDao, applicationRegistry);
         publicFunctionServlet = new PublicFunctionServlet(siteService, applicationService,
                 platformRegistry.getPublicFunctions());
+        authService = new AuthService(userDao);
     }
 
     @Override
@@ -87,7 +98,9 @@ public class PublicSiteServlet extends JsonServletSupport {
             }
             Site site = siteService.requireActiveSite(path.get(0));
             Object data;
-            if (path.size() == 3 && "pages".equals(path.get(1))) {
+            if (path.size() == 3 && "auth".equals(path.get(1)) && "me".equals(path.get(2))) {
+                data = publicAuthState(request, response);
+            } else if (path.size() == 3 && "pages".equals(path.get(1))) {
                 data = pageService.getPublicPageBySlug(site, path.get(2));
             } else if (path.size() == 3 && "menus".equals(path.get(1))) {
                 data = menuItemService.getPublicMenu(site, path.get(2));
@@ -128,22 +141,54 @@ public class PublicSiteServlet extends JsonServletSupport {
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
         try {
             List<String> path = pathSegments(request);
-            if (path.size() != 5 || !"applications".equals(path.get(1)) || !"functions".equals(path.get(3))) {
-                throw new BadRequestException("Invalid public function path.");
+            if (path.size() == 3 && "auth".equals(path.get(1)) && "login".equals(path.get(2))) {
+                siteService.requireActiveSite(path.get(0));
+                Object data = login(request, response);
+                writeJsonResponse(response, HttpServletResponse.SC_OK, data);
+                return;
             }
-            Object data = publicFunctionServlet.dispatch(path.get(0), path.get(2), path.get(4), request.getReader());
+            if (path.size() == 3 && "auth".equals(path.get(1)) && "logout".equals(path.get(2))) {
+                siteService.requireActiveSite(path.get(0));
+                AppSessionManager.invalidate(request, response);
+                writeJsonResponse(response, HttpServletResponse.SC_OK, java.util.Map.of("message", "Logged out"));
+                return;
+            }
+            if (path.size() != 5 || !"applications".equals(path.get(1)) || !"functions".equals(path.get(3))) throw new BadRequestException("Invalid public function path.");
+            Object data = publicFunctionServlet.dispatch(path.get(0), path.get(2), path.get(4), request.getReader(), request, response);
             writeJsonResponse(response, HttpServletResponse.SC_OK, data);
         } catch (BadRequestException e) {
             writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
         } catch (SiteServiceException | ApplicationServiceException e) {
             writeErrorResponse(response, HttpServletResponse.SC_NOT_FOUND, e instanceof SiteServiceException ? ((SiteServiceException) e).getCode() : ((ApplicationServiceException) e).getCode(), "Resource not found.");
         } catch (PublicFunctionException e) {
-            int status = PublicFunctionServlet.INVALID_FUNCTION_INPUT.equals(e.getCode()) ? HttpServletResponse.SC_BAD_REQUEST
+            int status = "AUTH_REQUIRED".equals(e.getCode()) || "INVALID_CREDENTIALS".equals(e.getCode()) ? HttpServletResponse.SC_UNAUTHORIZED
+                    : "FORBIDDEN".equals(e.getCode()) || "CSRF_INVALID".equals(e.getCode()) ? HttpServletResponse.SC_FORBIDDEN
+                    : PublicFunctionServlet.INVALID_FUNCTION_INPUT.equals(e.getCode()) ? HttpServletResponse.SC_BAD_REQUEST
                     : PublicFunctionServlet.FUNCTION_NOT_FOUND.equals(e.getCode()) ? HttpServletResponse.SC_NOT_FOUND
                     : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
             writeErrorResponse(response, status, e.getCode(), e.getMessage());
+        } catch (AuthServiceException e) {
+            writeErrorResponse(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error.");
         }
     }
+
+    private PublicAuthStateResponse login(HttpServletRequest request,HttpServletResponse response) throws IOException {
+        PublicLoginRequest loginRequest;
+        try { loginRequest = gson.fromJson(request.getReader(), PublicLoginRequest.class); }
+        catch (RuntimeException e) { throw new BadRequestException("Invalid JSON request body."); }
+        if (loginRequest == null || isBlank(loginRequest.getEmail()) || isBlank(loginRequest.getPassword())) throw new BadRequestException("email and password are required.");
+        Optional<User> user = authService.loginByEmail(loginRequest.getEmail().trim(),loginRequest.getPassword(),request.getRemoteAddr());
+        if (user.isEmpty()) throw new PublicFunctionException("INVALID_CREDENTIALS","Invalid credentials");
+        User authenticated=user.get();
+        AppSession session=AppSessionManager.createAuthenticatedSession(request,response,new AuthenticatedUser(authenticated.getId(),authenticated.getLoginName(),authenticated.getEmailAddress(),authenticated.getRole()));
+        return PublicAuthStateResponse.authenticated(session.getAuthenticatedUser().orElseThrow(),AppSessionManager.ensureCsrfToken(request,response,session));
+    }
+    private PublicAuthStateResponse publicAuthState(HttpServletRequest request,HttpServletResponse response) {
+        Optional<AppSession> session=AppSessionManager.findSession(request,response);
+        if (session.isEmpty() || session.get().getAuthenticatedUser().isEmpty()) return PublicAuthStateResponse.anonymous();
+        return PublicAuthStateResponse.authenticated(session.get().getAuthenticatedUser().orElseThrow(),AppSessionManager.ensureCsrfToken(request,response,session.get()));
+    }
+    private boolean isBlank(String value) { return value == null || value.trim().isEmpty(); }
 
     private List<String> pathSegments(HttpServletRequest request) {
         String pathInfo = request.getPathInfo();

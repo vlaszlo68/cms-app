@@ -150,7 +150,10 @@ Menu item payloads accept `targetType: "APPLICATION"` with an `applicationId`. T
 
 Anonymous public application checks:
 
-- `GET /api/public/sites/{siteCode}/applications/{applicationCode}` returns `{ success, data: { code, name } }` only for active Site, active Site Application, and supported code.
-- `POST /api/public/sites/{siteCode}/applications/{applicationCode}/functions/{functionCode}` accepts a JSON object and returns the common envelope. It is intentionally CSRF-exempt only for this exact anonymous public function path; the Site/Application/function registry whitelist remains mandatory.
+- `POST /api/public/sites/{siteCode}/auth/login` accepts `{ email, password }`; successful responses contain `{ authenticated: true, user: { id, email, role }, csrfToken }`. Credential and active-account failures use `401 INVALID_CREDENTIALS` without revealing the cause. Login alone is CSRF-exempt.
+- `GET /api/public/sites/{siteCode}/auth/me` always returns `200`; anonymous callers receive `{ authenticated: false, user: null, csrfToken: null }` and authenticated callers receive the same safe shape as login.
+- `POST /api/public/sites/{siteCode}/auth/logout` invalidates an authenticated session and requires its `X-CSRF-Token`.
+- `GET /api/public/sites/{siteCode}/applications/{applicationCode}` returns `{ success, data: { code, name, accessPolicy } }` only for active Site, active Site Application, and supported code.
+- `POST /api/public/sites/{siteCode}/applications/{applicationCode}/functions/{functionCode}` accepts a JSON object and returns the common envelope. Trusted application/function definitions use `PUBLIC`, `AUTHENTICATED`, or `ADMIN`: anonymous protected calls return `401 AUTH_REQUIRED`, USER calls to ADMIN return `403 FORBIDDEN`, and all protected calls require `X-CSRF-Token` (`403 CSRF_INVALID`). Anonymous PUBLIC calls remain usable without CSRF.
 
 Do not run creation or dispatch checks against a shared runtime unless a test-only supported application definition and handler are explicitly available. No production demo function is part of this foundation.
