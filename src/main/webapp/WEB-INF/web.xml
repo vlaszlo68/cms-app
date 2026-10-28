@@ -57,12 +57,12 @@
 
     <context-param>
         <param-name>captcha.login.enabled</param-name>
-        <param-value>true</param-value>
+        <param-value>false</param-value>
     </context-param>
 
     <context-param>
         <param-name>captcha.registration.enabled</param-name>
-        <param-value>true</param-value>
+        <param-value>false</param-value>
     </context-param>
 
     <context-param>
@@ -113,6 +113,10 @@
 
     <listener>
         <listener-class>hu.laci.cms.backend.config.app.DaoRegistryListener</listener-class>
+    </listener>
+
+    <listener>
+        <listener-class>hu.laci.cms.backend.config.e2e.E2ePublicAuthFixtureListener</listener-class>
     </listener>
 
     <listener>

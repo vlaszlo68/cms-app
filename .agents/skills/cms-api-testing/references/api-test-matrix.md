@@ -158,3 +158,17 @@ Anonymous public application checks:
 Frontend-public must send `credentials: "include"` on every public auth and function request. Store `data.csrfToken` from a successful public login or authenticated public `me`, replace it whenever either response supplies a new value, and send it as `X-CSRF-Token` for public logout and protected function POSTs. Public logout returns the common success envelope with `data.message = "Logged out"`; after success, clear the locally stored principal and token. Production deployment must use HTTPS and secure, HttpOnly session cookies with an intentional SameSite policy. For cross-origin development, use the configured same-origin proxy or add only the required explicit frontend origin to CORS; do not broaden production CORS.
 
 Do not run creation or dispatch checks against a shared runtime unless a test-only supported application definition and handler are explicitly available. No production demo function is part of this foundation.
+
+### Opt-in Local Public-Auth Fixtures
+
+For a local browser/API authorization run against the existing development database, start Tomcat with `CMS_E2E_PUBLIC_AUTH_ENABLED=true`. The default is disabled. Startup then idempotently provisions only these reserved local fixtures in Site `default`; no migration creates them:
+
+| Purpose | Identifier | Credential or policy |
+| --- | --- | --- |
+| USER login | `e2e.user@example.test` | password `E2eUser!2026`, role `USER` |
+| ADMIN login | `e2e.admin@example.test` | password `E2eAdmin!2026`, role `ADMIN` |
+| anonymous function | `E2E_PUBLIC_APP` / `PUBLIC_PING` | `PUBLIC` |
+| authenticated function | `E2E_AUTH_APP` / `AUTH_ECHO` | `AUTHENTICATED` |
+| administrator function | `E2E_AUTH_APP` / `ADMIN_ECHO` | `ADMIN` |
+
+The provisioner resets only those reserved fixture accounts to their documented passwords, active state, completed registration state, and role on each enabled startup. It creates or reactivates only the two listed `E2E_*` Application rows. Do not enable this variable in a shared, staging, or production deployment.
