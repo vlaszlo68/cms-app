@@ -3,6 +3,7 @@ package hu.laci.cms.backend.service.application;
 import hu.laci.cms.backend.config.e2e.E2ePublicAuthFixtures;
 import hu.laci.cms.backend.service.e2e.E2ePublicAuthFixtureService;
 import hu.laci.cms.backend.service.function.AccessPolicy;
+import hu.laci.cms.backend.service.function.AnalyzeTextFunction;
 import hu.laci.cms.backend.service.function.E2ePublicFunction;
 import hu.laci.cms.backend.service.function.FunctionRegistry;
 
@@ -19,14 +20,18 @@ import java.util.Objects;
  */
 public final class ApplicationPlatformRegistry {
 
-    private static final ApplicationPlatformRegistry EMPTY = new ApplicationPlatformRegistry(List.of(), List.of());
+    private static final ApplicationPlatformRegistry PRODUCTION = new ApplicationPlatformRegistry(
+            List.of(new ApplicationDefinition(AnalyzeTextFunction.APPLICATION_CODE, AccessPolicy.AUTHENTICATED)),
+            List.of(new AnalyzeTextFunction()));
     private static final ApplicationPlatformRegistry E2E_FIXTURES = new ApplicationPlatformRegistry(
             List.of(
+                    new ApplicationDefinition(AnalyzeTextFunction.APPLICATION_CODE, AccessPolicy.AUTHENTICATED),
                     new ApplicationDefinition(E2ePublicAuthFixtureService.PUBLIC_APPLICATION_CODE,
                             AccessPolicy.PUBLIC),
                     new ApplicationDefinition(E2ePublicAuthFixtureService.AUTHENTICATED_APPLICATION_CODE,
                             AccessPolicy.AUTHENTICATED)),
             List.of(
+                    new AnalyzeTextFunction(),
                     new E2ePublicFunction(E2ePublicAuthFixtureService.PUBLIC_APPLICATION_CODE,
                             E2ePublicAuthFixtureService.PUBLIC_FUNCTION_CODE, AccessPolicy.PUBLIC),
                     new E2ePublicFunction(E2ePublicAuthFixtureService.AUTHENTICATED_APPLICATION_CODE,
@@ -50,13 +55,13 @@ public final class ApplicationPlatformRegistry {
     }
 
     /**
-     * Returns the deployed registry. It is intentionally empty until a concrete application feature registers one.
-     * The local E2E registry is available only after explicit environment opt-in.
+     * Returns the deployed registry. The local E2E fixture registrations are added only after explicit
+     * environment opt-in.
      *
      * @return immutable production platform registry
      */
     public static ApplicationPlatformRegistry production() {
-        return E2ePublicAuthFixtures.isEnabled() ? E2E_FIXTURES : EMPTY;
+        return E2ePublicAuthFixtures.isEnabled() ? E2E_FIXTURES : PRODUCTION;
     }
 
     /**
