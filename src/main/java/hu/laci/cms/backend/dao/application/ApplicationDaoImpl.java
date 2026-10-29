@@ -11,6 +11,8 @@ public class ApplicationDaoImpl extends BaseDao<Application, ApplicationProperty
     /** Creates the DAO using Application mapping metadata. */
     public ApplicationDaoImpl() { super(Application.class); }
     /** {@inheritDoc} */
+    public long countBySite(Site site) { return findCustomOne("countApplicationsBySite", "SELECT COUNT(*) AS row_count FROM applications WHERE site_id = ?", List.of(site), resultSet -> resultSet.getLong("row_count"), "Failed to count Site applications.").orElse(0L); }
+    /** {@inheritDoc} */
     public List<Application> findAllBySite(Site site) { return findAll(QuerySpec.<ApplicationProperty>create().where(ApplicationProperty.SITE).equalsTo(site).orderBy(ApplicationProperty.CODE.asc())); }
     /** {@inheritDoc} */
     public Optional<Application> findBySiteAndId(Site site, Long id) { return findAll(QuerySpec.<ApplicationProperty>create().where(ApplicationProperty.SITE).equalsTo(site).where(ApplicationProperty.ID).equalsTo(id)).stream().findFirst(); }

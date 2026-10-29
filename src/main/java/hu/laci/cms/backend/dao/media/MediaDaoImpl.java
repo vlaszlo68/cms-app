@@ -16,6 +16,12 @@ public class MediaDaoImpl extends BaseDao<Media, MediaProperty> implements Media
     }
 
     @Override
+    public long countBySite(Site site) {
+        return findCustomOne("countMediaBySite", "SELECT COUNT(*) AS row_count FROM media WHERE site_id = ?",
+                List.of(site), resultSet -> resultSet.getLong("row_count"), "Failed to count Site media.").orElse(0L);
+    }
+
+    @Override
     public List<Media> findAllBySite(Site site) {
         return findAll(QuerySpec.<MediaProperty>create()
                 .where(MediaProperty.SITE).equalsTo(site)

@@ -12,6 +12,14 @@ import java.util.Optional;
 public interface MenuDao extends CrudDao<Menu, MenuProperty> {
 
     /**
+     * Counts menus directly owned by a Site.
+     *
+     * @param site owning persisted Site
+     * @return number of menus owned by the Site
+     */
+    long countBySite(Site site);
+
+    /**
      * Lists menus owned by one Site.
      *
      * @param site owning Site with a persisted id

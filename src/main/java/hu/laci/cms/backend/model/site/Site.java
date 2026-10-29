@@ -19,6 +19,9 @@ public class Site extends AuditableEntity {
     @DbColumn("active")
     private boolean active = true;
 
+    @DbColumn("theme_code")
+    private String themeCode = "STANDARD";
+
     /** Creates an empty Site for persistence mapping. */
     public Site() {
     }
@@ -32,10 +35,24 @@ public class Site extends AuditableEntity {
      * @param active whether public APIs may serve the Site
      */
     public Site(Long id, String code, String name, boolean active) {
+        this(id, code, name, active, "STANDARD");
+    }
+
+    /**
+     * Creates a Site with its editable fields and logical visual theme.
+     *
+     * @param id persisted id, or {@code null} for a new Site
+     * @param code stable machine-readable code
+     * @param name administrator-facing name
+     * @param active whether public APIs may serve the Site
+     * @param themeCode trusted logical theme identifier
+     */
+    public Site(Long id, String code, String name, boolean active, String themeCode) {
         setId(id);
         this.code = code;
         this.name = name;
         this.active = active;
+        this.themeCode = themeCode;
     }
 
     /** @return stable machine-readable code */
@@ -66,5 +83,15 @@ public class Site extends AuditableEntity {
     /** @param active whether public APIs may serve the Site */
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    /** @return trusted logical theme identifier for frontend styling selection */
+    public String getThemeCode() {
+        return themeCode;
+    }
+
+    /** @param themeCode trusted logical theme identifier for frontend styling selection */
+    public void setThemeCode(String themeCode) {
+        this.themeCode = themeCode;
     }
 }

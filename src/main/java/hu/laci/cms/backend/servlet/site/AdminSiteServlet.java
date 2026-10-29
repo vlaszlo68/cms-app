@@ -59,6 +59,7 @@ import hu.laci.cms.backend.service.settings.SiteSettingsService;
 import hu.laci.cms.backend.service.settings.SiteSettingsServiceException;
 import hu.laci.cms.backend.service.site.SiteService;
 import hu.laci.cms.backend.service.site.SiteServiceException;
+import hu.laci.cms.backend.service.site.SiteUsageService;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.ServletException;
@@ -73,6 +74,7 @@ import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
 
 /**
  * Authenticated administrator dispatcher for Site management and all Site-owned resources.
@@ -83,6 +85,7 @@ import java.util.Optional;
 public class AdminSiteServlet extends JsonServletSupport {
 
     private SiteService siteService;
+    private SiteUsageService siteUsageService;
     private PageService pageService;
     private PageBlockService pageBlockService;
     private MenuService menuService;
@@ -106,6 +109,7 @@ public class AdminSiteServlet extends JsonServletSupport {
         MediaStorageService storageService = MediaStorageServiceFactory.create(storageConfig);
 
         siteService = new SiteService(siteDao);
+        siteUsageService = new SiteUsageService(siteDao, pageDao, menuDao, mediaDao, applicationDao, settingsDao);
         pageService = new PageService(pageDao, templateDao, pageBlockDao);
         pageBlockService = new PageBlockService(pageDao, pageBlockDao);
         menuService = new MenuService(menuDao);
@@ -187,8 +191,16 @@ public class AdminSiteServlet extends JsonServletSupport {
             return switch (method) {
                 case "GET" -> ok(siteService.getSite(siteCode));
                 case "PUT" -> ok(siteService.updateSite(siteCode, parseJson(request, UpdateSiteRequest.class)));
+                case "DELETE" -> deleteSite(siteCode);
                 default -> throw unsupported();
             };
+        }
+
+        if (segments.size() == 2 && "usage".equals(segments.get(1))) {
+            if (!"GET".equals(method)) {
+                throw unsupported();
+            }
+            return ok(siteUsageService.getUsage(siteService.requireSite(siteCode)));
         }
 
         Site site = siteService.requireSite(siteCode);
@@ -201,6 +213,12 @@ public class AdminSiteServlet extends JsonServletSupport {
             case "applications" -> routeApplications(request, method, site, segments.subList(2, segments.size()));
             default -> throw new BadRequestException("Unknown Site resource path.");
         };
+    }
+
+    private ResponsePayload deleteSite(String siteCode) {
+        Site site = siteService.requireSite(siteCode);
+        siteUsageService.deleteSite(site);
+        return ok(Map.of("message", "Site deleted."));
     }
 
     private ResponsePayload routeApplications(HttpServletRequest request, String method, Site site, List<String> path)
@@ -449,9 +467,14 @@ public class AdminSiteServlet extends JsonServletSupport {
             case SiteService.VALIDATION_ERROR -> HttpServletResponse.SC_BAD_REQUEST;
             case SiteService.SITE_NOT_FOUND -> HttpServletResponse.SC_NOT_FOUND;
             case SiteService.DUPLICATE_SITE_CODE -> HttpServletResponse.SC_CONFLICT;
+            case SiteUsageService.SITE_IN_USE -> HttpServletResponse.SC_CONFLICT;
             default -> HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         };
-        writeErrorResponse(response, status, e.getCode(), e.getMessage());
+        if (e.getDetails() == null) {
+            writeErrorResponse(response, status, e.getCode(), e.getMessage());
+            return;
+        }
+        writeErrorResponse(response, status, e.getCode(), e.getMessage(), e.getDetails());
     }
 
     private void writePageError(HttpServletResponse response, PageServiceException e) throws IOException {

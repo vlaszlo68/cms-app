@@ -96,7 +96,8 @@ public class SiteService {
         validate(request);
         String code = request.getCode().trim();
         ensureCodeAvailable(code, null);
-        Site site = new Site(null, code, request.getName().trim(), request.getActive() == null || request.getActive());
+        Site site = new Site(null, code, request.getName().trim(), request.getActive() == null || request.getActive(),
+                resolveThemeCode(request.getThemeCode()));
         return toResponse(siteDao.create(site));
     }
 
@@ -116,6 +117,7 @@ public class SiteService {
         site.setCode(code);
         site.setName(request.getName().trim());
         site.setActive(request.getActive() == null || request.getActive());
+        site.setThemeCode(resolveThemeCode(request.getThemeCode()));
         return toResponse(siteDao.update(site));
     }
 
@@ -134,6 +136,7 @@ public class SiteService {
         if (request.getName() == null || request.getName().trim().isEmpty()) {
             throw new SiteServiceException(VALIDATION_ERROR, "name is required.");
         }
+        resolveThemeCode(request.getThemeCode());
     }
 
     private static String validateCodeValue(String code) {
@@ -150,7 +153,16 @@ public class SiteService {
 
     private SiteResponse toResponse(Site site) {
         return new SiteResponse(site.getId(), site.getCode(), site.getName(), site.isActive(),
-                toIsoString(site.getCreatedAt()), toIsoString(site.getUpdatedAt()));
+                site.getThemeCode(), toIsoString(site.getCreatedAt()), toIsoString(site.getUpdatedAt()));
+    }
+
+    private static String resolveThemeCode(String themeCode) {
+        String normalized = themeCode == null || themeCode.trim().isEmpty()
+                ? ThemeDefinitionRegistry.STANDARD : themeCode.trim();
+        if (ThemeDefinitionRegistry.find(normalized).isEmpty()) {
+            throw new SiteServiceException(VALIDATION_ERROR, "themeCode is not supported.");
+        }
+        return normalized;
     }
 
     private static String toIsoString(Timestamp timestamp) {

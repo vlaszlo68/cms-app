@@ -96,6 +96,21 @@ public abstract class JsonServletSupport extends HttpServlet {
         writeJson(response, status, ApiResponse.error(new ApiErrorResponse(code, message, validationErrors)));
     }
 
+    /**
+     * Writes an error JSON response with structured client-safe details.
+     *
+     * @param response HTTP response
+     * @param status HTTP status code
+     * @param code stable API error code
+     * @param message human-readable error message
+     * @param details structured error details
+     * @throws IOException when writing fails
+     */
+    protected void writeErrorResponse(HttpServletResponse response, int status, String code, String message,
+                                      Object details) throws IOException {
+        writeJson(response, status, ApiResponse.error(new ApiErrorResponse(code, message, null, details)));
+    }
+
     private void writeJson(HttpServletResponse response, int status, Object payload)
             throws IOException {
         response.setContentType("application/json");

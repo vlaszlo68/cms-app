@@ -6,6 +6,7 @@ import hu.laci.cms.backend.dto.application.ApplicationResponse;
 import hu.laci.cms.backend.dto.page.CreatePageBlockRequest;
 import hu.laci.cms.backend.dto.settings.SiteSettingsResponse;
 import hu.laci.cms.backend.dto.site.SiteResponse;
+import hu.laci.cms.backend.dto.site.SiteUsageResponse;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.user.UserRole;
 import hu.laci.cms.backend.service.media.MediaContent;
@@ -18,6 +19,8 @@ import hu.laci.cms.backend.service.page.PageService;
 import hu.laci.cms.backend.service.page.PageServiceException;
 import hu.laci.cms.backend.service.settings.SiteSettingsService;
 import hu.laci.cms.backend.service.site.SiteService;
+import hu.laci.cms.backend.service.site.SiteServiceException;
+import hu.laci.cms.backend.service.site.SiteUsageService;
 import hu.laci.cms.backend.service.application.ApplicationService;
 import hu.laci.cms.backend.servlet.support.ServletTestSupport;
 import org.junit.jupiter.api.Test;
@@ -184,6 +187,53 @@ class AdminSiteServletTest {
         Mockito.verify(applicationService).create(Mockito.eq(site), Mockito.any());
     }
 
+    @Test
+    void exposesUsageDeletesEmptySiteAndReturnsStructuredConflict() throws Exception {
+        Site site = new Site(7L, "site-a", "Site A", true);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        SiteUsageService usageService = Mockito.mock(SiteUsageService.class);
+        Mockito.when(siteService.requireSite("site-a")).thenReturn(site);
+        Mockito.when(usageService.getUsage(site)).thenReturn(new SiteUsageResponse(0, 0, 0, 0, true));
+        AdminSiteServlet servlet = servletWith(siteService, null, null, null, null, null, null);
+        ServletTestSupport.setField(servlet, "siteUsageService", usageService);
+
+        ServletTestSupport.ResponseFixture usageResponse = authenticatedGet(servlet, "/site-a/usage");
+        HttpServletRequest deleteRequest = ServletTestSupport.request().withPathInfo("/site-a").build();
+        ServletTestSupport.ResponseFixture deleteResponse = ServletTestSupport.response();
+        ServletTestSupport.runAsAuthenticatedUser(deleteRequest, deleteResponse, admin(),
+                () -> servlet.doDelete(deleteRequest, deleteResponse.build()));
+
+        assertEquals(HttpServletResponse.SC_OK, usageResponse.getStatus());
+        assertTrue(usageResponse.getBody().contains("deletable"));
+        assertEquals(HttpServletResponse.SC_OK, deleteResponse.getStatus());
+        Mockito.verify(usageService).deleteSite(site);
+
+        SiteUsageResponse blocked = new SiteUsageResponse(1, 0, 0, 0, false);
+        Mockito.doThrow(new SiteServiceException(SiteUsageService.SITE_IN_USE, "blocked", blocked))
+                .when(usageService).deleteSite(site);
+        ServletTestSupport.ResponseFixture blockedResponse = ServletTestSupport.response();
+        ServletTestSupport.runAsAuthenticatedUser(deleteRequest, blockedResponse, admin(),
+                () -> servlet.doDelete(deleteRequest, blockedResponse.build()));
+        assertEquals(HttpServletResponse.SC_CONFLICT, blockedResponse.getStatus());
+        assertTrue(blockedResponse.getBody().contains("SITE_IN_USE"));
+        assertTrue(blockedResponse.getBody().contains("pageCount"));
+    }
+
+    @Test
+    void permitsThemeDefinitionsAsAnOrdinarySiteCode() throws Exception {
+        SiteService siteService = Mockito.mock(SiteService.class);
+        Mockito.when(siteService.getSite("theme-definitions")).thenReturn(
+                new SiteResponse(7L, "theme-definitions", "Theme Definitions", true, "STANDARD", null, null));
+        AdminSiteServlet servlet = servletWith(siteService, null, null, null, null, null, null);
+
+        ServletTestSupport.ResponseFixture response = authenticatedGet(servlet, "/theme-definitions");
+
+        assertEquals(HttpServletResponse.SC_OK, response.getStatus());
+        assertTrue(response.getBody().contains("Theme Definitions"));
+        Mockito.verify(siteService).getSite("theme-definitions");
+    }
+
+    @Test
     private static AdminSiteServlet servletWith(SiteService siteService, PageService pageService,
                                                 PageBlockService blockService, MenuService menuService,
                                                 MenuItemService itemService, SiteSettingsService settingsService,

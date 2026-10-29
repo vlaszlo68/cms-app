@@ -26,4 +26,21 @@ class MultiSiteMigrationContractTest {
             assertTrue(sql.contains("UNIQUE INDEX uk_site_settings_site ON site_settings (site_id)"));
         }
     }
+
+    @Test
+    void siteDeletionThemeMigrationRemovesLegacySiteConstraintsAndDefaultsTheme() throws IOException {
+        try (InputStream input = getClass().getResourceAsStream(
+                "/db/migration/V19__site_deletion_and_theme_code.sql")) {
+            String sql = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(sql.contains("DROP CONSTRAINT IF EXISTS fk_pages_site"));
+            assertTrue(sql.contains("DROP CONSTRAINT IF EXISTS fk_menus_site"));
+            assertTrue(sql.contains("DROP CONSTRAINT IF EXISTS fk_site_settings_site"));
+            assertTrue(sql.contains("DROP CONSTRAINT IF EXISTS fk_media_site"));
+            assertTrue(sql.contains("DROP CONSTRAINT IF EXISTS applications_site_id_fkey"));
+            assertTrue(sql.contains("ADD COLUMN theme_code VARCHAR(50)"));
+            assertTrue(sql.contains("UPDATE sites SET theme_code = 'STANDARD'"));
+            assertTrue(sql.contains("SET DEFAULT 'STANDARD'"));
+            assertTrue(sql.contains("SET NOT NULL"));
+        }
+    }
 }

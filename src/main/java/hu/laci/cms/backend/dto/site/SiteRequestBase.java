@@ -8,6 +8,7 @@ public abstract class SiteRequestBase {
     private String code;
     private String name;
     private Boolean active;
+    private String themeCode;
 
     /** Creates an empty request for JSON deserialization. */
     protected SiteRequestBase() {
@@ -21,9 +22,22 @@ public abstract class SiteRequestBase {
      * @param active whether public APIs may serve the Site
      */
     protected SiteRequestBase(String code, String name, Boolean active) {
+        this(code, name, active, null);
+    }
+
+    /**
+     * Creates a request with all editable Site fields.
+     *
+     * @param code stable machine-readable code
+     * @param name administrator-facing name
+     * @param active whether public APIs may serve the Site
+     * @param themeCode optional trusted logical theme identifier
+     */
+    protected SiteRequestBase(String code, String name, Boolean active, String themeCode) {
         this.code = code;
         this.name = name;
         this.active = active;
+        this.themeCode = themeCode;
     }
 
     /** @return requested Site code */
@@ -55,4 +69,10 @@ public abstract class SiteRequestBase {
     public void setActive(Boolean active) {
         this.active = active;
     }
+
+    /** @return requested logical theme identifier, or {@code null} for STANDARD */
+    public String getThemeCode() { return themeCode; }
+
+    /** @param themeCode requested logical theme identifier */
+    public void setThemeCode(String themeCode) { this.themeCode = themeCode; }
 }

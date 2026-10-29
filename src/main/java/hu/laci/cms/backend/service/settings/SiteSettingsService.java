@@ -59,8 +59,9 @@ public class SiteSettingsService {
     public PublicSiteSettingsResponse getPublicSettings(Site site) {
         requireSite(site);
         return siteSettingsDao.findBySite(site)
-                .map(this::toPublicResponse)
-                .orElseGet(() -> new PublicSiteSettingsResponse(null, null, null, null, null, null, null));
+                .map(settings -> toPublicResponse(site, settings))
+                .orElseGet(() -> new PublicSiteSettingsResponse(site.getThemeCode(), null, null, null, null, null,
+                        null, null));
     }
 
     private SiteSettings loadOrCreateSettings(Site site) {
@@ -78,8 +79,8 @@ public class SiteSettingsService {
                 settings.getFacebookUrl(), settings.getLinkedinUrl());
     }
 
-    private PublicSiteSettingsResponse toPublicResponse(SiteSettings settings) {
-        return new PublicSiteSettingsResponse(settings.getSiteName(), settings.getLogoMediaId(),
+    private PublicSiteSettingsResponse toPublicResponse(Site site, SiteSettings settings) {
+        return new PublicSiteSettingsResponse(site.getThemeCode(), settings.getSiteName(), settings.getLogoMediaId(),
                 settings.getFooterText(), settings.getContactEmail(), settings.getPhone(),
                 settings.getFacebookUrl(), settings.getLinkedinUrl());
     }

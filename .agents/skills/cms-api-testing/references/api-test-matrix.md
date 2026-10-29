@@ -19,7 +19,9 @@ Strict checks are optional and must be selected before the test starts. Strict m
 | Unauthenticated session | `GET /api/auth/me` | `401` |
 | Login | `POST /api/auth/login` | `200`, `data.loginName`, `data.role`, `data.csrfToken` |
 | Session restore | `GET /api/auth/me` with session cookie | `200`, same auth shape as login |
-| Sites read | `GET /api/admin/sites` | `200` for admin, including inactive Sites |
+| Sites read | `GET /api/admin/sites` | `200` for admin, including inactive Sites and each Site's `themeCode` |
+| Theme definitions read | `GET /api/admin/theme-definitions` | `200` for admin, exactly `STANDARD`, `MODERN`, `DARK`, `CORPORATE`, and `MINIMAL` |
+| Site deletion usage | `GET /api/admin/sites/{siteCode}/usage` | `200` for admin, counts for pages, menus, media, applications, and `deletable` |
 | Pages read | `GET /api/admin/sites/{siteCode}/pages` | `200` for admin |
 | Templates read | `GET /api/templates` | `200` for admin |
 | Menus read | `GET /api/admin/sites/{siteCode}/menus` | `200` for admin |
@@ -43,9 +45,9 @@ Strict non-destructive assertions:
 
 `GET /api/public/sites/{siteCode}/pages/{slug}` is unauthenticated and performs an exact, case-sensitive slug lookup. It returns a common success envelope only for a `PUBLISHED` `CONTENT` or `BLOCK` page. A CONTENT `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and `content`; it omits `blocks`. A BLOCK `data` object contains exactly `id`, `title`, `slug`, `pageType`, `templateCode`, and a non-null `blocks` list; it omits `content`. Each public block contains `id`, `blockType`, `title`, `sortOrder`, `visible`, and `configJson`, never `pageId`; only visible blocks are returned in `sortOrder`, then id order, so every returned `visible` value is `true`. Unknown, draft, and archived pages return `404` with `PAGE_NOT_FOUND`. Missing or multi-segment slug paths return `400` with `INVALID_REQUEST`.
 
-`GET /api/public/sites/{siteCode}/site-settings` is unauthenticated and returns the selected Site's common success envelope with exactly `siteName`, `logoMediaId`, `footerText`, `contactEmail`, `phone`, `facebookUrl`, and `linkedinUrl`. If that Site's settings record is absent, every field is present with a `null` value and the request does not create a record.
+`GET /api/public/sites/{siteCode}/site-settings` is unauthenticated and returns the selected Site's common success envelope with `themeCode`, `siteName`, `logoMediaId`, `footerText`, `contactEmail`, `phone`, `facebookUrl`, and `linkedinUrl`. `themeCode` is a trusted Site-level logical identifier for frontend-owned styles. If that Site's settings record is absent, every settings field is present with a `null` value, `themeCode` remains available, and the request does not create a record.
 
-`GET /api/public/sites/{siteCode}/menus/MAIN` and `GET /api/public/sites/{siteCode}/menus/FOOTER` are unauthenticated and return active, visible, ordered menu trees. PAGE items contain `id`, `title`, `targetType`, `pageId`, `pageSlug`, `path`, and `children`; only PUBLISHED CONTENT page targets are included. URL items contain `id`, `title`, `targetType`, `targetUrl`, and `children`. Inactive or unknown menu codes return `404 MENU_NOT_FOUND`.
+`GET /api/public/sites/{siteCode}/menus/MAIN` and `GET /api/public/sites/{siteCode}/menus/FOOTER` are unauthenticated and return active, visible, ordered menu trees. PAGE items contain `id`, `title`, `targetType`, `pageId`, `pageSlug`, `path`, and `children`; only PUBLISHED CONTENT page targets are included. URL items contain `id`, `title`, `targetType`, `targetUrl`, and `children`. APPLICATION items contain `id`, `title`, `targetType`, `applicationCode`, `path`, and `children`; only active Site-owned Applications are included. Inactive or unknown menu codes return `404 MENU_NOT_FOUND`.
 
 Unknown Site codes and inactive Sites return `404 SITE_NOT_FOUND` for public page, menu, and settings routes. Public routing never selects a Site from a session, host name, first row, or implicit fallback.
 
@@ -68,7 +70,7 @@ The script should create test entities with a unique `codex-api-test-*` prefix a
 | Media | `POST /api/admin/sites/{siteCode}/media` multipart | `GET /api/admin/sites/{siteCode}/media/{id}` and `/content` | Not exposed | `DELETE /api/admin/sites/{siteCode}/media/{id}` | API exposes create/read/delete, not update |
 | Site settings | Not exposed | `GET /api/admin/sites/{siteCode}/site-settings` | Not run by default | Not run by default | One settings row per Site; do not update existing settings during standard destructive mode |
 
-Site management is `GET/POST /api/admin/sites` and `GET/PUT /api/admin/sites/{siteCode}`. There is intentionally no Site delete endpoint. The live smoke script reads Sites but does not create disposable Sites; two-Site isolation fixtures belong in automated tests or an isolated disposable database.
+Site management is `GET/POST /api/admin/sites`, `GET/PUT/DELETE /api/admin/sites/{siteCode}`, and `GET /api/admin/sites/{siteCode}/usage`. Site create/update accepts an optional `themeCode`; omission uses `STANDARD`, and only the five values returned by `GET /api/admin/theme-definitions` are accepted. `DELETE` requires ADMIN authentication and CSRF, deletes SiteSettings and then the Site only when usage is empty, and returns `409 SITE_IN_USE` with `error.details` usage counts when Page, Menu, Media, or Application data exists. It never deletes business content. The live smoke script reads Sites but does not create disposable Sites; deletion coverage belongs in automated tests or an isolated disposable database.
 
 Strict destructive assertions:
 

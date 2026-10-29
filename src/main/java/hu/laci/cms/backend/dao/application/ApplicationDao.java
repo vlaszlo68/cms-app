@@ -8,6 +8,13 @@ import java.util.Optional;
 /** Persistence boundary for Site-owned applications. */
 public interface ApplicationDao extends CrudDao<Application, ApplicationProperty> {
     /**
+     * Counts applications directly owned by a Site.
+     *
+     * @param site owning persisted Site
+     * @return number of applications owned by the Site
+     */
+    long countBySite(Site site);
+    /**
      * Lists applications configured for exactly one Site.
      *
      * @param site owning Site

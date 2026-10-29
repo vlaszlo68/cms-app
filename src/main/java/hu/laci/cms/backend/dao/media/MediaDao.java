@@ -12,6 +12,14 @@ import java.util.Optional;
 public interface MediaDao extends CrudDao<Media, MediaProperty> {
 
     /**
+     * Counts media metadata directly owned by a Site.
+     *
+     * @param site owning persisted Site
+     * @return number of media records owned by the Site
+     */
+    long countBySite(Site site);
+
+    /**
      * Lists all media metadata owned by one Site.
      *
      * @param site owning Site with a persisted id

@@ -151,6 +151,11 @@ class MediaServiceTest {
         }
 
         @Override
+        public long countBySite(Site site) {
+            return 1L;
+        }
+
+        @Override
         public List<Media> findAllBySite(Site site) {
             return List.of(media);
         }
