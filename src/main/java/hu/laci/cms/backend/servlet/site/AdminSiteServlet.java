@@ -12,14 +12,14 @@ import hu.laci.cms.backend.dao.page.PageBlockDao;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
-import hu.laci.cms.backend.dao.application.ApplicationDao;
-import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.dao.application.SiteApplicationDao;
+import hu.laci.cms.backend.model.application.SiteApplication;
 import hu.laci.cms.backend.service.application.ApplicationDefinitionRegistry;
 import hu.laci.cms.backend.service.application.ApplicationPlatformRegistry;
-import hu.laci.cms.backend.service.application.ApplicationService;
-import hu.laci.cms.backend.service.application.ApplicationServiceException;
-import hu.laci.cms.backend.dto.application.CreateApplicationRequest;
-import hu.laci.cms.backend.dto.application.UpdateApplicationRequest;
+import hu.laci.cms.backend.service.application.SiteApplicationService;
+import hu.laci.cms.backend.service.application.SiteApplicationServiceException;
+import hu.laci.cms.backend.dto.application.CreateSiteApplicationRequest;
+import hu.laci.cms.backend.dto.application.UpdateSiteApplicationRequest;
 import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.dto.menu.CreateMenuItemRequest;
@@ -92,7 +92,7 @@ public class AdminSiteServlet extends JsonServletSupport {
     private MenuItemService menuItemService;
     private SiteSettingsService siteSettingsService;
     private MediaService mediaService;
-    private ApplicationService applicationService;
+    private SiteApplicationService applicationService;
 
     @Override
     public void init() throws ServletException {
@@ -104,7 +104,7 @@ public class AdminSiteServlet extends JsonServletSupport {
         MenuItemDao menuItemDao = DaoRegistry.getDao(MenuItem.class);
         SiteSettingsDao settingsDao = DaoRegistry.getDao(SiteSettings.class);
         MediaDao mediaDao = DaoRegistry.getDao(Media.class);
-        ApplicationDao applicationDao = DaoRegistry.getDao(Application.class);
+        SiteApplicationDao applicationDao = DaoRegistry.getDao(SiteApplication.class);
         MediaStorageConfig storageConfig = MediaStorageConfig.getCurrent();
         MediaStorageService storageService = MediaStorageServiceFactory.create(storageConfig);
 
@@ -116,7 +116,7 @@ public class AdminSiteServlet extends JsonServletSupport {
         ApplicationDefinitionRegistry applicationRegistry = ApplicationPlatformRegistry.production()
                 .getApplicationDefinitions();
         menuItemService = new MenuItemService(menuDao, menuItemDao, pageDao, applicationDao, applicationRegistry);
-        applicationService = new ApplicationService(applicationDao, applicationRegistry);
+        applicationService = new SiteApplicationService(applicationDao, applicationRegistry);
         siteSettingsService = new SiteSettingsService(settingsDao, mediaDao);
         mediaService = new MediaService(mediaDao, storageService, storageConfig.getStorageType());
     }
@@ -171,7 +171,7 @@ public class AdminSiteServlet extends JsonServletSupport {
             writeSettingsError(response, e);
         } catch (MediaServiceException e) {
             writeMediaError(response, e);
-        } catch (ApplicationServiceException e) {
+        } catch (SiteApplicationServiceException e) {
             writeApplicationError(response, e);
         }
     }
@@ -226,7 +226,7 @@ public class AdminSiteServlet extends JsonServletSupport {
         if (path.isEmpty()) {
             return switch (method) {
                 case "GET" -> ok(applicationService.list(site));
-                case "POST" -> created(applicationService.create(site, parseJson(request, CreateApplicationRequest.class)));
+                case "POST" -> created(applicationService.create(site, parseJson(request, CreateSiteApplicationRequest.class)));
                 default -> throw unsupported();
             };
         }
@@ -234,7 +234,7 @@ public class AdminSiteServlet extends JsonServletSupport {
         Long applicationId = parseId(path.get(0), "Application id");
         return switch (method) {
             case "GET" -> ok(applicationService.get(site, applicationId));
-            case "PUT" -> ok(applicationService.update(site, applicationId, parseJson(request, UpdateApplicationRequest.class)));
+            case "PUT" -> ok(applicationService.update(site, applicationId, parseJson(request, UpdateSiteApplicationRequest.class)));
             default -> throw unsupported();
         };
     }
@@ -504,11 +504,11 @@ public class AdminSiteServlet extends JsonServletSupport {
         writeErrorResponse(response, status, e.getCode(), e.getMessage());
     }
 
-    private void writeApplicationError(HttpServletResponse response, ApplicationServiceException e) throws IOException {
+    private void writeApplicationError(HttpServletResponse response, SiteApplicationServiceException e) throws IOException {
         int status = switch (e.getCode()) {
-            case ApplicationService.VALIDATION_ERROR, ApplicationService.UNSUPPORTED_APPLICATION -> HttpServletResponse.SC_BAD_REQUEST;
-            case ApplicationService.APPLICATION_NOT_FOUND -> HttpServletResponse.SC_NOT_FOUND;
-            case ApplicationService.DUPLICATE_APPLICATION_CODE -> HttpServletResponse.SC_CONFLICT;
+            case SiteApplicationService.VALIDATION_ERROR, SiteApplicationService.UNSUPPORTED_APPLICATION -> HttpServletResponse.SC_BAD_REQUEST;
+            case SiteApplicationService.APPLICATION_NOT_FOUND -> HttpServletResponse.SC_NOT_FOUND;
+            case SiteApplicationService.DUPLICATE_APPLICATION_CODE -> HttpServletResponse.SC_CONFLICT;
             default -> HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         };
         writeErrorResponse(response, status, e.getCode(), e.getMessage());

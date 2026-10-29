@@ -2,7 +2,7 @@ package hu.laci.cms.backend.servlet.site;
 
 import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
-import hu.laci.cms.backend.dto.application.ApplicationResponse;
+import hu.laci.cms.backend.dto.application.SiteApplicationResponse;
 import hu.laci.cms.backend.dto.page.CreatePageBlockRequest;
 import hu.laci.cms.backend.dto.settings.SiteSettingsResponse;
 import hu.laci.cms.backend.dto.site.SiteResponse;
@@ -21,7 +21,7 @@ import hu.laci.cms.backend.service.settings.SiteSettingsService;
 import hu.laci.cms.backend.service.site.SiteService;
 import hu.laci.cms.backend.service.site.SiteServiceException;
 import hu.laci.cms.backend.service.site.SiteUsageService;
-import hu.laci.cms.backend.service.application.ApplicationService;
+import hu.laci.cms.backend.service.application.SiteApplicationService;
 import hu.laci.cms.backend.servlet.support.ServletTestSupport;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -161,12 +161,12 @@ class AdminSiteServletTest {
     void authenticatedAdministratorCanListAndCreateSiteApplications() throws Exception {
         Site site = new Site(7L, "site-a", "Site A", true);
         SiteService siteService = Mockito.mock(SiteService.class);
-        ApplicationService applicationService = Mockito.mock(ApplicationService.class);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
         Mockito.when(siteService.requireSite("site-a")).thenReturn(site);
         Mockito.when(applicationService.list(site)).thenReturn(List.of(
-                new ApplicationResponse(4L, "TEST_APP", "Test", true)));
+                new SiteApplicationResponse(4L, "TEST_APP", "Test", true)));
         Mockito.when(applicationService.create(Mockito.eq(site), Mockito.any())).thenReturn(
-                new ApplicationResponse(5L, "TEST_APP", "Created", true));
+                new SiteApplicationResponse(5L, "TEST_APP", "Created", true));
         AdminSiteServlet servlet = servletWith(siteService, null, null, null, null, null, null);
         ServletTestSupport.setField(servlet, "applicationService", applicationService);
 
@@ -193,7 +193,7 @@ class AdminSiteServletTest {
         SiteService siteService = Mockito.mock(SiteService.class);
         SiteUsageService usageService = Mockito.mock(SiteUsageService.class);
         Mockito.when(siteService.requireSite("site-a")).thenReturn(site);
-        Mockito.when(usageService.getUsage(site)).thenReturn(new SiteUsageResponse(0, 0, 0, 0, true));
+        Mockito.when(usageService.getUsage(site)).thenReturn(new SiteUsageResponse(0, 0, 0, true));
         AdminSiteServlet servlet = servletWith(siteService, null, null, null, null, null, null);
         ServletTestSupport.setField(servlet, "siteUsageService", usageService);
 
@@ -208,7 +208,7 @@ class AdminSiteServletTest {
         assertEquals(HttpServletResponse.SC_OK, deleteResponse.getStatus());
         Mockito.verify(usageService).deleteSite(site);
 
-        SiteUsageResponse blocked = new SiteUsageResponse(1, 0, 0, 0, false);
+        SiteUsageResponse blocked = new SiteUsageResponse(1, 0, 0, false);
         Mockito.doThrow(new SiteServiceException(SiteUsageService.SITE_IN_USE, "blocked", blocked))
                 .when(usageService).deleteSite(site);
         ServletTestSupport.ResponseFixture blockedResponse = ServletTestSupport.response();

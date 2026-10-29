@@ -1,9 +1,9 @@
 package hu.laci.cms.backend.service.e2e;
 
-import hu.laci.cms.backend.dao.application.ApplicationDao;
+import hu.laci.cms.backend.dao.application.SiteApplicationDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dao.user.UserDao;
-import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.model.application.SiteApplication;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.user.RegistrationState;
 import hu.laci.cms.backend.model.user.User;
@@ -44,7 +44,7 @@ public final class E2ePublicAuthFixtureService {
 
     private final SiteDao siteDao;
     private final UserDao userDao;
-    private final ApplicationDao applicationDao;
+    private final SiteApplicationDao applicationDao;
 
     /**
      * Creates the opt-in fixture provisioner.
@@ -53,7 +53,7 @@ public final class E2ePublicAuthFixtureService {
      * @param userDao User persistence boundary
      * @param applicationDao Application persistence boundary
      */
-    public E2ePublicAuthFixtureService(SiteDao siteDao, UserDao userDao, ApplicationDao applicationDao) {
+    public E2ePublicAuthFixtureService(SiteDao siteDao, UserDao userDao, SiteApplicationDao applicationDao) {
         this.siteDao = Objects.requireNonNull(siteDao, "siteDao must not be null");
         this.userDao = Objects.requireNonNull(userDao, "userDao must not be null");
         this.applicationDao = Objects.requireNonNull(applicationDao, "applicationDao must not be null");
@@ -88,10 +88,10 @@ public final class E2ePublicAuthFixtureService {
     }
 
     private void ensureApplication(Site site, String code, String name) {
-        Application application = applicationDao.findBySiteAndCode(site, code)
-                .orElseGet(() -> new Application(null, site, code, name, true));
-        application.setName(name);
-        application.setActive(true);
-        applicationDao.save(application);
+        SiteApplication siteApplication = applicationDao.findBySiteAndApplicationCode(site, code)
+                .orElseGet(() -> new SiteApplication(null, site, code, name, true));
+        siteApplication.setName(name);
+        siteApplication.setActive(true);
+        applicationDao.save(siteApplication);
     }
 }

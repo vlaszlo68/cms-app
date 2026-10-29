@@ -1,10 +1,10 @@
 package hu.laci.cms.backend.config.e2e;
 
-import hu.laci.cms.backend.dao.application.ApplicationDao;
+import hu.laci.cms.backend.dao.application.SiteApplicationDao;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
 import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dao.user.UserDao;
-import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.model.application.SiteApplication;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.service.e2e.E2ePublicAuthFixtureService;
@@ -33,7 +33,7 @@ public final class E2ePublicAuthFixtureListener implements ServletContextListene
         }
         SiteDao siteDao = DaoRegistry.getDao(Site.class);
         UserDao userDao = DaoRegistry.getDao(User.class);
-        ApplicationDao applicationDao = DaoRegistry.getDao(Application.class);
+        SiteApplicationDao applicationDao = DaoRegistry.getDao(SiteApplication.class);
         new E2ePublicAuthFixtureService(siteDao, userDao, applicationDao).ensureFixtures();
         LOGGER.warn("Local public-auth E2E fixtures are enabled; reserved E2E users and applications were provisioned.");
     }

@@ -1,6 +1,6 @@
 package hu.laci.cms.backend.service.site;
 
-import hu.laci.cms.backend.dao.application.ApplicationDao;
+import hu.laci.cms.backend.dao.application.SiteApplicationDao;
 import hu.laci.cms.backend.dao.media.MediaDao;
 import hu.laci.cms.backend.dao.menu.MenuDao;
 import hu.laci.cms.backend.dao.page.PageDao;
@@ -26,17 +26,17 @@ public class SiteUsageService {
     private final PageDao pageDao;
     private final MenuDao menuDao;
     private final MediaDao mediaDao;
-    private final ApplicationDao applicationDao;
+    private final SiteApplicationDao siteApplicationDao;
     private final SiteSettingsDao siteSettingsDao;
 
     /** Creates the Site usage and deletion service. */
     public SiteUsageService(SiteDao siteDao, PageDao pageDao, MenuDao menuDao, MediaDao mediaDao,
-                            ApplicationDao applicationDao, SiteSettingsDao siteSettingsDao) {
+                            SiteApplicationDao siteApplicationDao, SiteSettingsDao siteSettingsDao) {
         this.siteDao = Objects.requireNonNull(siteDao, "siteDao must not be null");
         this.pageDao = Objects.requireNonNull(pageDao, "pageDao must not be null");
         this.menuDao = Objects.requireNonNull(menuDao, "menuDao must not be null");
         this.mediaDao = Objects.requireNonNull(mediaDao, "mediaDao must not be null");
-        this.applicationDao = Objects.requireNonNull(applicationDao, "applicationDao must not be null");
+        this.siteApplicationDao = Objects.requireNonNull(siteApplicationDao, "siteApplicationDao must not be null");
         this.siteSettingsDao = Objects.requireNonNull(siteSettingsDao, "siteSettingsDao must not be null");
     }
 
@@ -51,13 +51,12 @@ public class SiteUsageService {
         long pageCount = pageDao.countBySite(site);
         long menuCount = menuDao.countBySite(site);
         long mediaCount = mediaDao.countBySite(site);
-        long applicationCount = applicationDao.countBySite(site);
-        boolean deletable = pageCount == 0 && menuCount == 0 && mediaCount == 0 && applicationCount == 0;
-        return new SiteUsageResponse(pageCount, menuCount, mediaCount, applicationCount, deletable);
+        boolean deletable = pageCount == 0 && menuCount == 0 && mediaCount == 0;
+        return new SiteUsageResponse(pageCount, menuCount, mediaCount, deletable);
     }
 
     /**
-     * Deletes an empty Site and its lifecycle-dependent settings record.
+     * Deletes an empty Site and its lifecycle-dependent configuration records.
      *
      * @param site persisted Site
      * @throws SiteServiceException when business data blocks deletion
@@ -69,6 +68,7 @@ public class SiteUsageService {
             throw new SiteServiceException(SITE_IN_USE, "Site has owned business data and cannot be deleted.", usage);
         }
         siteSettingsDao.findBySite(site).ifPresent(siteSettingsDao::delete);
+        siteApplicationDao.deleteBySite(site);
         if (!siteDao.delete(site)) {
             throw new SiteServiceException(SiteService.SITE_NOT_FOUND, "Site not found.");
         }

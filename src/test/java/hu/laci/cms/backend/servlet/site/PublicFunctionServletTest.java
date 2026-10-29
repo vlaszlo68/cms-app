@@ -5,11 +5,11 @@ import hu.laci.cms.backend.config.session.AppSession;
 import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.dto.textanalysis.AnalyzeTextResponse;
-import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.model.application.SiteApplication;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.user.UserRole;
 import hu.laci.cms.backend.servlet.support.ServletTestSupport;
-import hu.laci.cms.backend.service.application.ApplicationService;
+import hu.laci.cms.backend.service.application.SiteApplicationService;
 import hu.laci.cms.backend.service.function.FunctionContext;
 import hu.laci.cms.backend.service.function.AccessPolicy;
 import hu.laci.cms.backend.service.function.AnalyzeTextFunction;
@@ -39,9 +39,9 @@ class PublicFunctionServletTest {
     @Test
     void dispatchesOnlyRegisteredFunctionWithResolvedContext() {
         Site site = new Site(1L, "site-a", "Site A", true);
-        Application application = new Application(2L, site, "TEST_APP", "Test", true);
+        SiteApplication application = new SiteApplication(2L, site, "TEST_APP", "Test", true);
         SiteService siteService = Mockito.mock(SiteService.class);
-        ApplicationService applicationService = Mockito.mock(ApplicationService.class);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
         Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
         Mockito.when(applicationService.requirePublic(site, "TEST_APP")).thenReturn(application);
         PublicFunction handler = new PublicFunction() {
@@ -49,7 +49,7 @@ class PublicFunctionServletTest {
             @Override public String getFunctionCode() { return "ECHO"; }
             @Override public Object execute(FunctionContext context, JsonObject payload) {
                 assertEquals(site, context.site());
-                assertEquals(application, context.application());
+                assertEquals(application, context.siteApplication());
                 return payload.get("value").getAsString();
             }
         };
@@ -62,9 +62,9 @@ class PublicFunctionServletTest {
     @Test
     void rejectsFunctionRegisteredForAnotherApplication() {
         Site site = new Site(1L, "site-a", "Site A", true);
-        Application application = new Application(2L, site, "APP_A", "A", true);
+        SiteApplication application = new SiteApplication(2L, site, "APP_A", "A", true);
         SiteService siteService = Mockito.mock(SiteService.class);
-        ApplicationService applicationService = Mockito.mock(ApplicationService.class);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
         Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
         Mockito.when(applicationService.requirePublic(site, "APP_A")).thenReturn(application);
         PublicFunction onlyOtherApplication = new PublicFunction() {
@@ -83,9 +83,9 @@ class PublicFunctionServletTest {
     @Test
     void rejectsUnknownFunctionForTheSelectedApplication() {
         Site site = new Site(1L, "site-a", "Site A", true);
-        Application application = new Application(2L, site, "APP_A", "A", true);
+        SiteApplication application = new SiteApplication(2L, site, "APP_A", "A", true);
         SiteService siteService = Mockito.mock(SiteService.class);
-        ApplicationService applicationService = Mockito.mock(ApplicationService.class);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
         Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
         Mockito.when(applicationService.requirePublic(site, "APP_A")).thenReturn(application);
         PublicFunction knownFunction = new PublicFunction() {
@@ -105,9 +105,9 @@ class PublicFunctionServletTest {
     @Test
     void rejectsMalformedAndNonObjectPayloadBeforeHandlerExecution() {
         Site site = new Site(1L, "site-a", "Site A", true);
-        Application application = new Application(2L, site, "APP_A", "A", true);
+        SiteApplication application = new SiteApplication(2L, site, "APP_A", "A", true);
         SiteService siteService = Mockito.mock(SiteService.class);
-        ApplicationService applicationService = Mockito.mock(ApplicationService.class);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
         Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
         Mockito.when(applicationService.requirePublic(site, "APP_A")).thenReturn(application);
         PublicFunction handler = new PublicFunction() {
@@ -130,9 +130,9 @@ class PublicFunctionServletTest {
     @Test
     void realAnalyzerRequiresAuthenticationAndCsrfThenAllowsUserAndAdmin() {
         Site site = new Site(1L, "site-a", "Site A", true);
-        Application application = new Application(2L, site, AnalyzeTextFunction.APPLICATION_CODE, "Text", true);
+        SiteApplication application = new SiteApplication(2L, site, AnalyzeTextFunction.APPLICATION_CODE, "Text", true);
         SiteService siteService = Mockito.mock(SiteService.class);
-        ApplicationService applicationService = Mockito.mock(ApplicationService.class);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
         FunctionAuthorizationService authorizationService = authenticatedAuthorizationService();
         Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
         Mockito.when(applicationService.requirePublic(site, AnalyzeTextFunction.APPLICATION_CODE)).thenReturn(application);

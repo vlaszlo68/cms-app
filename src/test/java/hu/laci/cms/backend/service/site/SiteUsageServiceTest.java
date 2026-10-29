@@ -1,6 +1,6 @@
 package hu.laci.cms.backend.service.site;
 
-import hu.laci.cms.backend.dao.application.ApplicationDao;
+import hu.laci.cms.backend.dao.application.SiteApplicationDao;
 import hu.laci.cms.backend.dao.media.MediaDao;
 import hu.laci.cms.backend.dao.menu.MenuDao;
 import hu.laci.cms.backend.dao.page.PageDao;
@@ -30,7 +30,6 @@ class SiteUsageServiceTest {
         Mockito.when(fixtures.pageDao.countBySite(SITE)).thenReturn(2L);
         Mockito.when(fixtures.menuDao.countBySite(SITE)).thenReturn(3L);
         Mockito.when(fixtures.mediaDao.countBySite(SITE)).thenReturn(4L);
-        Mockito.when(fixtures.applicationDao.countBySite(SITE)).thenReturn(5L);
         SiteUsageService service = fixtures.service();
 
         SiteUsageResponse usage = service.getUsage(SITE);
@@ -39,11 +38,11 @@ class SiteUsageServiceTest {
         assertEquals(2L, usage.pageCount());
         assertEquals(3L, usage.menuCount());
         assertEquals(4L, usage.mediaCount());
-        assertEquals(5L, usage.applicationCount());
         assertFalse(usage.deletable());
         assertEquals(SiteUsageService.SITE_IN_USE, exception.getCode());
         assertEquals(usage, exception.getDetails());
         Mockito.verify(fixtures.settingsDao, Mockito.never()).delete(Mockito.any());
+        Mockito.verify(fixtures.applicationDao, Mockito.never()).deleteBySite(Mockito.any());
         Mockito.verify(fixtures.siteDao, Mockito.never()).delete(Mockito.any());
     }
 
@@ -61,8 +60,9 @@ class SiteUsageServiceTest {
         service.deleteSite(SITE);
 
         assertTrue(usage.deletable());
-        org.mockito.InOrder order = Mockito.inOrder(fixtures.settingsDao, fixtures.siteDao);
+        org.mockito.InOrder order = Mockito.inOrder(fixtures.settingsDao, fixtures.applicationDao, fixtures.siteDao);
         order.verify(fixtures.settingsDao).delete(settings);
+        order.verify(fixtures.applicationDao).deleteBySite(SITE);
         order.verify(fixtures.siteDao).delete(SITE);
     }
 
@@ -71,7 +71,7 @@ class SiteUsageServiceTest {
         private final PageDao pageDao = Mockito.mock(PageDao.class);
         private final MenuDao menuDao = Mockito.mock(MenuDao.class);
         private final MediaDao mediaDao = Mockito.mock(MediaDao.class);
-        private final ApplicationDao applicationDao = Mockito.mock(ApplicationDao.class);
+        private final SiteApplicationDao applicationDao = Mockito.mock(SiteApplicationDao.class);
         private final SiteSettingsDao settingsDao = Mockito.mock(SiteSettingsDao.class);
 
         private SiteUsageService service() {

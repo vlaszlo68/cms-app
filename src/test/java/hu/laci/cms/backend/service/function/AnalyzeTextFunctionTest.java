@@ -3,7 +3,7 @@ package hu.laci.cms.backend.service.function;
 import com.google.gson.Gson;
 import com.google.gson.JsonParser;
 import hu.laci.cms.backend.dto.textanalysis.AnalyzeTextResponse;
-import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.model.application.SiteApplication;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.service.textanalysis.TextAnalysisService;
 import org.junit.jupiter.api.Test;
@@ -58,7 +58,7 @@ class AnalyzeTextFunctionTest {
 
     private FunctionContext context() {
         Site site = new Site(1L, "site-a", "Site A", true);
-        Application application = new Application(2L, site, AnalyzeTextFunction.APPLICATION_CODE, "Text", true);
+        SiteApplication application = new SiteApplication(2L, site, AnalyzeTextFunction.APPLICATION_CODE, "Text", true);
         return new FunctionContext(site, application, Optional.empty());
     }
 }
