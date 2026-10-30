@@ -6,6 +6,8 @@ import hu.laci.cms.backend.service.function.AccessPolicy;
 import hu.laci.cms.backend.service.function.AnalyzeTextFunction;
 import hu.laci.cms.backend.service.function.E2ePublicFunction;
 import hu.laci.cms.backend.service.function.FunctionRegistry;
+import hu.laci.cms.backend.service.function.SearchLocationFunction;
+import hu.laci.cms.backend.service.function.GetWeatherFunction;
 
 import java.util.Collection;
 import java.util.List;
@@ -21,17 +23,21 @@ import java.util.Objects;
 public final class ApplicationPlatformRegistry {
 
     private static final ApplicationPlatformRegistry PRODUCTION = new ApplicationPlatformRegistry(
-            List.of(new ApplicationDefinition(AnalyzeTextFunction.APPLICATION_CODE, AccessPolicy.AUTHENTICATED)),
-            List.of(new AnalyzeTextFunction()));
+            List.of(new ApplicationDefinition(AnalyzeTextFunction.APPLICATION_CODE, AccessPolicy.AUTHENTICATED),
+                    new ApplicationDefinition(SearchLocationFunction.APPLICATION_CODE, AccessPolicy.PUBLIC)),
+            List.of(new AnalyzeTextFunction(), new SearchLocationFunction(), new GetWeatherFunction()));
     private static final ApplicationPlatformRegistry E2E_FIXTURES = new ApplicationPlatformRegistry(
             List.of(
                     new ApplicationDefinition(AnalyzeTextFunction.APPLICATION_CODE, AccessPolicy.AUTHENTICATED),
+                    new ApplicationDefinition(SearchLocationFunction.APPLICATION_CODE, AccessPolicy.PUBLIC),
                     new ApplicationDefinition(E2ePublicAuthFixtureService.PUBLIC_APPLICATION_CODE,
                             AccessPolicy.PUBLIC),
                     new ApplicationDefinition(E2ePublicAuthFixtureService.AUTHENTICATED_APPLICATION_CODE,
                             AccessPolicy.AUTHENTICATED)),
             List.of(
                     new AnalyzeTextFunction(),
+                    new SearchLocationFunction(),
+                    new GetWeatherFunction(),
                     new E2ePublicFunction(E2ePublicAuthFixtureService.PUBLIC_APPLICATION_CODE,
                             E2ePublicAuthFixtureService.PUBLIC_FUNCTION_CODE, AccessPolicy.PUBLIC),
                     new E2ePublicFunction(E2ePublicAuthFixtureService.AUTHENTICATED_APPLICATION_CODE,

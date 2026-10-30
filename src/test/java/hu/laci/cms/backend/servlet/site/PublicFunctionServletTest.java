@@ -17,6 +17,13 @@ import hu.laci.cms.backend.service.function.FunctionAuthorizationService;
 import hu.laci.cms.backend.service.function.FunctionRegistry;
 import hu.laci.cms.backend.service.function.PublicFunction;
 import hu.laci.cms.backend.service.function.PublicFunctionException;
+import hu.laci.cms.backend.service.function.GetWeatherFunction;
+import hu.laci.cms.backend.service.function.SearchLocationFunction;
+import hu.laci.cms.backend.service.external.cache.InMemoryTtlCache;
+import hu.laci.cms.backend.service.weather.CurrentWeatherResult;
+import hu.laci.cms.backend.service.weather.WeatherProviderClient;
+import hu.laci.cms.backend.service.weather.WeatherResult;
+import hu.laci.cms.backend.service.weather.WeatherService;
 import hu.laci.cms.backend.service.site.SiteService;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
@@ -163,6 +170,88 @@ class PublicFunctionServletTest {
                             new StringReader("{\"text\":\"Java\"}"), missingCsrfRequest, missingCsrfResponse));
             assertEquals("CSRF_INVALID", exception.getCode());
         }
+    }
+
+    @Test
+    void weatherFunctionAllowsAnonymousEnabledSiteOnly() {
+        Site site = new Site(1L, "site-a", "Site A", true);
+        SiteApplication application = new SiteApplication(2L, site, GetWeatherFunction.APPLICATION_CODE, "Weather", true);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
+        Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
+        Mockito.when(applicationService.requirePublic(site, GetWeatherFunction.APPLICATION_CODE)).thenReturn(application);
+        Mockito.when(applicationService.accessPolicy(application)).thenReturn(AccessPolicy.PUBLIC);
+        WeatherProviderClient provider = new WeatherProviderClient() {
+            @Override public java.util.List<hu.laci.cms.backend.service.weather.LocationResult> searchLocations(String query, String language) { return java.util.List.of(); }
+            @Override public WeatherResult getWeather(double latitude, double longitude, String timezone) { return new WeatherResult(new CurrentWeatherResult(1, 1, 1, 1, 1), java.util.List.of()); }
+        };
+        GetWeatherFunction weather = new GetWeatherFunction(new com.google.gson.Gson(), new WeatherService(provider, new InMemoryTtlCache<>(), new InMemoryTtlCache<>()));
+        PublicFunctionServlet dispatcher = new PublicFunctionServlet(siteService, applicationService, new FunctionRegistry(java.util.List.of(weather)), authorizationService());
+        Object response = dispatcher.dispatch("site-a", GetWeatherFunction.APPLICATION_CODE, GetWeatherFunction.FUNCTION_CODE, new StringReader("{\"latitude\":47.5,\"longitude\":19.0}"));
+        assertEquals("GetWeatherResponse", response.getClass().getSimpleName());
+        Mockito.verify(applicationService).requirePublic(site, GetWeatherFunction.APPLICATION_CODE);
+    }
+
+    @Test
+    void searchLocationFunctionAllowsAnonymousEnabledSite() {
+        Site site = new Site(1L, "site-a", "Site A", true);
+        SiteApplication application = new SiteApplication(2L, site, SearchLocationFunction.APPLICATION_CODE, "Weather", true);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
+        Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
+        Mockito.when(applicationService.requirePublic(site, SearchLocationFunction.APPLICATION_CODE)).thenReturn(application);
+        Mockito.when(applicationService.accessPolicy(application)).thenReturn(AccessPolicy.PUBLIC);
+        WeatherProviderClient provider = new WeatherProviderClient() {
+            @Override public java.util.List<hu.laci.cms.backend.service.weather.LocationResult> searchLocations(String query, String language) {
+                return java.util.List.of(new hu.laci.cms.backend.service.weather.LocationResult(1L, "Budapest", "Hungary", "HU", null, 47.5, 19.0, "Europe/Budapest"));
+            }
+            @Override public WeatherResult getWeather(double latitude, double longitude, String timezone) { return null; }
+        };
+        SearchLocationFunction search = new SearchLocationFunction(new com.google.gson.Gson(), new WeatherService(provider, new InMemoryTtlCache<>(), new InMemoryTtlCache<>()));
+        PublicFunctionServlet dispatcher = new PublicFunctionServlet(siteService, applicationService, new FunctionRegistry(java.util.List.of(search)), authorizationService());
+        Object response = dispatcher.dispatch("site-a", SearchLocationFunction.APPLICATION_CODE, SearchLocationFunction.FUNCTION_CODE, new StringReader("{\"query\":\"Budapest\"}"));
+        assertEquals("SearchLocationResponse", response.getClass().getSimpleName());
+    }
+
+    @Test
+    void weatherAvailabilityAndConcreteWrongFunctionAreRejected() {
+        Site site = new Site(1L, "site-a", "Site A", true);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
+        Mockito.when(applicationService.requirePublic(site, SearchLocationFunction.APPLICATION_CODE)).thenThrow(
+                new hu.laci.cms.backend.service.application.SiteApplicationServiceException(SiteApplicationService.APPLICATION_NOT_FOUND, "Application not found."));
+        PublicFunctionServlet unavailable = new PublicFunctionServlet(siteService, applicationService, new FunctionRegistry(java.util.List.of()), authorizationService());
+        assertThrows(hu.laci.cms.backend.service.application.SiteApplicationServiceException.class,
+                () -> unavailable.dispatch("site-a", SearchLocationFunction.APPLICATION_CODE, SearchLocationFunction.FUNCTION_CODE, new StringReader("{}")));
+
+        SiteApplication active = new SiteApplication(2L, site, SearchLocationFunction.APPLICATION_CODE, "Weather", true);
+        Mockito.when(applicationService.requirePublic(site, SearchLocationFunction.APPLICATION_CODE)).thenReturn(active);
+        Mockito.when(applicationService.accessPolicy(active)).thenReturn(AccessPolicy.PUBLIC);
+        PublicFunctionServlet wrongFunction = new PublicFunctionServlet(siteService, applicationService,
+                new FunctionRegistry(java.util.List.of(new SearchLocationFunction(new com.google.gson.Gson(), new WeatherService(new EmptyWeatherProvider(), new InMemoryTtlCache<>(), new InMemoryTtlCache<>())))), authorizationService());
+        assertEquals(PublicFunctionServlet.FUNCTION_NOT_FOUND, assertThrows(PublicFunctionException.class,
+                () -> wrongFunction.dispatch("site-a", SearchLocationFunction.APPLICATION_CODE, GetWeatherFunction.FUNCTION_CODE, new StringReader("{}"))).getCode());
+    }
+
+    @Test
+    void invalidWeatherCoordinatesAreRejectedAtDispatcherBoundary() {
+        Site site = new Site(1L, "site-a", "Site A", true);
+        SiteApplication application = new SiteApplication(2L, site, GetWeatherFunction.APPLICATION_CODE, "Weather", true);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        SiteApplicationService applicationService = Mockito.mock(SiteApplicationService.class);
+        Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
+        Mockito.when(applicationService.requirePublic(site, GetWeatherFunction.APPLICATION_CODE)).thenReturn(application);
+        Mockito.when(applicationService.accessPolicy(application)).thenReturn(AccessPolicy.PUBLIC);
+        GetWeatherFunction weather = new GetWeatherFunction(new com.google.gson.Gson(), new WeatherService(new EmptyWeatherProvider(), new InMemoryTtlCache<>(), new InMemoryTtlCache<>()));
+        PublicFunctionServlet dispatcher = new PublicFunctionServlet(siteService, applicationService, new FunctionRegistry(java.util.List.of(weather)), authorizationService());
+        assertEquals(PublicFunctionServlet.INVALID_FUNCTION_INPUT, assertThrows(PublicFunctionException.class,
+                () -> dispatcher.dispatch("site-a", GetWeatherFunction.APPLICATION_CODE, GetWeatherFunction.FUNCTION_CODE, new StringReader("{\"latitude\":91,\"longitude\":19}"))).getCode());
+    }
+
+    private static final class EmptyWeatherProvider implements WeatherProviderClient {
+        @Override public java.util.List<hu.laci.cms.backend.service.weather.LocationResult> searchLocations(String query, String language) { return java.util.List.of(); }
+        @Override public WeatherResult getWeather(double latitude, double longitude, String timezone) { return new WeatherResult(new CurrentWeatherResult(1, 1, 1, 1, 1), java.util.List.of()); }
     }
 
     private void assertAnalyzerExecution(PublicFunctionServlet dispatcher, AuthenticatedUser principal) {

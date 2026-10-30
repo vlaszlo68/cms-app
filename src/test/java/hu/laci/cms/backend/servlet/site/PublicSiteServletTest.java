@@ -188,4 +188,23 @@ class PublicSiteServletTest {
         assertEquals(HttpServletResponse.SC_OK, response.getStatus());
         assertTrue(response.getBody().contains("TEST_APP"));
     }
+
+    @Test
+    void functionRouteMapsStableExternalErrorsToPublicHttpStatuses() throws Exception {
+        assertExternalStatus("EXTERNAL_SERVICE_RATE_LIMITED", 429);
+        assertExternalStatus("EXTERNAL_SERVICE_TIMEOUT", HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+        assertExternalStatus("EXTERNAL_SERVICE_INVALID_RESPONSE", HttpServletResponse.SC_BAD_GATEWAY);
+    }
+
+    private void assertExternalStatus(String code, int expectedStatus) throws Exception {
+        PublicFunctionServlet dispatcher = Mockito.mock(PublicFunctionServlet.class);
+        Mockito.when(dispatcher.dispatch(Mockito.anyString(), Mockito.anyString(), Mockito.anyString(), Mockito.any(), Mockito.any(), Mockito.any()))
+                .thenThrow(new hu.laci.cms.backend.service.function.PublicFunctionException(code, "safe message"));
+        PublicSiteServlet servlet = new PublicSiteServlet();
+        ServletTestSupport.setField(servlet, "publicFunctionServlet", dispatcher);
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+        servlet.doPost(ServletTestSupport.request().withPathInfo("/site-a/applications/WEATHER_EXPLORER/functions/GET_WEATHER").withJsonBody("{}").build(), response.build());
+        assertEquals(expectedStatus, response.getStatus());
+        assertTrue(response.getBody().contains(code));
+    }
 }
