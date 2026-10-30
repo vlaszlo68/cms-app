@@ -183,7 +183,7 @@ class PublicFunctionServletTest {
         Mockito.when(applicationService.accessPolicy(application)).thenReturn(AccessPolicy.PUBLIC);
         WeatherProviderClient provider = new WeatherProviderClient() {
             @Override public java.util.List<hu.laci.cms.backend.service.weather.LocationResult> searchLocations(String query, String language) { return java.util.List.of(); }
-            @Override public WeatherResult getWeather(double latitude, double longitude, String timezone) { return new WeatherResult(new CurrentWeatherResult(1, 1, 1, 1, 1), java.util.List.of()); }
+            @Override public WeatherResult getWeather(double latitude, double longitude, String timezone) { return weatherResult(); }
         };
         GetWeatherFunction weather = new GetWeatherFunction(new com.google.gson.Gson(), new WeatherService(provider, new InMemoryTtlCache<>(), new InMemoryTtlCache<>()));
         PublicFunctionServlet dispatcher = new PublicFunctionServlet(siteService, applicationService, new FunctionRegistry(java.util.List.of(weather)), authorizationService());
@@ -226,7 +226,7 @@ class PublicFunctionServletTest {
                 () -> unavailable.dispatch("site-a", SearchLocationFunction.APPLICATION_CODE, SearchLocationFunction.FUNCTION_CODE, new StringReader("{}")));
 
         SiteApplication active = new SiteApplication(2L, site, SearchLocationFunction.APPLICATION_CODE, "Weather", true);
-        Mockito.when(applicationService.requirePublic(site, SearchLocationFunction.APPLICATION_CODE)).thenReturn(active);
+        Mockito.doReturn(active).when(applicationService).requirePublic(site, SearchLocationFunction.APPLICATION_CODE);
         Mockito.when(applicationService.accessPolicy(active)).thenReturn(AccessPolicy.PUBLIC);
         PublicFunctionServlet wrongFunction = new PublicFunctionServlet(siteService, applicationService,
                 new FunctionRegistry(java.util.List.of(new SearchLocationFunction(new com.google.gson.Gson(), new WeatherService(new EmptyWeatherProvider(), new InMemoryTtlCache<>(), new InMemoryTtlCache<>())))), authorizationService());
@@ -251,7 +251,12 @@ class PublicFunctionServletTest {
 
     private static final class EmptyWeatherProvider implements WeatherProviderClient {
         @Override public java.util.List<hu.laci.cms.backend.service.weather.LocationResult> searchLocations(String query, String language) { return java.util.List.of(); }
-        @Override public WeatherResult getWeather(double latitude, double longitude, String timezone) { return new WeatherResult(new CurrentWeatherResult(1, 1, 1, 1, 1), java.util.List.of()); }
+        @Override public WeatherResult getWeather(double latitude, double longitude, String timezone) { return weatherResult(); }
+    }
+
+    private static WeatherResult weatherResult() {
+        return new WeatherResult(new CurrentWeatherResult(1d, 1d, 1, 1, 0d, 0d, 0d, 1, 1000d, 1d, 1, 1d, true),
+                List.of(), List.of());
     }
 
     private void assertAnalyzerExecution(PublicFunctionServlet dispatcher, AuthenticatedUser principal) {

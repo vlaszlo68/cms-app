@@ -14,7 +14,11 @@ class WeatherServiceTest {
         AtomicInteger forecasts = new AtomicInteger();
         WeatherProviderClient client = new WeatherProviderClient() {
             @Override public List<LocationResult> searchLocations(String query, String language) { searches.incrementAndGet(); return List.of(new LocationResult(1L, "Budapest", "Hungary", "HU", null, 47.5, 19.0, "Europe/Budapest")); }
-            @Override public WeatherResult getWeather(double latitude, double longitude, String timezone) { forecasts.incrementAndGet(); return new WeatherResult(new CurrentWeatherResult(1, 1, 1, 1, 1), List.of()); }
+            @Override public WeatherResult getWeather(double latitude, double longitude, String timezone) {
+                forecasts.incrementAndGet();
+                return new WeatherResult(new CurrentWeatherResult(1d, 1d, 1, 1, 0d, 0d, 0d, 1, 1000d, 1d, 1, 1d, true),
+                        List.of(new HourlyWeatherResult("2026-01-01T00:00", 1d, 1d, 1, 0, 0d, 1, 1, 1d, 1, 1d)), List.of());
+            }
         };
         WeatherService service = new WeatherService(client, new InMemoryTtlCache<>(), new InMemoryTtlCache<>());
         SearchLocationRequest first = new SearchLocationRequest(); first.setQuery(" Budapest "); first.setLanguage("EN");
@@ -22,7 +26,7 @@ class WeatherServiceTest {
         assertEquals(1, service.searchLocations(first).locations().size()); service.searchLocations(second); assertEquals(1, searches.get());
         GetWeatherRequest weather = new GetWeatherRequest(); weather.setLatitude(47.4981d); weather.setLongitude(19.0398d); weather.setTimezone("Europe/Budapest");
         GetWeatherRequest equivalent = new GetWeatherRequest(); equivalent.setLatitude(47.4982d); equivalent.setLongitude(19.0399d); equivalent.setTimezone("europe/budapest");
-        service.getWeather(weather); service.getWeather(equivalent); assertEquals(1, forecasts.get());
+        assertEquals(1, service.getWeather(weather).hourly().size()); service.getWeather(equivalent); assertEquals(1, forecasts.get());
         GetWeatherRequest invalid = new GetWeatherRequest(); invalid.setLatitude(91d); invalid.setLongitude(19d);
         assertEquals("INVALID_FUNCTION_INPUT", assertThrows(PublicFunctionException.class, () -> service.getWeather(invalid)).getCode());
     }

@@ -11,6 +11,7 @@ import hu.laci.cms.backend.service.external.http.JavaExternalHttpExecutor;
 import hu.laci.cms.backend.service.external.http.TrustedUriBuilder;
 import hu.laci.cms.backend.service.weather.CurrentWeatherResult;
 import hu.laci.cms.backend.service.weather.DailyWeatherResult;
+import hu.laci.cms.backend.service.weather.HourlyWeatherResult;
 import hu.laci.cms.backend.service.weather.LocationResult;
 import hu.laci.cms.backend.service.weather.WeatherProviderClient;
 import hu.laci.cms.backend.service.weather.WeatherResult;
@@ -82,8 +83,10 @@ public final class OpenMeteoClient implements WeatherProviderClient {
             parameters.put("longitude", String.valueOf(longitude));
             parameters.put("timezone", timezone);
             parameters.put("forecast_days", "7");
-            parameters.put("current", "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m");
-            parameters.put("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max");
+            parameters.put("forecast_hours", "24");
+            parameters.put("current", "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,precipitation,rain,snowfall,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day");
+            parameters.put("hourly", "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m");
+            parameters.put("daily", "weather_code,temperature_2m_min,temperature_2m_max,apparent_temperature_min,apparent_temperature_max,precipitation_probability_max,precipitation_sum,rain_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunrise,sunset,daylight_duration,sunshine_duration");
             ExternalHttpResponse response = executor.execute(ExternalHttpRequest.get(TrustedUriBuilder.build(forecastBaseUrl, "/v1/forecast", parameters), timeout));
             WeatherResult result = mapForecast(parse(response.body(), OpenMeteoForecastResponse.class));
             log("forecast", response.statusCode(), started, true);
@@ -124,34 +127,91 @@ public final class OpenMeteoClient implements WeatherProviderClient {
     }
 
     private WeatherResult mapForecast(OpenMeteoForecastResponse vendor) {
-        if (vendor.current == null || vendor.daily == null) {
+        if (vendor.current == null || vendor.hourly == null || vendor.daily == null) {
             throw invalid();
         }
         OpenMeteoForecastResponse.OpenMeteoCurrent current = vendor.current;
-        if (current.temperature_2m == null || current.apparent_temperature == null || current.relative_humidity_2m == null || current.wind_speed_10m == null || current.weather_code == null) {
+        Boolean isDay = mapIsDay(current.is_day);
+        List<HourlyWeatherResult> hourly = mapHourly(vendor.hourly);
+        List<DailyWeatherResult> daily = mapDaily(vendor.daily);
+        return new WeatherResult(new CurrentWeatherResult(current.temperature_2m, current.apparent_temperature,
+                current.relative_humidity_2m, current.weather_code, current.precipitation, current.rain,
+                current.snowfall, current.cloud_cover, current.pressure_msl, current.wind_speed_10m,
+                current.wind_direction_10m, current.wind_gusts_10m, isDay), hourly, daily);
+    }
+
+    private Boolean mapIsDay(Integer isDay) {
+        if (isDay == null) {
+            return null;
+        }
+        if (isDay != 0 && isDay != 1) {
             throw invalid();
         }
-        OpenMeteoForecastResponse.OpenMeteoDaily daily = vendor.daily;
-        if (daily.time == null || daily.weather_code == null || daily.temperature_2m_min == null || daily.temperature_2m_max == null || daily.precipitation_probability_max == null) {
+        return isDay == 1;
+    }
+
+    private List<HourlyWeatherResult> mapHourly(OpenMeteoForecastResponse.OpenMeteoHourly hourly) {
+        if (hourly.time == null || hourly.temperature_2m == null || hourly.apparent_temperature == null
+                || hourly.relative_humidity_2m == null || hourly.precipitation_probability == null
+                || hourly.precipitation == null || hourly.weather_code == null || hourly.cloud_cover == null
+                || hourly.wind_speed_10m == null || hourly.wind_direction_10m == null || hourly.wind_gusts_10m == null) {
+            throw invalid();
+        }
+        int size = hourly.time.size();
+        requireSize(size, hourly.temperature_2m, hourly.apparent_temperature, hourly.relative_humidity_2m,
+                hourly.precipitation_probability, hourly.precipitation, hourly.weather_code, hourly.cloud_cover,
+                hourly.wind_speed_10m, hourly.wind_direction_10m, hourly.wind_gusts_10m);
+        List<HourlyWeatherResult> result = new ArrayList<>();
+        for (int index = 0; index < Math.min(size, 24); index++) {
+            String time = hourly.time.get(index);
+            if (time == null || time.isBlank()) {
+                throw invalid();
+            }
+            result.add(new HourlyWeatherResult(time, hourly.temperature_2m.get(index), hourly.apparent_temperature.get(index),
+                    hourly.relative_humidity_2m.get(index), hourly.precipitation_probability.get(index),
+                    hourly.precipitation.get(index), hourly.weather_code.get(index), hourly.cloud_cover.get(index),
+                    hourly.wind_speed_10m.get(index), hourly.wind_direction_10m.get(index), hourly.wind_gusts_10m.get(index)));
+        }
+        return List.copyOf(result);
+    }
+
+    private List<DailyWeatherResult> mapDaily(OpenMeteoForecastResponse.OpenMeteoDaily daily) {
+        if (daily.time == null || daily.weather_code == null || daily.temperature_2m_min == null || daily.temperature_2m_max == null
+                || daily.apparent_temperature_min == null || daily.apparent_temperature_max == null || daily.precipitation_probability_max == null
+                || daily.precipitation_sum == null || daily.rain_sum == null || daily.snowfall_sum == null || daily.wind_speed_10m_max == null
+                || daily.wind_gusts_10m_max == null || daily.wind_direction_10m_dominant == null || daily.sunrise == null || daily.sunset == null
+                || daily.daylight_duration == null || daily.sunshine_duration == null) {
             throw invalid();
         }
         int size = daily.time.size();
-        if (daily.weather_code.size() != size || daily.temperature_2m_min.size() != size || daily.temperature_2m_max.size() != size || daily.precipitation_probability_max.size() != size) {
-            throw invalid();
-        }
+        requireSize(size, daily.weather_code, daily.temperature_2m_min, daily.temperature_2m_max, daily.apparent_temperature_min,
+                daily.apparent_temperature_max, daily.precipitation_probability_max, daily.precipitation_sum, daily.rain_sum,
+                daily.snowfall_sum, daily.wind_speed_10m_max, daily.wind_gusts_10m_max, daily.wind_direction_10m_dominant,
+                daily.sunrise, daily.sunset, daily.daylight_duration, daily.sunshine_duration);
         List<DailyWeatherResult> days = new ArrayList<>();
         for (int index = 0; index < size; index++) {
             String date = daily.time.get(index);
-            Integer weatherCode = daily.weather_code.get(index);
-            Double minimum = daily.temperature_2m_min.get(index);
-            Double maximum = daily.temperature_2m_max.get(index);
-            Integer probability = daily.precipitation_probability_max.get(index);
-            if (date == null || date.isBlank() || weatherCode == null || minimum == null || maximum == null || probability == null) {
+            String sunrise = daily.sunrise.get(index);
+            String sunset = daily.sunset.get(index);
+            if (date == null || date.isBlank() || sunrise == null || sunrise.isBlank() || sunset == null || sunset.isBlank()) {
                 throw invalid();
             }
-            days.add(new DailyWeatherResult(date, weatherCode, minimum, maximum, probability));
+            days.add(new DailyWeatherResult(date, daily.weather_code.get(index), daily.temperature_2m_min.get(index),
+                    daily.temperature_2m_max.get(index), daily.apparent_temperature_min.get(index),
+                    daily.apparent_temperature_max.get(index), daily.precipitation_probability_max.get(index),
+                    daily.precipitation_sum.get(index), daily.rain_sum.get(index), daily.snowfall_sum.get(index),
+                    daily.wind_speed_10m_max.get(index), daily.wind_gusts_10m_max.get(index), daily.wind_direction_10m_dominant.get(index),
+                    sunrise, sunset, daily.daylight_duration.get(index), daily.sunshine_duration.get(index)));
         }
-        return new WeatherResult(new CurrentWeatherResult(current.temperature_2m, current.apparent_temperature, current.relative_humidity_2m, current.wind_speed_10m, current.weather_code), days);
+        return List.copyOf(days);
+    }
+
+    private void requireSize(int expected, List<?>... arrays) {
+        for (List<?> array : arrays) {
+            if (array.size() != expected) {
+                throw invalid();
+            }
+        }
     }
 
     private ExternalApiException invalid() {
