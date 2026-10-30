@@ -19,4 +19,8 @@ public class UpdateSiteRequest extends SiteRequestBase {
     public UpdateSiteRequest(String code, String name, Boolean active) {
         super(code, name, active);
     }
+
+    public UpdateSiteRequest(String code, String name, Boolean active, String themeCode) {
+        super(code, name, active, themeCode);
+    }
 }

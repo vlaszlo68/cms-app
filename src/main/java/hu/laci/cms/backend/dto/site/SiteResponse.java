@@ -9,6 +9,7 @@ public class SiteResponse {
     private final String code;
     private final String name;
     private final boolean active;
+    private final String themeCode;
     private final String createdAt;
     private final String updatedAt;
 
@@ -22,13 +23,28 @@ public class SiteResponse {
      * @param createdAt ISO-8601 creation timestamp
      * @param updatedAt ISO-8601 update timestamp
      */
-    public SiteResponse(Long id, String code, String name, boolean active, String createdAt, String updatedAt) {
+    public SiteResponse(Long id, String code, String name, boolean active, String themeCode, String createdAt, String updatedAt) {
         this.id = id;
         this.code = code;
         this.name = name;
         this.active = active;
+        this.themeCode = themeCode;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+    }
+
+    /**
+     * Creates a Site response using the default theme for compatibility with existing callers.
+     *
+     * @param id persistent id
+     * @param code stable Site code
+     * @param name administrator-facing name
+     * @param active whether public APIs may serve the Site
+     * @param createdAt ISO-8601 creation timestamp
+     * @param updatedAt ISO-8601 update timestamp
+     */
+    public SiteResponse(Long id, String code, String name, boolean active, String createdAt, String updatedAt) {
+        this(id, code, name, active, "STANDARD", createdAt, updatedAt);
     }
 
     /** @return persisted Site id */
@@ -39,6 +55,8 @@ public class SiteResponse {
     public String getName() { return name; }
     /** @return whether public APIs may serve the Site */
     public boolean isActive() { return active; }
+    /** @return trusted logical theme identifier */
+    public String getThemeCode() { return themeCode; }
     /** @return ISO-8601 creation timestamp */
     public String getCreatedAt() { return createdAt; }
     /** @return ISO-8601 update timestamp */

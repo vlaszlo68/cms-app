@@ -3,11 +3,13 @@ package hu.laci.cms.backend.service.site;
 import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dto.site.CreateSiteRequest;
 import hu.laci.cms.backend.dto.site.SiteResponse;
+import hu.laci.cms.backend.dto.site.UpdateSiteRequest;
 import hu.laci.cms.backend.model.site.Site;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.util.Optional;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -60,5 +62,36 @@ class SiteServiceTest {
         SiteServiceException exception = assertThrows(SiteServiceException.class,
                 () -> service.requireActiveSite("inactive"));
         assertEquals(SiteService.SITE_NOT_FOUND, exception.getCode());
+    }
+
+    @Test
+    void createDefaultsThemeAndUpdateRejectsUnsupportedTheme() {
+        SiteDao siteDao = Mockito.mock(SiteDao.class);
+        Mockito.when(siteDao.findByCode("site-a")).thenReturn(Optional.empty());
+        Mockito.when(siteDao.create(Mockito.any(Site.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        SiteService service = new SiteService(siteDao);
+
+        SiteResponse created = service.createSite(new CreateSiteRequest("site-a", "Site A", true));
+
+        assertEquals(ThemeDefinitionRegistry.STANDARD, created.getThemeCode());
+        SiteServiceException exception = assertThrows(SiteServiceException.class,
+                () -> service.updateSite("site-a", new UpdateSiteRequest("site-a", "Site A", true, "CUSTOM")));
+        assertEquals(SiteService.VALIDATION_ERROR, exception.getCode());
+    }
+
+    @Test
+    void acceptsEveryTrustedThemeCode() {
+        List<String> supportedCodes = ThemeDefinitionRegistry.definitions().stream()
+                .map(ThemeDefinition::code).toList();
+        assertEquals(List.of("STANDARD", "MODERN", "DARK", "CORPORATE", "MINIMAL"), supportedCodes);
+
+        for (String themeCode : supportedCodes) {
+            SiteDao siteDao = Mockito.mock(SiteDao.class);
+            Mockito.when(siteDao.findByCode("site-a")).thenReturn(Optional.empty());
+            Mockito.when(siteDao.create(Mockito.any(Site.class))).thenAnswer(invocation -> invocation.getArgument(0));
+            SiteResponse response = new SiteService(siteDao)
+                    .createSite(new CreateSiteRequest("site-a", "Site A", true, themeCode));
+            assertEquals(themeCode, response.getThemeCode());
+        }
     }
 }

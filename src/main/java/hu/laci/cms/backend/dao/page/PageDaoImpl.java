@@ -22,6 +22,12 @@ public class PageDaoImpl extends BaseDao<Page, PageProperty> implements PageDao 
     }
 
     @Override
+    public long countBySite(Site site) {
+        return findCustomOne("countPagesBySite", "SELECT COUNT(*) AS row_count FROM pages WHERE site_id = ?",
+                List.of(site), resultSet -> resultSet.getLong("row_count"), "Failed to count Site pages.").orElse(0L);
+    }
+
+    @Override
     public List<Page> findAllBySite(Site site) {
         return findAll(QuerySpec.<PageProperty>create()
                 .where(PageProperty.SITE).equalsTo(site)

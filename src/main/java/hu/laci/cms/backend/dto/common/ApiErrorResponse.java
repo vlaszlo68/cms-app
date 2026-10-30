@@ -10,6 +10,7 @@ public class ApiErrorResponse {
     private final String code;
     private final String message;
     private final List<String> validationErrors;
+    private final Object details;
 
     /**
      * Creates an API error payload.
@@ -29,9 +30,22 @@ public class ApiErrorResponse {
      * @param validationErrors stable validation error codes, or null when not applicable
      */
     public ApiErrorResponse(String code, String message, List<String> validationErrors) {
+        this(code, message, validationErrors, null);
+    }
+
+    /**
+     * Creates an API error payload with optional structured details.
+     *
+     * @param code stable machine-readable error code
+     * @param message human-readable error message
+     * @param validationErrors stable validation error codes, or null when not applicable
+     * @param details structured client-safe error details, or null when not applicable
+     */
+    public ApiErrorResponse(String code, String message, List<String> validationErrors, Object details) {
         this.code = code;
         this.message = message;
         this.validationErrors = validationErrors == null ? null : List.copyOf(validationErrors);
+        this.details = details;
     }
 
     /**
@@ -60,4 +74,7 @@ public class ApiErrorResponse {
     public List<String> getValidationErrors() {
         return validationErrors;
     }
+
+    /** @return structured client-safe details, or {@code null} when unavailable */
+    public Object getDetails() { return details; }
 }

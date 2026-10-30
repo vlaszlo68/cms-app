@@ -538,10 +538,10 @@ function Test-NonDestructive {
     $publicSettings = Invoke-CmsApi "Read public site settings" "GET" "$script:publicSiteBase/site-settings" 200
     Test-SuccessEnvelope "Strict public site settings envelope" $publicSettings
     $publicSettingsFields = @($publicSettings.data.PSObject.Properties.Name)
-    $expectedPublicSettingsFields = @("siteName", "logoMediaId", "footerText", "contactEmail", "phone", "facebookUrl", "linkedinUrl")
+    $expectedPublicSettingsFields = @("themeCode", "siteName", "logoMediaId", "footerText", "contactEmail", "phone", "facebookUrl", "linkedinUrl")
     $hasExpectedPublicSettingsFields = $publicSettingsFields.Count -eq $expectedPublicSettingsFields.Count -and
             @($expectedPublicSettingsFields | Where-Object { $_ -notin $publicSettingsFields }).Count -eq 0
-    Test-StrictCondition "Strict public site settings fields" $hasExpectedPublicSettingsFields "Expected the seven public site settings fields."
+    Test-StrictCondition "Strict public site settings fields" $hasExpectedPublicSettingsFields "Expected themeCode and the seven public site settings fields."
 
     foreach ($publicMenuCode in @("MAIN", "FOOTER")) {
         $publicMenu = Invoke-CmsApi "Read public menu $publicMenuCode" "GET" "$script:publicSiteBase/menus/$publicMenuCode" 200
@@ -549,12 +549,15 @@ function Test-NonDestructive {
         $validPublicMenuItems = @($publicMenu.data | Where-Object {
                 $null -ne $_.id -and -not [string]::IsNullOrWhiteSpace([string] $_.title) -and
                 $null -ne $_.targetType -and $null -ne $_.children -and
-                (($_.targetType -eq "PAGE" -and $null -ne $_.pageId -and
+                ((($_.targetType -eq "PAGE" -and $null -ne $_.pageId -and
                         -not [string]::IsNullOrWhiteSpace([string] $_.pageSlug) -and
                         -not [string]::IsNullOrWhiteSpace([string] $_.path)) -or
-                 ($_.targetType -eq "URL" -and -not [string]::IsNullOrWhiteSpace([string] $_.targetUrl)))
+                  ($_.targetType -eq "URL" -and -not [string]::IsNullOrWhiteSpace([string] $_.targetUrl))) -or
+                 ($_.targetType -eq "APPLICATION" -and
+                        -not [string]::IsNullOrWhiteSpace([string] $_.applicationCode) -and
+                        -not [string]::IsNullOrWhiteSpace([string] $_.path)))
             }).Count -eq @($publicMenu.data).Count
-        Test-StrictCondition "Strict public menu $publicMenuCode items" $validPublicMenuItems "Expected public menu target fields and children."
+        Test-StrictCondition "Strict public menu $publicMenuCode items" $validPublicMenuItems "Expected public PAGE, URL, or APPLICATION target fields and children."
     }
 
     $unauthenticatedMe = Invoke-CmsApi "Unauthenticated /me" "GET" "/api/auth/me" 401

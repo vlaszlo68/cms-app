@@ -3,8 +3,8 @@ package hu.laci.cms.backend.service.menu;
 import hu.laci.cms.backend.dao.menu.MenuDao;
 import hu.laci.cms.backend.dao.menu.MenuItemDao;
 import hu.laci.cms.backend.dao.page.PageDao;
-import hu.laci.cms.backend.dao.application.ApplicationDao;
-import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.dao.application.SiteApplicationDao;
+import hu.laci.cms.backend.model.application.SiteApplication;
 import hu.laci.cms.backend.service.application.ApplicationDefinition;
 import hu.laci.cms.backend.service.application.ApplicationDefinitionRegistry;
 import hu.laci.cms.backend.dto.menu.PublicMenuItemResponse;
@@ -110,15 +110,15 @@ class MenuItemServicePublicMenuTest {
         MenuDao menuDao = Mockito.mock(MenuDao.class);
         MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
         PageDao pageDao = Mockito.mock(PageDao.class);
-        ApplicationDao applicationDao = Mockito.mock(ApplicationDao.class);
-        Application active = new Application(50L, SITE, "TEST_APP", "Test", true);
-        Application inactive = new Application(51L, SITE, "TEST_APP", "Inactive", false);
+        SiteApplicationDao applicationDao = Mockito.mock(SiteApplicationDao.class);
+        SiteApplication active = new SiteApplication(50L, SITE, "TEST_APP", "Test", true);
+        SiteApplication inactive = new SiteApplication(51L, SITE, "TEST_APP", "Inactive", false);
         MenuItem activeItem = new MenuItem(1L, 10L, null, null, MenuItemTargetType.APPLICATION, null,
                 "Application", 1, true);
-        activeItem.setApplication(active);
+        activeItem.setSiteApplication(active);
         MenuItem inactiveItem = new MenuItem(2L, 10L, null, null, MenuItemTargetType.APPLICATION, null,
                 "Inactive", 2, true);
-        inactiveItem.setApplication(inactive);
+        inactiveItem.setSiteApplication(inactive);
         Mockito.when(menuDao.findBySiteAndCode(SITE, "MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
         Mockito.when(menuItemDao.findByMenuId(10L)).thenReturn(List.of(activeItem, inactiveItem));
         Mockito.when(pageDao.findPublishedContentBySiteAndIds(SITE, Set.of())).thenReturn(List.of());
@@ -139,7 +139,7 @@ class MenuItemServicePublicMenuTest {
         MenuDao menuDao = Mockito.mock(MenuDao.class);
         MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
         PageDao pageDao = Mockito.mock(PageDao.class);
-        ApplicationDao applicationDao = Mockito.mock(ApplicationDao.class);
+        SiteApplicationDao applicationDao = Mockito.mock(SiteApplicationDao.class);
         Mockito.when(menuDao.findBySiteAndId(SITE, 10L)).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
         Mockito.when(applicationDao.findBySiteAndId(SITE, 99L)).thenReturn(Optional.empty());
         MenuItemService service = new MenuItemService(menuDao, menuItemDao, pageDao, applicationDao,

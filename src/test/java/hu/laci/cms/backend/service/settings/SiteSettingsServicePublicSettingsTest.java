@@ -27,6 +27,7 @@ class SiteSettingsServicePublicSettingsTest {
         PublicSiteSettingsResponse response = new SiteSettingsService(siteSettingsDao, mediaDao)
                 .getPublicSettings(SITE);
 
+        assertEquals("STANDARD", response.getThemeCode());
         assertNull(response.getSiteName());
         assertNull(response.getLogoMediaId());
         assertNull(response.getFooterText());
@@ -63,5 +64,6 @@ class SiteSettingsServicePublicSettingsTest {
         assertEquals("+36 1 234", response.getPhone());
         assertEquals("https://facebook.example", response.getFacebookUrl());
         assertEquals("https://linkedin.example", response.getLinkedinUrl());
+        assertEquals("STANDARD", response.getThemeCode());
     }
 }

@@ -9,7 +9,7 @@ import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dao.template.TemplateDao;
-import hu.laci.cms.backend.dao.application.ApplicationDao;
+import hu.laci.cms.backend.dao.application.SiteApplicationDao;
 import hu.laci.cms.backend.dao.user.UserDao;
 import hu.laci.cms.backend.dto.auth.*;
 import hu.laci.cms.backend.config.session.AppSession;
@@ -17,7 +17,7 @@ import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.service.AuthService;
 import hu.laci.cms.backend.service.AuthServiceException;
-import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.model.application.SiteApplication;
 import hu.laci.cms.backend.model.media.Media;
 import hu.laci.cms.backend.model.menu.Menu;
 import hu.laci.cms.backend.model.menu.MenuItem;
@@ -36,8 +36,8 @@ import hu.laci.cms.backend.service.site.SiteService;
 import hu.laci.cms.backend.service.site.SiteServiceException;
 import hu.laci.cms.backend.service.application.ApplicationDefinitionRegistry;
 import hu.laci.cms.backend.service.application.ApplicationPlatformRegistry;
-import hu.laci.cms.backend.service.application.ApplicationService;
-import hu.laci.cms.backend.service.application.ApplicationServiceException;
+import hu.laci.cms.backend.service.application.SiteApplicationService;
+import hu.laci.cms.backend.service.application.SiteApplicationServiceException;
 import hu.laci.cms.backend.service.function.FunctionRegistry;
 import hu.laci.cms.backend.service.function.PublicFunctionException;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
@@ -61,7 +61,7 @@ public class PublicSiteServlet extends JsonServletSupport {
     private PageService pageService;
     private MenuItemService menuItemService;
     private SiteSettingsService siteSettingsService;
-    private ApplicationService applicationService;
+    private SiteApplicationService applicationService;
     private PublicFunctionServlet publicFunctionServlet;
     private AuthService authService;
 
@@ -75,7 +75,7 @@ public class PublicSiteServlet extends JsonServletSupport {
         MenuItemDao menuItemDao = DaoRegistry.getDao(MenuItem.class);
         SiteSettingsDao settingsDao = DaoRegistry.getDao(SiteSettings.class);
         MediaDao mediaDao = DaoRegistry.getDao(Media.class);
-        ApplicationDao applicationDao = DaoRegistry.getDao(Application.class);
+        SiteApplicationDao applicationDao = DaoRegistry.getDao(SiteApplication.class);
         UserDao userDao = DaoRegistry.getDao(User.class);
         ApplicationPlatformRegistry platformRegistry = ApplicationPlatformRegistry.production();
         ApplicationDefinitionRegistry applicationRegistry = platformRegistry.getApplicationDefinitions();
@@ -83,7 +83,7 @@ public class PublicSiteServlet extends JsonServletSupport {
         pageService = new PageService(pageDao, templateDao, pageBlockDao);
         menuItemService = new MenuItemService(menuDao, menuItemDao, pageDao, applicationDao, applicationRegistry);
         siteSettingsService = new SiteSettingsService(settingsDao, mediaDao);
-        applicationService = new ApplicationService(applicationDao, applicationRegistry);
+        applicationService = new SiteApplicationService(applicationDao, applicationRegistry);
         publicFunctionServlet = new PublicFunctionServlet(siteService, applicationService,
                 platformRegistry.getPublicFunctions());
         authService = new AuthService(userDao);
@@ -132,8 +132,8 @@ public class PublicSiteServlet extends JsonServletSupport {
             writeErrorResponse(response, status, e.getCode(), e.getMessage());
         } catch (SiteSettingsServiceException e) {
             writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, e.getCode(), e.getMessage());
-        } catch (ApplicationServiceException e) {
-            int status = ApplicationService.APPLICATION_NOT_FOUND.equals(e.getCode()) ? HttpServletResponse.SC_NOT_FOUND
+        } catch (SiteApplicationServiceException e) {
+            int status = SiteApplicationService.APPLICATION_NOT_FOUND.equals(e.getCode()) ? HttpServletResponse.SC_NOT_FOUND
                     : HttpServletResponse.SC_BAD_REQUEST;
             writeErrorResponse(response, status, e.getCode(), e.getMessage());
         }
@@ -160,8 +160,8 @@ public class PublicSiteServlet extends JsonServletSupport {
             writeJsonResponse(response, HttpServletResponse.SC_OK, data);
         } catch (BadRequestException e) {
             writeErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
-        } catch (SiteServiceException | ApplicationServiceException e) {
-            writeErrorResponse(response, HttpServletResponse.SC_NOT_FOUND, e instanceof SiteServiceException ? ((SiteServiceException) e).getCode() : ((ApplicationServiceException) e).getCode(), "Resource not found.");
+        } catch (SiteServiceException | SiteApplicationServiceException e) {
+            writeErrorResponse(response, HttpServletResponse.SC_NOT_FOUND, e instanceof SiteServiceException ? ((SiteServiceException) e).getCode() : ((SiteApplicationServiceException) e).getCode(), "Resource not found.");
         } catch (PublicFunctionException e) {
             int status = "AUTH_REQUIRED".equals(e.getCode()) || "INVALID_CREDENTIALS".equals(e.getCode()) ? HttpServletResponse.SC_UNAUTHORIZED
                     : "FORBIDDEN".equals(e.getCode()) || "CSRF_INVALID".equals(e.getCode()) ? HttpServletResponse.SC_FORBIDDEN

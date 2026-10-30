@@ -1,7 +1,7 @@
 package hu.laci.cms.backend.servlet.site;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import hu.laci.cms.backend.model.application.Application;
+import hu.laci.cms.backend.model.application.SiteApplication;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.dao.common.DaoRegistry;
@@ -9,7 +9,7 @@ import hu.laci.cms.backend.config.session.AppSession;
 import hu.laci.cms.backend.config.session.AppSessionManager;
 import hu.laci.cms.backend.dto.auth.AuthenticatedUser;
 import hu.laci.cms.backend.servlet.support.CsrfTokenSupport;
-import hu.laci.cms.backend.service.application.ApplicationService;
+import hu.laci.cms.backend.service.application.SiteApplicationService;
 import hu.laci.cms.backend.service.function.*;
 import hu.laci.cms.backend.service.site.SiteService;
 import org.slf4j.Logger;
@@ -26,7 +26,7 @@ import java.util.Objects;
 public class PublicFunctionServlet {
     public static final String FUNCTION_NOT_FOUND="FUNCTION_NOT_FOUND", INVALID_FUNCTION_INPUT="INVALID_FUNCTION_INPUT", FUNCTION_EXECUTION_FAILED="FUNCTION_EXECUTION_FAILED";
     private static final Logger LOGGER=LoggerFactory.getLogger(PublicFunctionServlet.class);
-    private final SiteService siteService; private final ApplicationService applicationService; private final FunctionRegistry registry; private final FunctionAuthorizationService authorizationService;
+    private final SiteService siteService; private final SiteApplicationService applicationService; private final FunctionRegistry registry; private final FunctionAuthorizationService authorizationService;
     /**
      * Creates a dispatcher using only trusted service and registry dependencies.
      *
@@ -34,8 +34,8 @@ public class PublicFunctionServlet {
      * @param applicationService resolves active supported Site Applications
      * @param registry resolves exact application/function handlers
      */
-    public PublicFunctionServlet(SiteService siteService,ApplicationService applicationService,FunctionRegistry registry){this(siteService,applicationService,registry,new FunctionAuthorizationService(DaoRegistry.getDao(User.class)));}
-    public PublicFunctionServlet(SiteService siteService,ApplicationService applicationService,FunctionRegistry registry,FunctionAuthorizationService authorizationService){this.siteService=Objects.requireNonNull(siteService);this.applicationService=Objects.requireNonNull(applicationService);this.registry=Objects.requireNonNull(registry);this.authorizationService=Objects.requireNonNull(authorizationService);}
+    public PublicFunctionServlet(SiteService siteService,SiteApplicationService applicationService,FunctionRegistry registry){this(siteService,applicationService,registry,new FunctionAuthorizationService(DaoRegistry.getDao(User.class)));}
+    public PublicFunctionServlet(SiteService siteService,SiteApplicationService applicationService,FunctionRegistry registry,FunctionAuthorizationService authorizationService){this.siteService=Objects.requireNonNull(siteService);this.applicationService=Objects.requireNonNull(applicationService);this.registry=Objects.requireNonNull(registry);this.authorizationService=Objects.requireNonNull(authorizationService);}
     /**
      * Resolves request context, validates a JSON object payload, and invokes an explicit handler.
      *
@@ -57,16 +57,16 @@ public class PublicFunctionServlet {
     }
     private Object dispatchInternal(String siteCode,String applicationCode,String functionCode,Reader body,Optional<AuthenticatedUser> principal,AppSession session){return dispatchInternal(siteCode,applicationCode,functionCode,body,principal,session,null);}
     private Object dispatchInternal(String siteCode,String applicationCode,String functionCode,Reader body,Optional<AuthenticatedUser> principal,AppSession session,HttpServletRequest request){
-        Site site=siteService.requireActiveSite(siteCode); Application application=applicationService.requirePublic(site,applicationCode);
-        FunctionRegistry.FunctionDefinition definition=registry.findDefinition(application.getCode(),functionCode).orElseThrow(()->new PublicFunctionException(FUNCTION_NOT_FOUND,"Function not found."));
-        AccessPolicy applicationPolicy=applicationService.accessPolicy(application);
+        Site site=siteService.requireActiveSite(siteCode); SiteApplication siteApplication=applicationService.requirePublic(site,applicationCode);
+        FunctionRegistry.FunctionDefinition definition=registry.findDefinition(siteApplication.getApplicationCode(),functionCode).orElseThrow(()->new PublicFunctionException(FUNCTION_NOT_FOUND,"Function not found."));
+        AccessPolicy applicationPolicy=applicationService.accessPolicy(siteApplication);
         if (applicationPolicy==null) applicationPolicy=AccessPolicy.PUBLIC;
         authorizationService.authorize(applicationPolicy,principal);
         Optional<AuthenticatedUser> authorized=authorizationService.authorize(definition.accessPolicy(),principal);
         if ((applicationPolicy!=AccessPolicy.PUBLIC || definition.accessPolicy()!=AccessPolicy.PUBLIC)
                 && (session==null || request==null || !validCsrf(session,request))) throw new PublicFunctionException("CSRF_INVALID","Invalid CSRF token.");
         JsonObject payload=parseObject(body);
-        try { Object result=definition.handler().execute(new FunctionContext(site,application,authorized),payload); LOGGER.info("Public function siteCode={} applicationCode={} functionCode={} userId={} success=true",siteCode,applicationCode,functionCode,authorized.map(AuthenticatedUser::getId).orElse(null));return result; }
+        try { Object result=definition.handler().execute(new FunctionContext(site,siteApplication,authorized),payload); LOGGER.info("Public function siteCode={} applicationCode={} functionCode={} userId={} success=true",siteCode,applicationCode,functionCode,authorized.map(AuthenticatedUser::getId).orElse(null));return result; }
         catch(PublicFunctionException e){LOGGER.info("Public function siteCode={} applicationCode={} functionCode={} success=false",siteCode,applicationCode,functionCode);throw e;}
         catch(RuntimeException e){LOGGER.warn("Public function siteCode={} applicationCode={} functionCode={} success=false",siteCode,applicationCode,functionCode);throw new PublicFunctionException(FUNCTION_EXECUTION_FAILED,"Function execution failed.");}
     }

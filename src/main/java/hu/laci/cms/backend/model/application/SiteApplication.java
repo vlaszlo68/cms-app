@@ -5,21 +5,21 @@ import hu.laci.cms.backend.dao.common.annotations.DbTable;
 import hu.laci.cms.backend.model.common.AuditableEntity;
 import hu.laci.cms.backend.model.site.Site;
 
-/** Site-owned configuration for one explicitly supported public application type. */
-@DbTable("applications")
-public class Application extends AuditableEntity {
+/** Site-specific enablement and display configuration for a global application definition. */
+@DbTable("site_applications")
+public class SiteApplication extends AuditableEntity {
     @DbColumn("site_id") private Site site;
-    @DbColumn("code") private String code;
+    @DbColumn("application_code") private String applicationCode;
     @DbColumn("name") private String name;
     @DbColumn("active") private boolean active = true;
-    public Application() { }
-    public Application(Long id, Site site, String code, String name, boolean active) {
-        setId(id); this.site = site; this.code = code; this.name = name; this.active = active;
+    public SiteApplication() { }
+    public SiteApplication(Long id, Site site, String applicationCode, String name, boolean active) {
+        setId(id); this.site = site; this.applicationCode = applicationCode; this.name = name; this.active = active;
     }
     public Site getSite() { return site; }
     public void setSite(Site site) { this.site = site; }
-    public String getCode() { return code; }
-    public void setCode(String code) { this.code = code; }
+    public String getApplicationCode() { return applicationCode; }
+    public void setApplicationCode(String applicationCode) { this.applicationCode = applicationCode; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public boolean isActive() { return active; }

@@ -15,6 +15,14 @@ import java.util.Optional;
 public interface PageDao extends CrudDao<Page, PageProperty> {
 
     /**
+     * Counts pages directly owned by a Site.
+     *
+     * @param site owning persisted Site
+     * @return number of pages owned by the Site
+     */
+    long countBySite(Site site);
+
+    /**
      * Lists pages owned by one Site.
      *
      * @param site owning Site with a persisted id

@@ -16,6 +16,12 @@ public class MenuDaoImpl extends BaseDao<Menu, MenuProperty> implements MenuDao 
     }
 
     @Override
+    public long countBySite(Site site) {
+        return findCustomOne("countMenusBySite", "SELECT COUNT(*) AS row_count FROM menus WHERE site_id = ?",
+                List.of(site), resultSet -> resultSet.getLong("row_count"), "Failed to count Site menus.").orElse(0L);
+    }
+
+    @Override
     public List<Menu> findAllBySite(Site site) {
         return findAll(QuerySpec.<MenuProperty>create()
                 .where(MenuProperty.SITE).equalsTo(site)

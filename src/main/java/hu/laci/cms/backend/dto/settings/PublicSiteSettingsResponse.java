@@ -8,6 +8,7 @@ package hu.laci.cms.backend.dto.settings;
  */
 public class PublicSiteSettingsResponse {
 
+    private final String themeCode;
     private final String siteName;
     private final Long logoMediaId;
     private final String footerText;
@@ -29,6 +30,24 @@ public class PublicSiteSettingsResponse {
      */
     public PublicSiteSettingsResponse(String siteName, Long logoMediaId, String footerText, String contactEmail,
                                       String phone, String facebookUrl, String linkedinUrl) {
+        this(null, siteName, logoMediaId, footerText, contactEmail, phone, facebookUrl, linkedinUrl);
+    }
+
+    /**
+     * Creates the public layout settings response including the Site-level visual theme identifier.
+     *
+     * @param themeCode trusted Site-level logical theme identifier
+     * @param siteName website name
+     * @param logoMediaId optional logo media id
+     * @param footerText optional footer text
+     * @param contactEmail optional public contact email
+     * @param phone optional public phone number
+     * @param facebookUrl optional Facebook URL
+     * @param linkedinUrl optional LinkedIn URL
+     */
+    public PublicSiteSettingsResponse(String themeCode, String siteName, Long logoMediaId, String footerText,
+                                      String contactEmail, String phone, String facebookUrl, String linkedinUrl) {
+        this.themeCode = themeCode;
         this.siteName = siteName;
         this.logoMediaId = logoMediaId;
         this.footerText = footerText;
@@ -37,6 +56,9 @@ public class PublicSiteSettingsResponse {
         this.facebookUrl = facebookUrl;
         this.linkedinUrl = linkedinUrl;
     }
+
+    /** @return trusted Site-level logical theme identifier */
+    public String getThemeCode() { return themeCode; }
 
     public String getSiteName() {
         return siteName;
