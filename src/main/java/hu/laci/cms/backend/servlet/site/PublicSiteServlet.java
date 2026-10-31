@@ -167,6 +167,9 @@ public class PublicSiteServlet extends JsonServletSupport {
                     : "FORBIDDEN".equals(e.getCode()) || "CSRF_INVALID".equals(e.getCode()) ? HttpServletResponse.SC_FORBIDDEN
                     : PublicFunctionServlet.INVALID_FUNCTION_INPUT.equals(e.getCode()) ? HttpServletResponse.SC_BAD_REQUEST
                     : PublicFunctionServlet.FUNCTION_NOT_FOUND.equals(e.getCode()) ? HttpServletResponse.SC_NOT_FOUND
+                    : "EXTERNAL_SERVICE_RATE_LIMITED".equals(e.getCode()) ? 429
+                    : "EXTERNAL_SERVICE_TIMEOUT".equals(e.getCode()) || "EXTERNAL_SERVICE_UNAVAILABLE".equals(e.getCode()) ? HttpServletResponse.SC_SERVICE_UNAVAILABLE
+                    : "EXTERNAL_SERVICE_INVALID_RESPONSE".equals(e.getCode()) || "EXTERNAL_SERVICE_AUTHENTICATION".equals(e.getCode()) || "EXTERNAL_SERVICE_REJECTED".equals(e.getCode()) ? HttpServletResponse.SC_BAD_GATEWAY
                     : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
             writeErrorResponse(response, status, e.getCode(), e.getMessage());
         } catch (AuthServiceException e) {

@@ -57,12 +57,12 @@
 
     <context-param>
         <param-name>captcha.login.enabled</param-name>
-        <param-value>false</param-value>
+        <param-value>true</param-value>
     </context-param>
 
     <context-param>
         <param-name>captcha.registration.enabled</param-name>
-        <param-value>false</param-value>
+        <param-value>true</param-value>
     </context-param>
 
     <context-param>
@@ -107,6 +107,11 @@
         <param-value>media-storage</param-value>
     </context-param>
 
+    <context-param><param-name>external.http.connectTimeoutSeconds</param-name><param-value>3</param-value></context-param>
+    <context-param><param-name>external.http.requestTimeoutSeconds</param-name><param-value>5</param-value></context-param>
+    <context-param><param-name>openMeteo.geocoding.baseUrl</param-name><param-value>https://geocoding-api.open-meteo.com</param-value></context-param>
+    <context-param><param-name>openMeteo.forecast.baseUrl</param-name><param-value>https://api.open-meteo.com</param-value></context-param>
+
     <listener>
         <listener-class>hu.laci.cms.backend.config.database.DatabaseConfigListener</listener-class>
     </listener>
@@ -125,6 +130,10 @@
 
     <listener>
         <listener-class>hu.laci.cms.backend.config.session.AppSessionConfigListener</listener-class>
+    </listener>
+
+    <listener>
+        <listener-class>hu.laci.cms.backend.config.external.ExternalApiConfigListener</listener-class>
     </listener>
 
     <listener>
