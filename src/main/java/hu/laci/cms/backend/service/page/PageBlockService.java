@@ -2,6 +2,11 @@ package hu.laci.cms.backend.service.page;
 
 import hu.laci.cms.backend.dao.page.PageBlockDao;
 import hu.laci.cms.backend.dao.page.PageDao;
+import hu.laci.cms.backend.dao.content.ContentCollectionDao;
+import hu.laci.cms.backend.model.content.ContentCollection;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import hu.laci.cms.backend.dto.page.CreatePageBlockRequest;
 import hu.laci.cms.backend.dto.page.PageBlockRequestBase;
 import hu.laci.cms.backend.dto.page.PageBlockResponse;
@@ -23,10 +28,12 @@ public class PageBlockService {
 
     private final PageDao pageDao;
     private final PageBlockDao pageBlockDao;
+    private final ContentCollectionDao collectionDao;
 
-    public PageBlockService(PageDao pageDao, PageBlockDao pageBlockDao) {
+    public PageBlockService(PageDao pageDao, PageBlockDao pageBlockDao, ContentCollectionDao collectionDao) {
         this.pageDao = Objects.requireNonNull(pageDao, "pageDao must not be null");
         this.pageBlockDao = Objects.requireNonNull(pageBlockDao, "pageBlockDao must not be null");
+        this.collectionDao = Objects.requireNonNull(collectionDao, "collectionDao must not be null");
     }
 
     public List<PageBlockResponse> listBlocks(Site site, Long pageId) {
@@ -45,17 +52,17 @@ public class PageBlockService {
     }
 
     public PageBlockResponse createBlock(Site site, Long pageId, CreatePageBlockRequest request) {
-        validate(request);
+        validate(site, request);
         requirePathPage(request.getPageId(), pageId);
         requirePage(site, pageId);
         PageBlock block = new PageBlock(null, pageId, request.getBlockType().trim(),
                 trimToNull(request.getTitle()), defaultOrder(request.getSortOrder()),
-                request.getVisible() == null || request.getVisible(), trimToNull(request.getConfigJson()));
+                request.getVisible() == null || request.getVisible(), normalizedConfig(request));
         return toResponse(pageBlockDao.create(block));
     }
 
     public PageBlockResponse updateBlock(Site site, Long pageId, Long id, UpdatePageBlockRequest request) {
-        validate(request);
+        validate(site, request);
         requirePathPage(request.getPageId(), pageId);
         requirePage(site, pageId);
         PageBlock block = loadBlock(pageId, id);
@@ -64,7 +71,7 @@ public class PageBlockService {
         block.setTitle(trimToNull(request.getTitle()));
         block.setSortOrder(defaultOrder(request.getSortOrder()));
         block.setVisible(request.getVisible() == null || request.getVisible());
-        block.setConfigJson(trimToNull(request.getConfigJson()));
+        block.setConfigJson(normalizedConfig(request));
         return toResponse(pageBlockDao.update(block));
     }
 
@@ -100,7 +107,7 @@ public class PageBlockService {
         }
     }
 
-    private static void validate(PageBlockRequestBase request) {
+    private void validate(Site site, PageBlockRequestBase request) {
         if (request == null) {
             throw new PageBlockServiceException(VALIDATION_ERROR, "Request body is required.");
         }
@@ -110,6 +117,37 @@ public class PageBlockService {
         if (request.getBlockType() == null || request.getBlockType().isBlank()) {
             throw new PageBlockServiceException(VALIDATION_ERROR, "blockType is required.");
         }
+        if ("CONTENT_COLLECTION".equals(request.getBlockType().trim())) validateCollectionConfig(site, request.getConfigJson());
+    }
+
+    private void validateCollectionConfig(Site site, String configJson) {
+        try {
+            JsonElement parsed = JsonParser.parseString(configJson == null ? "" : configJson);
+            if (!parsed.isJsonObject()) throw invalidCollectionConfig();
+            JsonObject config = parsed.getAsJsonObject();
+            if (!config.has("collectionCode") || !config.get("collectionCode").isJsonPrimitive() || config.get("collectionCode").getAsString().isBlank()) throw invalidCollectionConfig();
+            if (config.has("displayMode") && (!config.get("displayMode").isJsonPrimitive() || !("CARDS".equals(config.get("displayMode").getAsString()) || "COMPACT_LIST".equals(config.get("displayMode").getAsString())))) throw invalidCollectionConfig();
+            if (config.has("paginationEnabled") && (!config.get("paginationEnabled").isJsonPrimitive() || !config.get("paginationEnabled").getAsJsonPrimitive().isBoolean())) throw invalidCollectionConfig();
+            String code = config.get("collectionCode").getAsString().trim().toUpperCase(java.util.Locale.ROOT);
+            ContentCollection collection = collectionDao.findBySiteAndCode(site, code).orElseThrow(this::invalidCollectionConfig);
+        } catch (RuntimeException exception) { if (exception instanceof PageBlockServiceException) throw exception; throw invalidCollectionConfig(); }
+    }
+    private PageBlockServiceException invalidCollectionConfig() { return new PageBlockServiceException(VALIDATION_ERROR, "Invalid content collection block configuration."); }
+
+    private String normalizedConfig(PageBlockRequestBase request) {
+        String configJson = trimToNull(request.getConfigJson());
+        if (!"CONTENT_COLLECTION".equals(request.getBlockType().trim())) {
+            return configJson;
+        }
+        JsonObject config = JsonParser.parseString(configJson).getAsJsonObject();
+        config.addProperty("collectionCode", config.get("collectionCode").getAsString().trim().toUpperCase(java.util.Locale.ROOT));
+        if (!config.has("displayMode")) {
+            config.addProperty("displayMode", "CARDS");
+        }
+        if (!config.has("paginationEnabled")) {
+            config.addProperty("paginationEnabled", true);
+        }
+        return config.toString();
     }
 
     private PageBlockResponse toResponse(PageBlock block) {

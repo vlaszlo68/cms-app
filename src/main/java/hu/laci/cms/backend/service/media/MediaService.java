@@ -1,6 +1,7 @@
 package hu.laci.cms.backend.service.media;
 
 import hu.laci.cms.backend.dao.media.MediaDao;
+import hu.laci.cms.backend.dao.content.ContentItemDao;
 import hu.laci.cms.backend.dto.media.MediaResponse;
 import hu.laci.cms.backend.dto.media.UploadMediaResponse;
 import hu.laci.cms.backend.model.common.QuerySpec;
@@ -21,17 +22,26 @@ public class MediaService {
     public static final String VALIDATION_ERROR = "VALIDATION_ERROR";
     public static final String MEDIA_NOT_FOUND = "MEDIA_NOT_FOUND";
     public static final String STORAGE_ERROR = "STORAGE_ERROR";
+    public static final String MEDIA_IN_USE = "MEDIA_IN_USE";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MediaService.class);
 
     private final MediaDao mediaDao;
     private final MediaStorageService mediaStorageService;
     private final MediaStorageType storageType;
+    private final ContentItemDao contentItemDao;
 
     public MediaService(MediaDao mediaDao, MediaStorageService mediaStorageService, MediaStorageType storageType) {
+        this(mediaDao, mediaStorageService, storageType, null);
+    }
+
+    /** Creates the media service with an optional Content Foundation reference guard. */
+    public MediaService(MediaDao mediaDao, MediaStorageService mediaStorageService, MediaStorageType storageType,
+                        ContentItemDao contentItemDao) {
         this.mediaDao = Objects.requireNonNull(mediaDao, "mediaDao must not be null");
         this.mediaStorageService = Objects.requireNonNull(mediaStorageService, "mediaStorageService must not be null");
         this.storageType = Objects.requireNonNull(storageType, "storageType must not be null");
+        this.contentItemDao = contentItemDao;
     }
 
     public List<MediaResponse> listMedia(Site site, boolean activeOnly) {
@@ -53,6 +63,20 @@ public class MediaService {
             return new MediaContent(media.getOriginalFileName(), media.getMimeType(), content.length, content);
         } catch (RuntimeException e) {
             throw new MediaServiceException(STORAGE_ERROR, "Failed to load media file.", e);
+        }
+    }
+
+    /** Loads only active Site-owned media for an anonymous public response. */
+    public MediaContent getPublicMediaContent(Site site, Long id) {
+        Media media = loadMedia(site, id);
+        if (!Boolean.TRUE.equals(media.getActive())) {
+            throw new MediaServiceException(MEDIA_NOT_FOUND, "Media not found.");
+        }
+        try {
+            byte[] content = mediaStorageService.load(media.getStoragePath());
+            return new MediaContent(media.getOriginalFileName(), media.getMimeType(), content.length, content);
+        } catch (RuntimeException exception) {
+            throw new MediaServiceException(STORAGE_ERROR, "Failed to load media file.", exception);
         }
     }
 
@@ -95,6 +119,9 @@ public class MediaService {
 
     public boolean deleteMedia(Site site, Long id) {
         Media media = loadMedia(site, id);
+        if (contentItemDao != null && contentItemDao.countByFeaturedMediaId(media.getId()) > 0) {
+            throw new MediaServiceException(MEDIA_IN_USE, "Media is referenced by content items.");
+        }
         try {
             mediaStorageService.delete(media.getStoragePath());
             boolean deleted = mediaDao.delete(media);

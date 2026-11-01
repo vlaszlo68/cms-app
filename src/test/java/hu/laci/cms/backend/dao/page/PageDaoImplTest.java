@@ -180,7 +180,7 @@ class PageDaoImplTest {
     }
 
     @Test
-    void findPublishedContentByIdsExcludesArchivedAndBlockPages() {
+    void findPublishedContentByIdsIncludesPublishedContentAndBlockPagesButExcludesArchivedPages() {
         Page publishedContent = pageDao.create(createPage("public", PageType.CONTENT, PageStatus.PUBLISHED));
         Page archivedContent = pageDao.create(createPage("archived", PageType.CONTENT, PageStatus.ARCHIVED));
         Page publishedBlock = pageDao.create(createPage("block", PageType.BLOCK, PageStatus.PUBLISHED));
@@ -188,7 +188,7 @@ class PageDaoImplTest {
         List<Page> pages = pageDao.findPublishedContentBySiteAndIds(site, List.of(
                 publishedContent.getId(), archivedContent.getId(), publishedBlock.getId()));
 
-        assertEquals(List.of(publishedContent.getId()), pages.stream().map(Page::getId).toList());
+        assertEquals(List.of(publishedContent.getId(), publishedBlock.getId()), pages.stream().map(Page::getId).toList());
     }
 
     @Test

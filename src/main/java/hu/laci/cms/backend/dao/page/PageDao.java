@@ -57,11 +57,11 @@ public interface PageDao extends CrudDao<Page, PageProperty> {
     Optional<Page> findHomepageBySite(Site site);
 
     /**
-     * Finds pages that can be rendered by the anonymous public site from a bounded id set.
+     * Finds published CONTENT and BLOCK pages that can be rendered by the anonymous public site from a bounded id set.
      *
      * @param site owning Site with a persisted id
      * @param pageIds page ids referenced by public menu items
-     * @return published content pages from the supplied ids and Site
+     * @return published public pages from the supplied ids and Site
      */
     List<Page> findPublishedContentBySiteAndIds(Site site, Collection<Long> pageIds);
 }

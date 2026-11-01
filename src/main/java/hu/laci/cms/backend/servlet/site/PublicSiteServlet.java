@@ -10,7 +10,13 @@ import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dao.application.SiteApplicationDao;
+import hu.laci.cms.backend.dao.content.ContentItemDao;
+import hu.laci.cms.backend.dao.content.ContentCollectionDao;
+import hu.laci.cms.backend.dao.content.TagDao;
 import hu.laci.cms.backend.dao.user.UserDao;
+import hu.laci.cms.backend.dao.content.ContentItemDao;
+import hu.laci.cms.backend.dao.content.ContentCollectionDao;
+import hu.laci.cms.backend.dao.content.TagDao;
 import hu.laci.cms.backend.dto.auth.*;
 import hu.laci.cms.backend.config.session.AppSession;
 import hu.laci.cms.backend.config.session.AppSessionManager;
@@ -26,6 +32,9 @@ import hu.laci.cms.backend.model.page.PageBlock;
 import hu.laci.cms.backend.model.settings.SiteSettings;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.template.Template;
+import hu.laci.cms.backend.model.content.ContentItem;
+import hu.laci.cms.backend.model.content.ContentCollection;
+import hu.laci.cms.backend.model.content.Tag;
 import hu.laci.cms.backend.service.menu.MenuItemService;
 import hu.laci.cms.backend.service.menu.MenuServiceException;
 import hu.laci.cms.backend.service.page.PageService;
@@ -34,10 +43,19 @@ import hu.laci.cms.backend.service.settings.SiteSettingsService;
 import hu.laci.cms.backend.service.settings.SiteSettingsServiceException;
 import hu.laci.cms.backend.service.site.SiteService;
 import hu.laci.cms.backend.service.site.SiteServiceException;
+import hu.laci.cms.backend.service.content.PublicContentService;
+import hu.laci.cms.backend.service.content.ContentServiceException;
+import hu.laci.cms.backend.service.media.MediaService;
+import hu.laci.cms.backend.service.media.MediaServiceException;
+import hu.laci.cms.backend.service.media.MediaContent;
+import hu.laci.cms.backend.config.media.MediaStorageConfig;
+import hu.laci.cms.backend.config.media.MediaStorageServiceFactory;
 import hu.laci.cms.backend.service.application.ApplicationDefinitionRegistry;
 import hu.laci.cms.backend.service.application.ApplicationPlatformRegistry;
 import hu.laci.cms.backend.service.application.SiteApplicationService;
 import hu.laci.cms.backend.service.application.SiteApplicationServiceException;
+import hu.laci.cms.backend.service.content.PublicContentService;
+import hu.laci.cms.backend.service.content.ContentServiceException;
 import hu.laci.cms.backend.service.function.FunctionRegistry;
 import hu.laci.cms.backend.service.function.PublicFunctionException;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
@@ -64,6 +82,8 @@ public class PublicSiteServlet extends JsonServletSupport {
     private SiteApplicationService applicationService;
     private PublicFunctionServlet publicFunctionServlet;
     private AuthService authService;
+    private PublicContentService publicContentService;
+    private MediaService publicMediaService;
 
     @Override
     public void init() throws ServletException {
@@ -77,6 +97,9 @@ public class PublicSiteServlet extends JsonServletSupport {
         MediaDao mediaDao = DaoRegistry.getDao(Media.class);
         SiteApplicationDao applicationDao = DaoRegistry.getDao(SiteApplication.class);
         UserDao userDao = DaoRegistry.getDao(User.class);
+        ContentItemDao contentItemDao = DaoRegistry.getDao(ContentItem.class);
+        ContentCollectionDao collectionDao = DaoRegistry.getDao(ContentCollection.class);
+        TagDao tagDao = DaoRegistry.getDao(Tag.class);
         ApplicationPlatformRegistry platformRegistry = ApplicationPlatformRegistry.production();
         ApplicationDefinitionRegistry applicationRegistry = platformRegistry.getApplicationDefinitions();
         siteService = new SiteService(siteDao);
@@ -87,6 +110,10 @@ public class PublicSiteServlet extends JsonServletSupport {
         publicFunctionServlet = new PublicFunctionServlet(siteService, applicationService,
                 platformRegistry.getPublicFunctions());
         authService = new AuthService(userDao);
+        publicContentService = new PublicContentService(contentItemDao, collectionDao, tagDao);
+        MediaStorageConfig mediaStorageConfig = MediaStorageConfig.getCurrent();
+        publicMediaService = new MediaService(mediaDao, MediaStorageServiceFactory.create(mediaStorageConfig),
+                mediaStorageConfig.getStorageType());
     }
 
     @Override
@@ -108,6 +135,18 @@ public class PublicSiteServlet extends JsonServletSupport {
                 data = menuItemService.getPublicMenu(site, path.get(2));
             } else if (path.size() == 3 && "applications".equals(path.get(1))) {
                 data = applicationService.publicResponse(applicationService.requirePublic(site, path.get(2)));
+            } else if (path.size() == 3 && "content-collections".equals(path.get(1))) {
+                data = publicContentService.collection(site, path.get(2), request.getParameter("page"), request.getParameter("pageSize"));
+                writeJsonResponseIncludingNulls(response, HttpServletResponse.SC_OK, data);
+                return;
+            } else if (path.size() == 4 && "content".equals(path.get(1))) {
+                data = publicContentService.article(site, path.get(2), path.get(3));
+                writeJsonResponseIncludingNulls(response, HttpServletResponse.SC_OK, data);
+                return;
+            } else if (path.size() == 4 && "media".equals(path.get(1)) && "content".equals(path.get(3))) {
+                MediaContent mediaContent = publicMediaService.getPublicMediaContent(site, parseId(path.get(2)));
+                writeMediaContent(response, mediaContent);
+                return;
             } else if (path.size() == 2 && "site-settings".equals(path.get(1))) {
                 writeJsonResponseIncludingNulls(response, HttpServletResponse.SC_OK,
                         siteSettingsService.getPublicSettings(site));
@@ -126,6 +165,14 @@ public class PublicSiteServlet extends JsonServletSupport {
             int status = PageService.PAGE_NOT_FOUND.equals(e.getCode())
                     ? HttpServletResponse.SC_NOT_FOUND : HttpServletResponse.SC_BAD_REQUEST;
             writeErrorResponse(response, status, e.getCode(), e.getMessage());
+        } catch (ContentServiceException e) {
+            int status = PublicContentService.VALIDATION_ERROR.equals(e.getCode())
+                    ? HttpServletResponse.SC_BAD_REQUEST : HttpServletResponse.SC_NOT_FOUND;
+            writeErrorResponse(response, status, e.getCode(), e.getMessage());
+        } catch (MediaServiceException e) {
+            int status = MediaService.MEDIA_NOT_FOUND.equals(e.getCode()) ? HttpServletResponse.SC_NOT_FOUND
+                    : HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+            writeErrorResponse(response, status, e.getCode(), "Media not found.");
         } catch (MenuServiceException e) {
             int status = MenuItemService.MENU_NOT_FOUND.equals(e.getCode())
                     ? HttpServletResponse.SC_NOT_FOUND : HttpServletResponse.SC_BAD_REQUEST;
@@ -194,6 +241,8 @@ public class PublicSiteServlet extends JsonServletSupport {
         return PublicAuthStateResponse.authenticated(session.get().getAuthenticatedUser().orElseThrow(),AppSessionManager.ensureCsrfToken(request,response,session.get()));
     }
     private boolean isBlank(String value) { return value == null || value.trim().isEmpty(); }
+    private Long parseId(String value) { try { return Long.parseLong(value); } catch (NumberFormatException exception) { throw new BadRequestException("Media id must be a number."); } }
+    private void writeMediaContent(HttpServletResponse response, MediaContent mediaContent) throws IOException { response.setStatus(HttpServletResponse.SC_OK); response.setContentType(mediaContent.getMimeType()); response.setContentLengthLong(mediaContent.getFileSize()); response.setHeader("Content-Disposition", "inline; filename=\"media\""); response.getOutputStream().write(mediaContent.getContent()); }
 
     private List<String> pathSegments(HttpServletRequest request) {
         String pathInfo = request.getPathInfo();

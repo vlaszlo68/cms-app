@@ -69,7 +69,7 @@ public class PageDaoImpl extends BaseDao<Page, PageProperty> implements PageDao 
                 .where(PageProperty.SITE).equalsTo(site)
                 .where(PageProperty.ID).in(pageIds)
                 .where(PageProperty.STATUS).equalsTo(PageStatus.PUBLISHED)
-                .where(PageProperty.PAGE_TYPE).equalsTo(PageType.CONTENT)
+                .where(PageProperty.PAGE_TYPE).in(List.of(PageType.CONTENT, PageType.BLOCK))
                 .orderBy(PageProperty.ID.asc()));
     }
 }

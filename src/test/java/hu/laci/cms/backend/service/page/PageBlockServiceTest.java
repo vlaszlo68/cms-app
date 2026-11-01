@@ -8,6 +8,8 @@ import hu.laci.cms.backend.dao.page.PageBlockDao;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.template.TemplateDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
+import hu.laci.cms.backend.dao.content.ContentCollectionDao;
+import hu.laci.cms.backend.model.content.ContentCollection;
 import hu.laci.cms.backend.dto.page.CreatePageBlockRequest;
 import hu.laci.cms.backend.dto.page.CreatePageRequest;
 import hu.laci.cms.backend.dto.page.PageBlockResponse;
@@ -68,7 +70,8 @@ class PageBlockServiceTest {
         SiteDao siteDao = DaoRegistry.getDao(Site.class);
         site = siteDao.findByCode("default").orElseThrow();
         pageService = new PageService(pageDao, templateDao, pageBlockDao);
-        pageBlockService = new PageBlockService(pageDao, pageBlockDao);
+        ContentCollectionDao collectionDao = DaoRegistry.getDao(ContentCollection.class);
+        pageBlockService = new PageBlockService(pageDao, pageBlockDao, collectionDao);
         deleteTestPages();
     }
 
@@ -138,6 +141,22 @@ class PageBlockServiceTest {
         assertTrue(pageBlockDao.findById(block.getId()).isEmpty());
     }
 
+    @Test
+    void siteBlockLookupMapsContentCollectionReferenceForLifecycleGuards() {
+        ContentCollectionDao collectionDao = DaoRegistry.getDao(ContentCollection.class);
+        ContentCollection collection = new ContentCollection();
+        collection.setSite(site); collection.setCode("PAGE_BLOCK_TEST_COLLECTION"); collection.setName("Reference");
+        collection.setContentType(hu.laci.cms.backend.model.content.ContentType.NEWS);
+        collection.setSort(hu.laci.cms.backend.model.content.ContentSort.PUBLISHED_DESC);
+        collection.setPageSize(12); collection.setActive(Boolean.TRUE);
+        collectionDao.create(collection);
+        PageResponse page = createBlockPage("reference");
+        pageBlockService.createBlock(site, page.getId(), new CreatePageBlockRequest(page.getId(), "CONTENT_COLLECTION", null, 0, true, "{\"collectionCode\":\"PAGE_BLOCK_TEST_COLLECTION\"}"));
+        assertEquals(1, pageBlockDao.findBySite(site).stream()
+                .filter(block -> "CONTENT_COLLECTION".equals(block.getBlockType()))
+                .filter(block -> block.getConfigJson().contains("PAGE_BLOCK_TEST_COLLECTION")).count());
+    }
+
     private PageResponse createBlockPage(String suffix) {
         return pageService.createPage(site, new CreatePageRequest(
                 PREFIX + suffix, PREFIX + suffix, null, PageType.BLOCK, PageStatus.PUBLISHED,
@@ -146,9 +165,12 @@ class PageBlockServiceTest {
 
     private static void deleteTestPages() throws SQLException {
         try (Connection connection = DatabaseConfig.getConnection();
-             PreparedStatement statement = connection.prepareStatement("DELETE FROM pages WHERE slug LIKE ?")) {
+             PreparedStatement statement = connection.prepareStatement("DELETE FROM pages WHERE slug LIKE ?");
+             PreparedStatement collections = connection.prepareStatement("DELETE FROM content_collections WHERE code LIKE ?")) {
             statement.setString(1, PREFIX + "%");
             statement.executeUpdate();
+            collections.setString(1, "PAGE_BLOCK_TEST_%");
+            collections.executeUpdate();
         }
     }
 

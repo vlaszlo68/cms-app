@@ -6,6 +6,9 @@ import hu.laci.cms.backend.dao.menu.MenuDao;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
+import hu.laci.cms.backend.dao.content.ContentCollectionDao;
+import hu.laci.cms.backend.dao.content.ContentItemDao;
+import hu.laci.cms.backend.dao.content.TagDao;
 import hu.laci.cms.backend.dto.site.SiteUsageResponse;
 import hu.laci.cms.backend.model.settings.SiteSettings;
 import hu.laci.cms.backend.model.site.Site;
@@ -73,9 +76,13 @@ class SiteUsageServiceTest {
         private final MediaDao mediaDao = Mockito.mock(MediaDao.class);
         private final SiteApplicationDao applicationDao = Mockito.mock(SiteApplicationDao.class);
         private final SiteSettingsDao settingsDao = Mockito.mock(SiteSettingsDao.class);
+        private final ContentItemDao contentItemDao = Mockito.mock(ContentItemDao.class);
+        private final ContentCollectionDao contentCollectionDao = Mockito.mock(ContentCollectionDao.class);
+        private final TagDao tagDao = Mockito.mock(TagDao.class);
 
         private SiteUsageService service() {
-            return new SiteUsageService(siteDao, pageDao, menuDao, mediaDao, applicationDao, settingsDao);
+            return new SiteUsageService(siteDao, pageDao, menuDao, mediaDao, applicationDao, settingsDao,
+                    contentItemDao, contentCollectionDao, tagDao);
         }
     }
 }
