@@ -10,6 +10,9 @@ import hu.laci.cms.backend.dao.settings.SiteSettingsDaoImpl;
 import hu.laci.cms.backend.dao.template.TemplateDaoImpl;
 import hu.laci.cms.backend.dao.site.SiteDaoImpl;
 import hu.laci.cms.backend.dao.application.SiteApplicationDaoImpl;
+import hu.laci.cms.backend.dao.content.ContentItemDaoImpl;
+import hu.laci.cms.backend.dao.content.TagDaoImpl;
+import hu.laci.cms.backend.dao.content.ContentCollectionDaoImpl;
 import hu.laci.cms.backend.model.common.BaseEntity;
 import hu.laci.cms.backend.model.common.BaseProperty;
 import hu.laci.cms.backend.model.media.Media;
@@ -22,6 +25,9 @@ import hu.laci.cms.backend.model.template.Template;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.user.User;
 import hu.laci.cms.backend.model.application.SiteApplication;
+import hu.laci.cms.backend.model.content.ContentItem;
+import hu.laci.cms.backend.model.content.Tag;
+import hu.laci.cms.backend.model.content.ContentCollection;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -58,6 +64,9 @@ public final class DaoRegistry {
         register(SiteSettings.class, new SiteSettingsDaoImpl());
         register(Site.class, new SiteDaoImpl());
         register(SiteApplication.class, new SiteApplicationDaoImpl());
+        register(ContentItem.class, new ContentItemDaoImpl());
+        register(Tag.class, new TagDaoImpl());
+        register(ContentCollection.class, new ContentCollectionDaoImpl());
     }
 
     /**

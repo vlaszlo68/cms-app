@@ -5,13 +5,18 @@ import hu.laci.cms.backend.model.page.PageBlock;
 import hu.laci.cms.backend.model.page.PageBlockProperty;
 
 import java.util.List;
+import hu.laci.cms.backend.model.site.Site;
 
 /**
  * Persistence contract for ordered page block configurations.
  */
 public interface PageBlockDao extends CrudDao<PageBlock, PageBlockProperty> {
 
+    /** Returns all blocks for bounded service-side reference validation. */
+    List<PageBlock> findAllBlocks();
+
     List<PageBlock> findByPageId(Long pageId);
 
     List<PageBlock> findVisibleByPageId(Long pageId);
+    List<PageBlock> findBySite(Site site);
 }

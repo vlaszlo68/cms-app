@@ -6,6 +6,9 @@ import hu.laci.cms.backend.dao.menu.MenuDao;
 import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
+import hu.laci.cms.backend.dao.content.ContentItemDao;
+import hu.laci.cms.backend.dao.content.ContentCollectionDao;
+import hu.laci.cms.backend.dao.content.TagDao;
 import hu.laci.cms.backend.dto.site.SiteUsageResponse;
 import hu.laci.cms.backend.model.site.Site;
 
@@ -28,16 +31,23 @@ public class SiteUsageService {
     private final MediaDao mediaDao;
     private final SiteApplicationDao siteApplicationDao;
     private final SiteSettingsDao siteSettingsDao;
+    private final ContentItemDao contentItemDao;
+    private final ContentCollectionDao contentCollectionDao;
+    private final TagDao tagDao;
 
-    /** Creates the Site usage and deletion service. */
+    /** Creates the Site usage and deletion service with all Site-owned business dependencies. */
     public SiteUsageService(SiteDao siteDao, PageDao pageDao, MenuDao menuDao, MediaDao mediaDao,
-                            SiteApplicationDao siteApplicationDao, SiteSettingsDao siteSettingsDao) {
+                            SiteApplicationDao siteApplicationDao, SiteSettingsDao siteSettingsDao,
+                            ContentItemDao contentItemDao, ContentCollectionDao contentCollectionDao, TagDao tagDao) {
         this.siteDao = Objects.requireNonNull(siteDao, "siteDao must not be null");
         this.pageDao = Objects.requireNonNull(pageDao, "pageDao must not be null");
         this.menuDao = Objects.requireNonNull(menuDao, "menuDao must not be null");
         this.mediaDao = Objects.requireNonNull(mediaDao, "mediaDao must not be null");
         this.siteApplicationDao = Objects.requireNonNull(siteApplicationDao, "siteApplicationDao must not be null");
         this.siteSettingsDao = Objects.requireNonNull(siteSettingsDao, "siteSettingsDao must not be null");
+        this.contentItemDao = Objects.requireNonNull(contentItemDao, "contentItemDao must not be null");
+        this.contentCollectionDao = Objects.requireNonNull(contentCollectionDao, "contentCollectionDao must not be null");
+        this.tagDao = Objects.requireNonNull(tagDao, "tagDao must not be null");
     }
 
     /**
@@ -51,8 +61,11 @@ public class SiteUsageService {
         long pageCount = pageDao.countBySite(site);
         long menuCount = menuDao.countBySite(site);
         long mediaCount = mediaDao.countBySite(site);
-        boolean deletable = pageCount == 0 && menuCount == 0 && mediaCount == 0;
-        return new SiteUsageResponse(pageCount, menuCount, mediaCount, deletable);
+        long contentItemCount = contentItemDao.countBySite(site);
+        long contentCollectionCount = contentCollectionDao.countBySite(site);
+        boolean deletable = pageCount == 0 && menuCount == 0 && mediaCount == 0
+                && contentItemCount == 0 && contentCollectionCount == 0;
+        return new SiteUsageResponse(pageCount, menuCount, mediaCount, contentItemCount, contentCollectionCount, deletable);
     }
 
     /**
@@ -69,6 +82,7 @@ public class SiteUsageService {
         }
         siteSettingsDao.findBySite(site).ifPresent(siteSettingsDao::delete);
         siteApplicationDao.deleteBySite(site);
+        tagDao.deleteUnusedBySite(site);
         if (!siteDao.delete(site)) {
             throw new SiteServiceException(SiteService.SITE_NOT_FOUND, "Site not found.");
         }

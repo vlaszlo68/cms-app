@@ -21,7 +21,7 @@ Strict checks are optional and must be selected before the test starts. Strict m
 | Session restore | `GET /api/auth/me` with session cookie | `200`, same auth shape as login |
 | Sites read | `GET /api/admin/sites` | `200` for admin, including inactive Sites and each Site's `themeCode` |
 | Theme definitions read | `GET /api/admin/theme-definitions` | `200` for admin, exactly `STANDARD`, `MODERN`, `DARK`, `CORPORATE`, and `MINIMAL` |
-| Site deletion usage | `GET /api/admin/sites/{siteCode}/usage` | `200` for admin, counts for blocking pages, menus, media, and `deletable`; lifecycle SiteApplications are not blockers |
+| Site deletion usage | `GET /api/admin/sites/{siteCode}/usage` | `200` for admin, `pageCount`, `menuCount`, `mediaCount`, `contentItemCount`, `contentCollectionCount`, and `deletable`; lifecycle SiteApplications and unused Tags are not blockers |
 | Pages read | `GET /api/admin/sites/{siteCode}/pages` | `200` for admin |
 | Templates read | `GET /api/templates` | `200` for admin |
 | Menus read | `GET /api/admin/sites/{siteCode}/menus` | `200` for admin |
@@ -70,7 +70,7 @@ The script should create test entities with a unique `codex-api-test-*` prefix a
 | Media | `POST /api/admin/sites/{siteCode}/media` multipart | `GET /api/admin/sites/{siteCode}/media/{id}` and `/content` | Not exposed | `DELETE /api/admin/sites/{siteCode}/media/{id}` | API exposes create/read/delete, not update |
 | Site settings | Not exposed | `GET /api/admin/sites/{siteCode}/site-settings` | Not run by default | Not run by default | One settings row per Site; do not update existing settings during standard destructive mode |
 
-Site management is `GET/POST /api/admin/sites`, `GET/PUT/DELETE /api/admin/sites/{siteCode}`, and `GET /api/admin/sites/{siteCode}/usage`. Site create/update accepts an optional `themeCode`; omission uses `STANDARD`, and only the five values returned by `GET /api/admin/theme-definitions` are accepted. `DELETE` requires ADMIN authentication and CSRF, deletes SiteSettings and SiteApplication rows before deleting the Site only when usage is empty, and returns `409 SITE_IN_USE` with `error.details` usage counts when Page, Menu, or Media data exists. It never deletes business content. The live smoke script reads Sites but does not create disposable Sites; deletion coverage belongs in automated tests or an isolated disposable database.
+Site management is `GET/POST /api/admin/sites`, `GET/PUT/DELETE /api/admin/sites/{siteCode}`, and `GET /api/admin/sites/{siteCode}/usage`. Site create/update accepts an optional `themeCode`; omission uses `STANDARD`, and only the five values returned by `GET /api/admin/theme-definitions` are accepted. `DELETE` requires ADMIN authentication and CSRF, deletes SiteSettings and SiteApplication rows before deleting the Site only when usage is empty, and returns `409 SITE_IN_USE` with `error.details` usage counts when Page, Menu, Media, ContentItem, or ContentCollection data exists. It never deletes business content; unused Tags are lifecycle-cleaned only after the empty-usage check. The live smoke script reads Sites but does not create disposable Sites; deletion coverage belongs in automated tests or an isolated disposable database.
 
 Strict destructive assertions:
 
@@ -139,6 +139,21 @@ Menu item with URL target:
 ```
 
 ## Application Platform Foundation
+
+## Content Foundation Admin APIs
+
+Content Foundation is Site-scoped and has no public endpoint. All of these resources require an ADMIN session; mutations require `X-CSRF-Token`:
+
+- `GET|POST /api/admin/sites/{siteCode}/content-items`
+- `GET|PUT|DELETE /api/admin/sites/{siteCode}/content-items/{id}`
+- `GET|POST /api/admin/sites/{siteCode}/tags`
+- `GET|PUT|DELETE /api/admin/sites/{siteCode}/tags/{id}`
+- `GET|POST /api/admin/sites/{siteCode}/content-collections`
+- `GET|PUT|DELETE /api/admin/sites/{siteCode}/content-collections/{id}`
+
+Content writes use `type` (`NEWS`, `BLOG`, `GALLERY`), `title`, lowercase hyphenated `slug`, optional `summary`, `content`, `groupCode`, `featuredMediaId`, ISO-8601 `publishedAt`, `status` (`DRAFT`, `PUBLISHED`, `ARCHIVED`), and optional unique `tagIds`. A featured media or tag id from another Site returns `404`; duplicate `(site,type,slug)` returns `409 DUPLICATE_SLUG`. `PUBLISHED` without `publishedAt` receives a server UTC timestamp. Later draft/archive writes preserve existing publication history when they omit the timestamp.
+
+Tag and collection codes are trimmed, uppercased, and permit uppercase letters, digits, hyphens, and underscores. Tags assigned to content return `409 TAG_IN_USE` on delete. A featured media record referenced by Content Foundation returns `409 MEDIA_IN_USE` on delete. Collections are saved definitions only: `contentType`, optional `groupCode`, `sort=PUBLISHED_DESC`, `pageSize` 1--100, and `active`; they never store item memberships.
 
 Application administration is Site-scoped management of SiteApplication configuration and requires the normal authenticated ADMIN session plus CSRF token:
 

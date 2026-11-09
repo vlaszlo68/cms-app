@@ -6,7 +6,15 @@ import hu.laci.cms.backend.dto.menu.PublicMenuItemResponse;
 import hu.laci.cms.backend.dto.page.PublicPageResponse;
 import hu.laci.cms.backend.dto.settings.PublicSiteSettingsResponse;
 import hu.laci.cms.backend.dto.application.PublicApplicationResponse;
+import hu.laci.cms.backend.dto.content.PublicArticleResponse;
+import hu.laci.cms.backend.dto.content.PublicContentCollectionPageResponse;
+import hu.laci.cms.backend.dto.content.PublicContentPreviewResponse;
+import hu.laci.cms.backend.service.content.PublicContentService;
+import hu.laci.cms.backend.service.media.MediaContent;
+import hu.laci.cms.backend.service.media.MediaService;
+import hu.laci.cms.backend.service.media.MediaServiceException;
 import hu.laci.cms.backend.model.page.PageType;
+import hu.laci.cms.backend.model.content.ContentType;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.service.menu.MenuItemService;
 import hu.laci.cms.backend.service.page.PageService;
@@ -151,6 +159,48 @@ class PublicSiteServletTest {
         assertEquals(HttpServletResponse.SC_OK, response.getStatus());
         assertEquals("TEST_APP", JsonParser.parseString(response.getBody()).getAsJsonObject()
                 .getAsJsonObject("data").get("code").getAsString());
+    }
+
+    @Test
+    void contentRoutesAreAnonymousSiteScopedAndUseTheStandardEnvelope() throws Exception {
+        Site site = new Site(11L, "site-a", "Site A", true);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        PublicContentService contentService = Mockito.mock(PublicContentService.class);
+        Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
+        Mockito.when(contentService.collection(site, "LATEST", "0", null))
+                .thenReturn(new PublicContentCollectionPageResponse(List.of(
+                        new PublicContentPreviewResponse(ContentType.NEWS, "article", "Article", "Summary",
+                                "2026-11-01T00:00:00Z", null, List.of())), 0, 12, 1, 1));
+        PublicSiteServlet servlet = new PublicSiteServlet();
+        ServletTestSupport.setField(servlet, "siteService", siteService);
+        ServletTestSupport.setField(servlet, "publicContentService", contentService);
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+
+        servlet.doGet(ServletTestSupport.request().withPathInfo("/site-a/content-collections/LATEST")
+                .withParameter("page", "0").build(), response.build());
+
+        assertEquals(HttpServletResponse.SC_OK, response.getStatus());
+        JsonObject data = JsonParser.parseString(response.getBody()).getAsJsonObject().getAsJsonObject("data");
+        assertEquals(1, data.get("totalElements").getAsInt());
+        assertTrue(data.getAsJsonArray("items").get(0).getAsJsonObject().get("featuredMedia").isJsonNull());
+        Mockito.verify(contentService).collection(site, "LATEST", "0", null);
+    }
+
+    @Test
+    void publicMediaRouteReturnsControlledNotFoundForForeignOrInactiveMedia() throws Exception {
+        Site site = new Site(12L, "site-a", "Site A", true);
+        SiteService siteService = Mockito.mock(SiteService.class);
+        MediaService mediaService = Mockito.mock(MediaService.class);
+        Mockito.when(siteService.requireActiveSite("site-a")).thenReturn(site);
+        Mockito.when(mediaService.getPublicMediaContent(site, 99L)).thenThrow(
+                new MediaServiceException(MediaService.MEDIA_NOT_FOUND, "Media not found."));
+        PublicSiteServlet servlet = new PublicSiteServlet();
+        ServletTestSupport.setField(servlet, "siteService", siteService);
+        ServletTestSupport.setField(servlet, "publicMediaService", mediaService);
+        ServletTestSupport.ResponseFixture response = ServletTestSupport.response();
+        servlet.doGet(ServletTestSupport.request().withPathInfo("/site-a/media/99/content").build(), response.build());
+        assertEquals(HttpServletResponse.SC_NOT_FOUND, response.getStatus());
+        assertTrue(response.getBody().contains(MediaService.MEDIA_NOT_FOUND));
     }
 
     @Test

@@ -13,6 +13,9 @@ import hu.laci.cms.backend.dao.page.PageDao;
 import hu.laci.cms.backend.dao.settings.SiteSettingsDao;
 import hu.laci.cms.backend.dao.site.SiteDao;
 import hu.laci.cms.backend.dao.application.SiteApplicationDao;
+import hu.laci.cms.backend.dao.content.ContentItemDao;
+import hu.laci.cms.backend.dao.content.TagDao;
+import hu.laci.cms.backend.dao.content.ContentCollectionDao;
 import hu.laci.cms.backend.model.application.SiteApplication;
 import hu.laci.cms.backend.service.application.ApplicationDefinitionRegistry;
 import hu.laci.cms.backend.service.application.ApplicationPlatformRegistry;
@@ -35,6 +38,9 @@ import hu.laci.cms.backend.dto.page.UpdatePageRequest;
 import hu.laci.cms.backend.dto.settings.SaveSiteSettingsRequest;
 import hu.laci.cms.backend.dto.site.CreateSiteRequest;
 import hu.laci.cms.backend.dto.site.UpdateSiteRequest;
+import hu.laci.cms.backend.dto.content.ContentItemRequest;
+import hu.laci.cms.backend.dto.content.TagRequest;
+import hu.laci.cms.backend.dto.content.ContentCollectionRequest;
 import hu.laci.cms.backend.model.media.Media;
 import hu.laci.cms.backend.model.menu.Menu;
 import hu.laci.cms.backend.model.menu.MenuItem;
@@ -44,6 +50,11 @@ import hu.laci.cms.backend.model.settings.SiteSettings;
 import hu.laci.cms.backend.model.site.Site;
 import hu.laci.cms.backend.model.template.Template;
 import hu.laci.cms.backend.model.user.UserRole;
+import hu.laci.cms.backend.model.content.ContentItem;
+import hu.laci.cms.backend.model.content.Tag;
+import hu.laci.cms.backend.model.content.ContentCollection;
+import hu.laci.cms.backend.model.content.ContentType;
+import hu.laci.cms.backend.model.content.ContentStatus;
 import hu.laci.cms.backend.service.media.MediaContent;
 import hu.laci.cms.backend.service.media.MediaService;
 import hu.laci.cms.backend.service.media.MediaServiceException;
@@ -60,6 +71,10 @@ import hu.laci.cms.backend.service.settings.SiteSettingsServiceException;
 import hu.laci.cms.backend.service.site.SiteService;
 import hu.laci.cms.backend.service.site.SiteServiceException;
 import hu.laci.cms.backend.service.site.SiteUsageService;
+import hu.laci.cms.backend.service.content.ContentItemService;
+import hu.laci.cms.backend.service.content.TagService;
+import hu.laci.cms.backend.service.content.ContentCollectionService;
+import hu.laci.cms.backend.service.content.ContentServiceException;
 import hu.laci.cms.backend.servlet.support.JsonServletSupport;
 
 import javax.servlet.ServletException;
@@ -93,6 +108,9 @@ public class AdminSiteServlet extends JsonServletSupport {
     private SiteSettingsService siteSettingsService;
     private MediaService mediaService;
     private SiteApplicationService applicationService;
+    private ContentItemService contentItemService;
+    private TagService tagService;
+    private ContentCollectionService contentCollectionService;
 
     @Override
     public void init() throws ServletException {
@@ -105,20 +123,27 @@ public class AdminSiteServlet extends JsonServletSupport {
         SiteSettingsDao settingsDao = DaoRegistry.getDao(SiteSettings.class);
         MediaDao mediaDao = DaoRegistry.getDao(Media.class);
         SiteApplicationDao applicationDao = DaoRegistry.getDao(SiteApplication.class);
+        ContentItemDao contentItemDao = DaoRegistry.getDao(ContentItem.class);
+        TagDao tagDao = DaoRegistry.getDao(Tag.class);
+        ContentCollectionDao collectionDao = DaoRegistry.getDao(ContentCollection.class);
         MediaStorageConfig storageConfig = MediaStorageConfig.getCurrent();
         MediaStorageService storageService = MediaStorageServiceFactory.create(storageConfig);
 
         siteService = new SiteService(siteDao);
-        siteUsageService = new SiteUsageService(siteDao, pageDao, menuDao, mediaDao, applicationDao, settingsDao);
+        siteUsageService = new SiteUsageService(siteDao, pageDao, menuDao, mediaDao, applicationDao, settingsDao,
+                contentItemDao, collectionDao, tagDao);
         pageService = new PageService(pageDao, templateDao, pageBlockDao);
-        pageBlockService = new PageBlockService(pageDao, pageBlockDao);
+        pageBlockService = new PageBlockService(pageDao, pageBlockDao, collectionDao);
         menuService = new MenuService(menuDao);
         ApplicationDefinitionRegistry applicationRegistry = ApplicationPlatformRegistry.production()
                 .getApplicationDefinitions();
         menuItemService = new MenuItemService(menuDao, menuItemDao, pageDao, applicationDao, applicationRegistry);
         applicationService = new SiteApplicationService(applicationDao, applicationRegistry);
         siteSettingsService = new SiteSettingsService(settingsDao, mediaDao);
-        mediaService = new MediaService(mediaDao, storageService, storageConfig.getStorageType());
+        mediaService = new MediaService(mediaDao, storageService, storageConfig.getStorageType(), contentItemDao);
+        contentItemService = new ContentItemService(contentItemDao, tagDao, mediaDao);
+        tagService = new TagService(tagDao);
+        contentCollectionService = new ContentCollectionService(collectionDao, pageBlockDao);
     }
 
     @Override
@@ -173,6 +198,8 @@ public class AdminSiteServlet extends JsonServletSupport {
             writeMediaError(response, e);
         } catch (SiteApplicationServiceException e) {
             writeApplicationError(response, e);
+        } catch (ContentServiceException e) {
+            writeContentError(response, e);
         }
     }
 
@@ -211,6 +238,9 @@ public class AdminSiteServlet extends JsonServletSupport {
             case "site-settings" -> routeSettings(request, method, site, segments.subList(2, segments.size()));
             case "media" -> routeMedia(request, method, site, segments.subList(2, segments.size()));
             case "applications" -> routeApplications(request, method, site, segments.subList(2, segments.size()));
+            case "content-items" -> routeContentItems(request, method, site, segments.subList(2, segments.size()));
+            case "tags" -> routeTags(request, method, site, segments.subList(2, segments.size()));
+            case "content-collections" -> routeContentCollections(request, method, site, segments.subList(2, segments.size()));
             default -> throw new BadRequestException("Unknown Site resource path.");
         };
     }
@@ -400,6 +430,67 @@ public class AdminSiteServlet extends JsonServletSupport {
         };
     }
 
+    private ResponsePayload routeContentItems(HttpServletRequest request, String method, Site site, List<String> path)
+            throws IOException {
+        if (path.isEmpty()) {
+            if ("GET".equals(method)) {
+                return ok(contentItemService.list(site, parseEnum(request.getParameter("type"), ContentType.class, "type"),
+                        parseEnum(request.getParameter("status"), ContentStatus.class, "status"), request.getParameter("groupCode")));
+            }
+            if ("POST".equals(method)) return created(contentItemService.create(site, parseJson(request, ContentItemRequest.class)));
+            throw unsupported();
+        }
+        if (path.size() != 1) throw new BadRequestException("Invalid content item path.");
+        Long id = parseId(path.get(0), "Content item id");
+        return switch (method) {
+            case "GET" -> ok(contentItemService.get(site, id));
+            case "PUT" -> ok(contentItemService.update(site, id, parseJson(request, ContentItemRequest.class)));
+            case "DELETE" -> ok(contentItemService.delete(site, id));
+            default -> throw unsupported();
+        };
+    }
+
+    private ResponsePayload routeTags(HttpServletRequest request, String method, Site site, List<String> path) throws IOException {
+        if (path.isEmpty()) {
+            if ("GET".equals(method)) return ok(tagService.list(site));
+            if ("POST".equals(method)) return created(tagService.create(site, parseJson(request, TagRequest.class)));
+            throw unsupported();
+        }
+        if (path.size() != 1) throw new BadRequestException("Invalid tag path.");
+        Long id = parseId(path.get(0), "Tag id");
+        return switch (method) {
+            case "GET" -> ok(tagService.get(site, id));
+            case "PUT" -> ok(tagService.update(site, id, parseJson(request, TagRequest.class)));
+            case "DELETE" -> ok(tagService.delete(site, id));
+            default -> throw unsupported();
+        };
+    }
+
+    private ResponsePayload routeContentCollections(HttpServletRequest request, String method, Site site,
+                                                    List<String> path) throws IOException {
+        if (path.isEmpty()) {
+            if ("GET".equals(method)) return ok(contentCollectionService.list(site));
+            if ("POST".equals(method)) return created(contentCollectionService.create(site,
+                    parseJson(request, ContentCollectionRequest.class)));
+            throw unsupported();
+        }
+        if (path.size() != 1) throw new BadRequestException("Invalid content collection path.");
+        Long id = parseId(path.get(0), "Content collection id");
+        return switch (method) {
+            case "GET" -> ok(contentCollectionService.get(site, id));
+            case "PUT" -> ok(contentCollectionService.update(site, id, parseJson(request, ContentCollectionRequest.class)));
+            case "DELETE" -> ok(contentCollectionService.delete(site, id));
+            default -> throw unsupported();
+        };
+    }
+
+    private <E extends Enum<E>> E parseEnum(String value, Class<E> type, String label) {
+        if (value == null || value.isBlank()) return null;
+        try { return Enum.valueOf(type, value); } catch (IllegalArgumentException e) {
+            throw new BadRequestException(label + " is invalid.", e);
+        }
+    }
+
     private <T> T parseJson(HttpServletRequest request, Class<T> type) {
         try (BufferedReader reader = request.getReader()) {
             return gson.fromJson(reader, type);
@@ -523,6 +614,20 @@ public class AdminSiteServlet extends JsonServletSupport {
         int status = switch (e.getCode()) {
             case MediaService.VALIDATION_ERROR -> HttpServletResponse.SC_BAD_REQUEST;
             case MediaService.MEDIA_NOT_FOUND -> HttpServletResponse.SC_NOT_FOUND;
+            case MediaService.MEDIA_IN_USE -> HttpServletResponse.SC_CONFLICT;
+            default -> HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
+        };
+        writeErrorResponse(response, status, e.getCode(), e.getMessage());
+    }
+
+    private void writeContentError(HttpServletResponse response, ContentServiceException e) throws IOException {
+        int status = switch (e.getCode()) {
+            case ContentItemService.VALIDATION_ERROR -> HttpServletResponse.SC_BAD_REQUEST;
+            case ContentItemService.CONTENT_ITEM_NOT_FOUND, ContentItemService.TAG_NOT_FOUND,
+                    ContentItemService.MEDIA_NOT_FOUND,
+                    ContentCollectionService.COLLECTION_NOT_FOUND -> HttpServletResponse.SC_NOT_FOUND;
+            case ContentItemService.DUPLICATE_SLUG, TagService.DUPLICATE_CODE, TagService.TAG_IN_USE,
+                    ContentCollectionService.DUPLICATE_CODE, ContentCollectionService.COLLECTION_IN_USE -> HttpServletResponse.SC_CONFLICT;
             default -> HttpServletResponse.SC_INTERNAL_SERVER_ERROR;
         };
         writeErrorResponse(response, status, e.getCode(), e.getMessage());

@@ -1,0 +1,3 @@
+package hu.laci.cms.backend.model.content;
+import hu.laci.cms.backend.model.common.AuditableProperty; import hu.laci.cms.backend.model.common.BaseProperty;
+/** Query properties for collections. */ public final class ContentCollectionProperty extends AuditableProperty { public static final ContentCollectionProperty ID=new ContentCollectionProperty(BaseProperty.ID.getPropertyName()); public static final ContentCollectionProperty SITE=new ContentCollectionProperty("site"); public static final ContentCollectionProperty CODE=new ContentCollectionProperty("code"); private ContentCollectionProperty(String n){super(ContentCollection.class,n);} }

@@ -106,6 +106,25 @@ class MenuItemServicePublicMenuTest {
     }
 
     @Test
+    void publicMenuIncludesPublishedBlockPageTarget() {
+        MenuDao menuDao = Mockito.mock(MenuDao.class);
+        MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
+        PageDao pageDao = Mockito.mock(PageDao.class);
+        Mockito.when(menuDao.findBySiteAndCode(SITE, "MAIN")).thenReturn(Optional.of(new Menu(10L, "Main", "MAIN", true)));
+        Mockito.when(menuItemDao.findByMenuId(10L)).thenReturn(List.of(pageItem(1L, null, 200L, "News", 10, true)));
+        Mockito.when(pageDao.findPublishedContentBySiteAndIds(SITE, Set.of(200L)))
+                .thenReturn(List.of(page(200L, "news", false, PageType.BLOCK)));
+
+        MenuItemService service = new MenuItemService(menuDao, menuItemDao, pageDao);
+
+        List<PublicMenuItemResponse> result = service.getPublicMenu(SITE, "MAIN");
+
+        assertEquals(1, result.size());
+        assertEquals("News", result.getFirst().getTitle());
+        assertEquals("/news", result.getFirst().getPath());
+    }
+
+    @Test
     void publicMenuMapsOnlyActiveSupportedApplicationTargetsToApplicationPath() {
         MenuDao menuDao = Mockito.mock(MenuDao.class);
         MenuItemDao menuItemDao = Mockito.mock(MenuItemDao.class);
@@ -164,7 +183,11 @@ class MenuItemServicePublicMenuTest {
     }
 
     private static Page page(Long id, String slug, boolean homepage) {
-        return new Page(id, "Public page", slug, "Content", PageType.CONTENT, PageStatus.PUBLISHED,
+        return page(id, slug, homepage, PageType.CONTENT);
+    }
+
+    private static Page page(Long id, String slug, boolean homepage, PageType pageType) {
+        return new Page(id, "Public page", slug, "Content", pageType, PageStatus.PUBLISHED,
                 null, null, homepage, true, null);
     }
 }
